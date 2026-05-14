@@ -6,42 +6,46 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
+  Modal,
+  ScrollView,
+  TextInput,
+  Share,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
-import { Modal, ScrollView } from 'react-native'
-import { VideoView, useVideoPlayer } from 'expo-video'
 
 export default function HomeScreen({ navigation }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [showReacts, setShowReacts] = useState(null)
-  const [selectedMedia, setSelectedMedia] = useState([])
-const [mediaModal, setMediaModal] = useState(false)
+  const [commentModal, setCommentModal] = useState(false)
+  const [selectedPost, setSelectedPost] = useState(null)
+  const [comments, setComments] = useState([])
+  const [commentText, setCommentText] = useState('')
+  const [currentUser, setCurrentUser] = useState(null)
 
   useEffect(() => {
+    loadUser()
     loadProperties()
   }, [])
 
-  function VideoBox({ uri }) {
-    const player = useVideoPlayer(uri, (player) => {
-      player.loop = true
-    })
+  function timeAgo(date) {
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000)
+
+    if (seconds < 60) return 'Just now'
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    return `${Math.floor(seconds / 86400)}d ago`
+  }
+
+  async function loadUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
   
-    return (
-      <VideoView
-        player={player}
-        style={{
-          width: '100%',
-          height: 300,
-          backgroundColor: '#000',
-        }}
-        allowsFullscreen
-        allowsPictureInPicture
-      />
-    )
+    setCurrentUser(user)
   }
 
   async function loadProperties() {
@@ -49,35 +53,169 @@ const [mediaModal, setMediaModal] = useState(false)
 
     const { data } = await supabase
       .from('properties')
-      .select('*')
+      .select(`
+        *,
+        property_reactions(id, reaction, user_id),
+        property_comments(id),
+        property_favorites(id, user_id)
+      `)
       .order('created_at', { ascending: false })
 
     setProperties(data || [])
     setLoading(false)
   }
 
-  function handleReact(type) {
-    Alert.alert('Reacted', `You reacted with ${type}`)
+  async function reactToPost(propertyId, reaction) {
+    if (!currentUser) return
+  
+    const { error } = await supabase.from('property_reactions').upsert({
+      property_id: propertyId,
+      user_id: currentUser.id,
+      reaction,
+    })
+  
+    if (error) {
+      Alert.alert('Error', error.message)
+      return
+    }
+  
+    setProperties((oldPosts) =>
+      oldPosts.map((post) => {
+        if (post.id !== propertyId) return post
+  
+        const oldReactions = post.property_reactions || []
+  
+        const withoutMyReaction = oldReactions.filter(
+          (item) => item.user_id !== currentUser.id
+        )
+  
+        return {
+          ...post,
+          property_reactions: [
+            ...withoutMyReaction,
+            {
+              id: Date.now().toString(),
+              user_id: currentUser.id,
+              reaction,
+            },
+          ],
+        }
+      })
+    )
+  
     setShowReacts(null)
   }
 
+  async function openComments(post) {
+    setSelectedPost(post)
+    setCommentModal(true)
+
+    const { data } = await supabase
+      .from('property_comments')
+      .select('*')
+      .eq('property_id', post.id)
+      .order('created_at', { ascending: true })
+
+    setComments(data || [])
+  }
+
+  async function addComment() {
+    if (!commentText.trim()) return
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    const { error } = await supabase.from('property_comments').insert({
+      property_id: selectedPost.id,
+      user_id: user.id,
+      user_email: user.email,
+      comment: commentText,
+    })
+
+    if (error) {
+      Alert.alert('Error', error.message)
+      return
+    }
+
+    setCommentText('')
+    openComments(selectedPost)
+    loadProperties()
+  }
+
+  async function toggleFavorite(post) {
+    if (!currentUser) return
+  
+    const isFavorite = post.property_favorites?.some(
+      (item) => item.user_id === currentUser.id
+    )
+  
+    if (isFavorite) {
+      await supabase
+        .from('property_favorites')
+        .delete()
+        .eq('property_id', post.id)
+        .eq('user_id', currentUser.id)
+  
+      setProperties((oldPosts) =>
+        oldPosts.map((item) => {
+          if (item.id !== post.id) return item
+  
+          return {
+            ...item,
+            property_favorites: item.property_favorites.filter(
+              (fav) => fav.user_id !== currentUser.id
+            ),
+          }
+        })
+      )
+    } else {
+      await supabase.from('property_favorites').insert({
+        property_id: post.id,
+        user_id: currentUser.id,
+      })
+  
+      setProperties((oldPosts) =>
+        oldPosts.map((item) => {
+          if (item.id !== post.id) return item
+  
+          return {
+            ...item,
+            property_favorites: [
+              ...(item.property_favorites || []),
+              {
+                id: Date.now().toString(),
+                user_id: currentUser.id,
+              },
+            ],
+          }
+        })
+      )
+    }
+  }
+
+  async function sharePost(post) {
+    await Share.share({
+      message: `${post.title}\nRent: ৳ ${post.price}\nLocation: ${post.location || ''}`,
+    })
+  }
+
   function PostCard({ item }) {
+    const totalReacts = item.property_reactions?.length || 0
+    const totalComments = item.property_comments?.length || 0
+    const totalFavorites = item.property_favorites?.length || 0
+    const media = item.media || []
+    const myReaction = item.property_reactions?.find(
+      (react) => react.user_id === currentUser?.id
+    )
+    
+    const isFavorite = item.property_favorites?.some(
+      (fav) => fav.user_id === currentUser?.id
+    )
+
     return (
-      <View
-        style={{
-          backgroundColor: '#fff',
-          marginBottom: 10,
-          paddingTop: 12,
-        }}
-      >
-        {/* USER INFO */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 14,
-          }}
-        >
+      <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
           <View
             style={{
               width: 42,
@@ -93,123 +231,88 @@ const [mediaModal, setMediaModal] = useState(false)
 
           <View style={{ marginLeft: 10, flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: '700' }}>
-              Property Owner
+              {item.owner_name || item.owner_email || 'Property Owner'}
             </Text>
-            <Text style={{ fontSize: 12, color: '#777' }}>Just now</Text>
+
+            <Text style={{ fontSize: 12, color: '#777' }}>
+              {timeAgo(item.created_at)}
+            </Text>
           </View>
 
           <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
         </View>
 
-        {/* POST TEXT */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Property', { property: item })}
-        >
-          <Text
-            style={{
-              paddingHorizontal: 14,
-              marginTop: 10,
-              fontSize: 15,
-              lineHeight: 21,
-            }}
-          >
-            {item.title || 'Rental property available'}{'\n'}
-            {item.description || 'Beautiful rental property is available now.'}
-            {'\n\n'}Rent: ৳ {item.price || 'N/A'}
-            {'\n'}Location: {item.location || 'Location not added'}
-          </Text>
-        </TouchableOpacity>
+        <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>
+          {item.title}
+          {'\n'}
+          {item.description}
+          {'\n\n'}Rent: ৳ {item.price}
+          {'\n'}Location: {item.location || 'Location not added'}
+        </Text>
 
-{/* MEDIA PREVIEW */}
-{item.media && item.media.length > 0 ? (
-  <View
-    style={{
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      marginTop: 12,
-      paddingHorizontal: 8,
-    }}
-  >
-    {item.media.slice(0, 4).map((mediaItem, index) => (
-      <TouchableOpacity
-        key={index}
-        onPress={() => {
-          setSelectedMedia(item.media)
-          setMediaModal(true)
-        }}
-        style={{
-          width: '50%',
-          padding: 3,
-        }}
-      >
-        {mediaItem.type === 'video' ? (
-          <View
-            style={{
-              height: 130,
-              backgroundColor: '#111',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="play-circle" size={40} color="#fff" />
+        {media.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, paddingHorizontal: 8 }}>
+            {media.slice(0, 4).map((mediaItem, index) => (
+              <TouchableOpacity key={index} style={{ width: '50%', padding: 3 }}>
+                {mediaItem.type === 'video' ? (
+                  <View
+                    style={{
+                      height: 130,
+                      backgroundColor: '#111',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="play-circle" size={40} color="#fff" />
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: mediaItem.uri }}
+                    style={{ width: '100%', height: 130, backgroundColor: '#eee' }}
+                    resizeMode="cover"
+                  />
+                )}
 
-            {index === 3 && item.media.length > 4 ? (
-              <Text style={{ color: '#fff', marginTop: 6 }}>
-                +{item.media.length - 4} more
-              </Text>
-            ) : null}
+                {index === 3 && media.length > 4 ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 3,
+                      right: 3,
+                      top: 3,
+                      bottom: 3,
+                      backgroundColor: 'rgba(0,0,0,0.45)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>
+                      +{media.length - 4}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            ))}
           </View>
-        ) : (
-          <View>
-            <Image
-              source={{ uri: mediaItem.uri }}
-              style={{
-                width: '100%',
-                height: 130,
-                backgroundColor: '#eee',
-              }}
-              resizeMode="cover"
-            />
+        ) : null}
 
-            {index === 3 && item.media.length > 4 ? (
-              <View
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(0,0,0,0.45)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>
-                  +{item.media.length - 4}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        )}
-      </TouchableOpacity>
-    ))}
-  </View>
-) : (
-  <View
-    style={{
-      height: 180,
-      marginTop: 12,
-      backgroundColor: '#eee',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}
-  >
-    <Ionicons name="home-outline" size={44} color="#aaa" />
-    <Text style={{ color: '#777', marginTop: 8 }}>No media</Text>
-  </View>
-)}
+<View
+  style={{
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  }}
+>
+  <Text style={{ color: '#666' }}>
+    {totalReacts > 0 ? `${totalReacts} reactions` : ''}
+  </Text>
 
-        {/* REACT OPTIONS */}
+  <Text style={{ color: '#666' }}>
+    👁 {item.view_count || 0} · 💬 {totalComments} · ❤️ {totalFavorites}
+  </Text>
+</View>
+
         {showReacts === item.id ? (
           <View
             style={{
@@ -218,18 +321,15 @@ const [mediaModal, setMediaModal] = useState(false)
               padding: 8,
               borderRadius: 30,
               position: 'absolute',
-              bottom: 44,
-              left: 12,
+              bottom: 48,
+              left: 10,
               elevation: 5,
-              shadowColor: '#000',
-              shadowOpacity: 0.15,
-              shadowRadius: 8,
             }}
           >
             {['👍', '❤️', '😂', '🔥'].map((react) => (
               <TouchableOpacity
                 key={react}
-                onPress={() => handleReact(react)}
+                onPress={() => reactToPost(item.id, react)}
                 style={{ paddingHorizontal: 8 }}
               >
                 <Text style={{ fontSize: 26 }}>{react}</Text>
@@ -238,57 +338,50 @@ const [mediaModal, setMediaModal] = useState(false)
           </View>
         ) : null}
 
-        {/* ACTION BUTTONS */}
         <View
           style={{
             flexDirection: 'row',
             borderTopWidth: 1,
             borderTopColor: '#eee',
-            marginTop: 8,
           }}
         >
+<TouchableOpacity
+  onPress={() => reactToPost(item.id, myReaction?.reaction || '👍')}
+  onLongPress={() => setShowReacts(item.id)}
+  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+>
+  {myReaction ? (
+    <Text style={{ fontSize: 22 }}>
+      {myReaction.reaction} {totalReacts}
+    </Text>
+  ) : (
+    <Ionicons name="thumbs-up-outline" size={22} color="#555" />
+  )}
+</TouchableOpacity>
+
           <TouchableOpacity
-            onPress={() => handleReact('👍')}
-            onLongPress={() => setShowReacts(item.id)}
-            style={{
-              flex: 1,
-              paddingVertical: 12,
-              alignItems: 'center',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 6,
-            }}
+            onPress={() => openComments(item)}
+            style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
           >
-            <Ionicons name="thumbs-up-outline" size={20} color="#555" />
-            <Text style={{ color: '#555', fontWeight: '600' }}>Like</Text>
+            <Ionicons name="chatbubble-outline" size={22} color="#555" />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={{
-              flex: 1,
-              paddingVertical: 12,
-              alignItems: 'center',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 6,
-            }}
-          >
-            <Ionicons name="chatbubble-outline" size={20} color="#555" />
-            <Text style={{ color: '#555', fontWeight: '600' }}>Comment</Text>
-          </TouchableOpacity>
+  onPress={() => toggleFavorite(item)}
+  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+>
+  <Ionicons
+    name={isFavorite ? 'heart' : 'heart-outline'}
+    size={23}
+    color={isFavorite ? 'red' : '#555'}
+  />
+</TouchableOpacity>
 
           <TouchableOpacity
-            style={{
-              flex: 1,
-              paddingVertical: 12,
-              alignItems: 'center',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 6,
-            }}
+            onPress={() => sharePost(item)}
+            style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
           >
-            <Ionicons name="share-social-outline" size={20} color="#555" />
-            <Text style={{ color: '#555', fontWeight: '600' }}>Share</Text>
+            <Ionicons name="share-social-outline" size={22} color="#555" />
           </TouchableOpacity>
         </View>
       </View>
@@ -297,20 +390,8 @@ const [mediaModal, setMediaModal] = useState(false)
 
   function CreatePostBox() {
     return (
-      <View
-        style={{
-          backgroundColor: '#fff',
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          marginBottom: 8,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
-        >
+      <View style={{ backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View
             style={{
               width: 44,
@@ -339,10 +420,7 @@ const [mediaModal, setMediaModal] = useState(false)
             <Text style={{ color: '#555' }}>What's on your mind?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CreatePost')}
-            style={{ marginLeft: 10 }}
-          >
+          <TouchableOpacity onPress={() => navigation.navigate('CreatePost')} style={{ marginLeft: 10 }}>
             <Ionicons name="images" size={28} color="green" />
           </TouchableOpacity>
         </View>
@@ -352,7 +430,6 @@ const [mediaModal, setMediaModal] = useState(false)
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
-      {/* STICKY TOP BAR */}
       <View
         style={{
           backgroundColor: '#fff',
@@ -390,15 +467,66 @@ const [mediaModal, setMediaModal] = useState(false)
           contentContainerStyle={{ paddingBottom: 80 }}
           refreshing={loading}
           onRefresh={loadProperties}
-          ListEmptyComponent={
-            <Text style={{ textAlign: 'center', marginTop: 30, color: '#666' }}>
-              No posts yet
-            </Text>
-          }
         />
       )}
 
-      {/* BOTTOM MENU */}
+      <Modal visible={commentModal} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          <View
+            style={{
+              padding: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: '#eee',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text style={{ fontSize: 20, fontWeight: '700' }}>Comments</Text>
+
+            <TouchableOpacity onPress={() => setCommentModal(false)}>
+              <Ionicons name="close" size={28} color="#111" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ flex: 1, padding: 14 }}>
+            {comments.map((item) => (
+              <View key={item.id} style={{ marginBottom: 14 }}>
+                <Text style={{ fontWeight: '700' }}>
+                  {item.user_email || 'User'}
+                </Text>
+
+                <Text style={{ marginTop: 4 }}>{item.comment}</Text>
+              </View>
+            ))}
+          </ScrollView>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              padding: 12,
+              borderTopWidth: 1,
+              borderTopColor: '#eee',
+            }}
+          >
+            <TextInput
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Write a comment..."
+              style={{
+                flex: 1,
+                backgroundColor: '#f1f1f1',
+                borderRadius: 20,
+                paddingHorizontal: 14,
+              }}
+            />
+
+            <TouchableOpacity onPress={addComment} style={{ padding: 10 }}>
+              <Ionicons name="send" size={24} color="#1877F2" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
       <View
         style={{
           flexDirection: 'row',
@@ -425,39 +553,6 @@ const [mediaModal, setMediaModal] = useState(false)
           <Ionicons name="person-outline" size={25} color="#111" />
         </TouchableOpacity>
       </View>
-      <Modal visible={mediaModal} animationType="slide">
-  <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-    <TouchableOpacity
-      onPress={() => setMediaModal(false)}
-      style={{
-        padding: 16,
-        alignItems: 'flex-end',
-      }}
-    >
-      <Ionicons name="close" size={30} color="#fff" />
-    </TouchableOpacity>
-
-    <ScrollView>
-      {selectedMedia.map((item, index) => (
-        <View key={index} style={{ marginBottom: 16 }}>
-          {item.type === 'video' ? (
-            <VideoBox uri={item.uri} />
-          ) : (
-            <Image
-              source={{ uri: item.uri }}
-              style={{
-                width: '100%',
-                height: 420,
-                backgroundColor: '#111',
-              }}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-      ))}
-    </ScrollView>
-  </SafeAreaView>
-</Modal>
     </SafeAreaView>
   )
 }

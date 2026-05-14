@@ -4,12 +4,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  ScrollView,
   Alert,
+  Image
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import * as ImagePicker from 'expo-image-picker'
-import { Image, ScrollView } from 'react-native'
 
 export default function CreatePostScreen({ navigation }) {
   const [title, setTitle] = useState('')
@@ -75,13 +76,15 @@ export default function CreatePostScreen({ navigation }) {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-
+    
     const { error } = await supabase.from('properties').insert({
       title,
       description,
       price,
       location,
       owner_id: user.id,
+      owner_email: user.email,
+      owner_name: user.user_metadata?.name || user.email,
       image_url: media[0]?.uri || null,
       media: media,
     })
