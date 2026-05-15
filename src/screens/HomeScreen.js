@@ -16,6 +16,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
 
 function distanceBetweenTouches(touches) {
@@ -90,6 +91,54 @@ function ZoomableImage({ uri, width, height }) {
   )
 }
 
+function safelyRunPlayerCommand(command) {
+  try {
+    const result = command()
+
+    if (result && typeof result.catch === 'function') {
+      result.catch(() => {})
+    }
+  } catch {
+    // Expo releases video shared objects during close/unmount; ignore stale player calls.
+  }
+}
+
+function PlayableVideo({ uri, width, height, isActive }) {
+  const player = useVideoPlayer(uri, (videoPlayer) => {
+    videoPlayer.loop = false
+  })
+
+  useEffect(() => {
+    if (isActive) {
+      safelyRunPlayerCommand(() => player.play())
+    } else {
+      safelyRunPlayerCommand(() => player.pause())
+    }
+  }, [isActive, player])
+
+  return (
+    <View
+      style={{
+        width,
+        height,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#000',
+      }}
+    >
+      <VideoView
+        player={player}
+        style={{ width, height }}
+        nativeControls
+        contentFit="contain"
+        fullscreenOptions={{ enable: true }}
+        allowsPictureInPicture
+        surfaceType="textureView"
+      />
+    </View>
+  )
+}
+
 function MediaViewer({ visible, media, initialIndex, onClose }) {
   const { width, height } = useWindowDimensions()
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
@@ -106,30 +155,28 @@ function MediaViewer({ visible, media, initialIndex, onClose }) {
     setCurrentIndex(Math.round(event.nativeEvent.contentOffset.x / width))
   }, [width])
 
-  const renderMediaItem = useCallback(({ item }) => (
+  const renderMediaItem = useCallback(({ item, index }) => (
     <View style={{ width, height, backgroundColor: '#000' }}>
       {item.type === 'video' ? (
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: 24,
-          }}
-        >
-          <Ionicons name="play-circle" size={72} color="#fff" />
-          <Text style={{ color: '#fff', marginTop: 12, textAlign: 'center' }}>
-            Video preview
-          </Text>
-        </View>
+        <PlayableVideo
+          uri={item.uri}
+          width={width}
+          height={height}
+          isActive={visible && index === currentIndex}
+        />
       ) : (
         <ZoomableImage uri={item.uri} width={width} height={height} />
       )}
     </View>
-  ), [height, width])
+  ), [currentIndex, height, visible, width])
 
   return (
-    <Modal visible={visible} animationType="fade" transparent={false}>
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent={false}
+      onRequestClose={onClose}
+    >
       <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
         <View
           style={{
