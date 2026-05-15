@@ -24,6 +24,18 @@ begin
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public'
+      and tablename = 'property_comments'
+      and policyname = 'Comment owners can delete comments'
+  ) then
+    create policy "Comment owners can delete comments"
+      on public.property_comments
+      for delete
+      using (auth.uid() = user_id);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
       and tablename = 'property_comment_likes'
       and policyname = 'Anyone can read property comment likes'
   ) then

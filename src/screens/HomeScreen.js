@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  PanResponder,
   ScrollView,
   TextInput,
   Share,
@@ -444,6 +445,82 @@ function buildCommentThread(rawComments) {
   return rootComments
 }
 
+function updateCommentTree(comments, commentId, updater) {
+  return comments.map((comment) => {
+    if (String(comment.id) === String(commentId)) {
+      return updater(comment)
+    }
+
+    return {
+      ...comment,
+      replies: updateCommentTree(comment.replies || [], commentId, updater),
+    }
+  })
+}
+
+function removeCommentFromTree(comments, commentId) {
+  return comments
+    .filter((comment) => String(comment.id) !== String(commentId))
+    .map((comment) => ({
+      ...comment,
+      replies: removeCommentFromTree(comment.replies || [], commentId),
+    }))
+}
+
+function appendCommentToTree(comments, newComment) {
+  const commentWithReplies = {
+    ...newComment,
+    property_comment_likes: newComment.property_comment_likes || [],
+    replies: newComment.replies || [],
+  }
+  const parentId = getCommentParentId(commentWithReplies)
+
+  if (!parentId) {
+    return [...comments, commentWithReplies]
+  }
+
+  function insertIntoBranch(branch) {
+    let inserted = false
+
+    const items = branch.map((comment) => {
+      if (String(comment.id) === String(parentId)) {
+        inserted = true
+
+        return {
+          ...comment,
+          replies: [...(comment.replies || []), commentWithReplies],
+        }
+      }
+
+      const childResult = insertIntoBranch(comment.replies || [])
+
+      if (childResult.inserted) {
+        inserted = true
+
+        return {
+          ...comment,
+          replies: childResult.items,
+        }
+      }
+
+      return comment
+    })
+
+    return { inserted, items }
+  }
+
+  const result = insertIntoBranch(comments)
+
+  return result.inserted ? result.items : [...comments, commentWithReplies]
+}
+
+function collectCommentIds(comment) {
+  return [
+    String(comment.id),
+    ...(comment.replies || []).flatMap((reply) => collectCommentIds(reply)),
+  ]
+}
+
 function Avatar({ name, uri, size = 34 }) {
   const initial = name?.trim()?.charAt(0)?.toUpperCase() || 'U'
 
@@ -482,12 +559,14 @@ const CommentItem = memo(function CommentItem({
   currentUser,
   onLike,
   onReply,
+  onDelete,
   depth = 0,
 }) {
   const authorName = getCommentAuthorName(comment)
   const avatarUrl = getCommentAvatarUrl(comment)
   const likes = comment.property_comment_likes || []
   const isLiked = likes.some((like) => like.user_id === currentUser?.id)
+  const isOwner = currentUser?.id && String(comment.user_id) === currentUser.id
   const replyIndent = depth > 0 ? 34 : 0
 
   return (
@@ -496,7 +575,13 @@ const CommentItem = memo(function CommentItem({
         <Avatar name={authorName} uri={avatarUrl} size={depth > 0 ? 30 : 36} />
 
         <View style={{ marginLeft: 8, flex: 1 }}>
-          <View
+          <TouchableOpacity
+            activeOpacity={0.82}
+            onLongPress={() => {
+              if (isOwner) {
+                onDelete(comment)
+              }
+            }}
             style={{
               backgroundColor: '#f0f2f5',
               borderRadius: 14,
@@ -511,7 +596,7 @@ const CommentItem = memo(function CommentItem({
             <Text style={{ marginTop: 3, fontSize: 14, lineHeight: 19 }}>
               {comment.comment}
             </Text>
-          </View>
+          </TouchableOpacity>
 
           <View
             style={{
@@ -560,6 +645,7 @@ const CommentItem = memo(function CommentItem({
           currentUser={currentUser}
           onLike={onLike}
           onReply={onReply}
+          onDelete={onDelete}
           depth={depth + 1}
         />
       ))}
@@ -836,21 +922,30 @@ export default function HomeScreen({ navigation }) {
       parent_comment_id: replyTarget ? String(replyTarget.id) : null,
     }
 
-    const { error } = await supabase
+    const { data: insertedComment, error } = await supabase
       .from('property_comments')
       .insert(enhancedPayload)
+      .select('*')
+      .single()
 
     if (error) {
       if (!replyTarget) {
-        const { error: fallbackError } = await supabase
+        const { data: fallbackComment, error: fallbackError } = await supabase
           .from('property_comments')
           .insert(basePayload)
+          .select('*')
+          .single()
 
         if (!fallbackError) {
           setCommentText('')
           setReplyTarget(null)
-          loadComments(selectedPost.id)
-          loadProperties()
+          setComments((oldComments) =>
+            appendCommentToTree(oldComments, {
+              ...fallbackComment,
+              property_comment_likes: [],
+            })
+          )
+          adjustPostCommentCount(selectedPost.id, 1)
           return
         }
       }
@@ -861,8 +956,13 @@ export default function HomeScreen({ navigation }) {
 
     setCommentText('')
     setReplyTarget(null)
-    loadComments(selectedPost.id)
-    loadProperties()
+    setComments((oldComments) =>
+      appendCommentToTree(oldComments, {
+        ...insertedComment,
+        property_comment_likes: [],
+      })
+    )
+    adjustPostCommentCount(selectedPost.id, 1)
   }
 
   async function toggleCommentLike(comment) {
@@ -883,6 +983,15 @@ export default function HomeScreen({ navigation }) {
         Alert.alert('Database update needed', error.message)
         return
       }
+
+      setComments((oldComments) =>
+        updateCommentTree(oldComments, commentId, (currentComment) => ({
+          ...currentComment,
+          property_comment_likes: (
+            currentComment.property_comment_likes || []
+          ).filter((like) => like.user_id !== currentUser.id),
+        }))
+      )
     } else {
       const { error } = await supabase
         .from('property_comment_likes')
@@ -895,10 +1004,102 @@ export default function HomeScreen({ navigation }) {
         Alert.alert('Database update needed', error.message)
         return
       }
+
+      setComments((oldComments) =>
+        updateCommentTree(oldComments, commentId, (currentComment) => ({
+          ...currentComment,
+          property_comment_likes: [
+            ...(currentComment.property_comment_likes || []),
+            {
+              id: `${commentId}-${currentUser.id}`,
+              comment_id: commentId,
+              user_id: currentUser.id,
+            },
+          ],
+        }))
+      )
+    }
+  }
+
+  function adjustPostCommentCount(propertyId, amount) {
+    setProperties((oldPosts) =>
+      oldPosts.map((post) => {
+        if (post.id !== propertyId) return post
+
+        const oldComments = post.property_comments || []
+
+        if (amount > 0) {
+          return {
+            ...post,
+            property_comments: [
+              ...oldComments,
+              { id: `local-comment-${Date.now()}` },
+            ],
+          }
+        }
+
+        return {
+          ...post,
+          property_comments: oldComments.slice(0, Math.max(oldComments.length - 1, 0)),
+        }
+      })
+    )
+  }
+
+  function deleteComment(comment) {
+    if (!currentUser || String(comment.user_id) !== currentUser.id) return
+
+    Alert.alert(
+      'Delete comment?',
+      'This will remove your comment from this post.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => confirmDeleteComment(comment),
+        },
+      ]
+    )
+  }
+
+  async function confirmDeleteComment(comment) {
+    const commentId = String(comment.id)
+    const commentIds = collectCommentIds(comment)
+
+    await supabase
+      .from('property_comment_likes')
+      .delete()
+      .in('comment_id', commentIds)
+
+    const { data: deletedComments, error } = await supabase
+      .from('property_comments')
+      .delete()
+      .in('id', commentIds)
+      .select('id')
+
+    if (error) {
+      Alert.alert('Error', error.message)
+      return
+    }
+
+    if (!deletedComments?.length) {
+      Alert.alert(
+        'Delete not saved',
+        'Supabase did not delete the comment. Check the delete policy for property_comments.'
+      )
+      return
+    }
+
+    setComments((oldComments) => removeCommentFromTree(oldComments, commentId))
+
+    if (replyTarget && commentIds.includes(String(replyTarget.id))) {
+      setReplyTarget(null)
+      setCommentText('')
     }
 
     if (selectedPost) {
-      loadComments(selectedPost.id)
+      adjustPostCommentCount(selectedPost.id, -deletedComments.length)
     }
   }
 
@@ -973,6 +1174,25 @@ export default function HomeScreen({ navigation }) {
       visible: false,
     }))
   }, [])
+
+  function closeCommentModal() {
+    setCommentModal(false)
+    setReplyTarget(null)
+    setCommentText('')
+  }
+
+  const commentSheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dy) > 14 &&
+        Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 70 || gestureState.vy > 0.75) {
+          closeCommentModal()
+        }
+      },
+    })
+  ).current
 
   const renderPost = useCallback(({ item }) => (
     <PostCard
@@ -1075,28 +1295,46 @@ export default function HomeScreen({ navigation }) {
         windowSize={7}
       />
 
-      <Modal visible={commentModal} animationType="slide">
+      <Modal
+        visible={commentModal}
+        animationType="slide"
+        onRequestClose={closeCommentModal}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
           <View
+            {...commentSheetPanResponder.panHandlers}
             style={{
-              padding: 14,
+              paddingHorizontal: 14,
+              paddingTop: 8,
+              paddingBottom: 14,
               borderBottomWidth: 1,
               borderBottomColor: '#eee',
-              flexDirection: 'row',
-              justifyContent: 'space-between',
             }}
           >
-            <Text style={{ fontSize: 20, fontWeight: '700' }}>Comments</Text>
+            <View
+              style={{
+                width: 42,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: '#d0d0d0',
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
 
-            <TouchableOpacity
-              onPress={() => {
-                setCommentModal(false)
-                setReplyTarget(null)
-                setCommentText('')
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
               }}
             >
-              <Ionicons name="close" size={28} color="#111" />
-            </TouchableOpacity>
+              <Text style={{ fontSize: 20, fontWeight: '700' }}>Comments</Text>
+
+              <TouchableOpacity onPress={closeCommentModal}>
+                <Ionicons name="close" size={28} color="#111" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView
@@ -1113,6 +1351,7 @@ export default function HomeScreen({ navigation }) {
                   currentUser={currentUser}
                   onLike={toggleCommentLike}
                   onReply={setReplyTarget}
+                  onDelete={deleteComment}
                 />
               ))
             ) : (
