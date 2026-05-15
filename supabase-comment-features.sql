@@ -19,6 +19,9 @@ create index if not exists property_comment_likes_comment_id_idx
 
 alter table public.property_comment_likes enable row level security;
 
+grant select on public.property_comment_likes to anon, authenticated;
+grant insert, delete on public.property_comment_likes to authenticated;
+
 do $$
 begin
   if not exists (
@@ -68,4 +71,21 @@ begin
       for delete
       using (auth.uid() = user_id);
   end if;
+end $$;
+
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.property_comments;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.property_comment_likes;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+  end;
 end $$;

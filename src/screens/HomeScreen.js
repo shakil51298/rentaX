@@ -252,6 +252,13 @@ const PostCard = memo(function PostCard({
   const totalComments = item.property_comments?.length || 0
   const totalFavorites = item.property_favorites?.length || 0
   const media = item.media || []
+  const ownerProfile = item.owner_profile || {}
+  const ownerDisplayName =
+    ownerProfile.display_name ||
+    item.owner_name ||
+    item.owner_email ||
+    'Property Owner'
+  const ownerAvatarUrl = ownerProfile.avatar_url
   const myReaction = item.property_reactions?.find(
     (react) => react.user_id === currentUser?.id
   )
@@ -268,23 +275,48 @@ const PostCard = memo(function PostCard({
           activeOpacity={0.82}
           style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
         >
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              backgroundColor: '#ddd',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="person" size={22} color="#666" />
-          </View>
+          {ownerAvatarUrl ? (
+            <Image
+              source={{ uri: ownerAvatarUrl }}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: '#ddd',
+              }}
+            />
+          ) : (
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: '#dbeafe',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#1d4ed8', fontWeight: '900' }}>
+                {ownerDisplayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
 
           <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700' }}>
-              {item.owner_name || item.owner_email || 'Property Owner'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 15, fontWeight: '700' }}>
+                {ownerDisplayName}
+              </Text>
+
+              {ownerProfile.is_verified ? (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={16}
+                  color="#1877F2"
+                  style={{ marginLeft: 4 }}
+                />
+              ) : null}
+            </View>
 
             <Text style={{ fontSize: 12, color: '#777' }}>
               {timeAgo(item.created_at)}
@@ -454,6 +486,7 @@ function getUserAvatarUrl(user) {
 
 function getCommentAuthorName(comment) {
   return (
+    comment.profile?.display_name ||
     comment.user_name ||
     comment.owner_name ||
     comment.full_name ||
@@ -463,6 +496,7 @@ function getCommentAuthorName(comment) {
 
 function getCommentAvatarUrl(comment) {
   return (
+    comment.profile?.avatar_url ||
     comment.avatar_url ||
     comment.user_avatar ||
     comment.profile_picture ||
@@ -473,6 +507,38 @@ function getCommentAvatarUrl(comment) {
 
 function getCommentParentId(comment) {
   return comment.parent_comment_id || comment.parent_id || comment.reply_to_comment_id || null
+}
+
+async function fetchCommentProfilesByUserId(userIds) {
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))]
+
+  if (uniqueUserIds.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('user_id, display_name, avatar_url, is_verified')
+    .in('user_id', uniqueUserIds)
+
+  if (error) return {}
+
+  return (data || []).reduce((profilesById, profile) => {
+    profilesById[profile.user_id] = profile
+    return profilesById
+  }, {})
+}
+
+function enrichCommentsWithProfiles(comments, profilesByUserId) {
+  return comments.map((comment) => {
+    const profile = profilesByUserId[comment.user_id]
+
+    return {
+      ...comment,
+      profile: profile || null,
+      user_name: profile?.display_name || comment.user_name,
+      avatar_url: profile?.avatar_url || comment.avatar_url,
+      is_verified: profile?.is_verified ?? comment.is_verified,
+    }
+  })
 }
 
 function buildCommentThread(rawComments) {
@@ -643,9 +709,20 @@ const CommentItem = memo(function CommentItem({
               paddingVertical: 8,
             }}
           >
-            <Text style={{ fontWeight: '700', fontSize: 13 }}>
-              {authorName}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontWeight: '700', fontSize: 13 }}>
+                {authorName}
+              </Text>
+
+              {comment.is_verified ? (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={14}
+                  color="#1877F2"
+                  style={{ marginLeft: 4 }}
+                />
+              ) : null}
+            </View>
 
             <Text style={{ marginTop: 3, fontSize: 14, lineHeight: 19 }}>
               {comment.comment}
@@ -728,6 +805,72 @@ export default function HomeScreen({ navigation }) {
     loadProperties()
   }, [])
 
+  useEffect(() => {
+    if (!commentModal || !selectedPost?.id) return undefined
+
+    let refreshTimer = null
+    const postId = selectedPost.id
+    const refreshCommentsSilently = () => {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = setTimeout(() => {
+        loadComments(postId, false)
+      }, 250)
+    }
+
+    const channel = supabase
+      .channel(`property-comments-${postId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'property_comments',
+          filter: `property_id=eq.${postId}`,
+        },
+        refreshCommentsSilently
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'property_comments',
+          filter: `property_id=eq.${postId}`,
+        },
+        refreshCommentsSilently
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'property_comments',
+        },
+        refreshCommentsSilently
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'property_comment_likes',
+        },
+        refreshCommentsSilently
+      )
+      .subscribe()
+
+    return () => {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer)
+      }
+
+      supabase.removeChannel(channel)
+    }
+  }, [commentModal, selectedPost?.id])
+
   async function loadUser() {
     const {
       data: { user },
@@ -749,7 +892,28 @@ export default function HomeScreen({ navigation }) {
       `)
       .order('created_at', { ascending: false })
 
-    setProperties(data || [])
+    const posts = data || []
+    const ownerIds = [...new Set(posts.map((post) => post.owner_id).filter(Boolean))]
+    let profilesByUserId = {}
+
+    if (ownerIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, email, display_name, avatar_url, is_verified, user_type')
+        .in('user_id', ownerIds)
+
+      profilesByUserId = (profiles || []).reduce((profilesById, profile) => ({
+        ...profilesById,
+        [profile.user_id]: profile,
+      }), {})
+    }
+
+    setProperties(
+      posts.map((post) => ({
+        ...post,
+        owner_profile: profilesByUserId[post.owner_id] || null,
+      }))
+    )
     setLoading(false)
   }
 
@@ -901,8 +1065,12 @@ export default function HomeScreen({ navigation }) {
 
   }
 
-  async function loadComments(propertyId) {
-    setCommentLoading(true)
+  async function loadComments(propertyId, showLoader = true) {
+    if (!propertyId) return
+
+    if (showLoader) {
+      setCommentLoading(true)
+    }
 
     const { data, error } = await supabase
       .from('property_comments')
@@ -911,12 +1079,18 @@ export default function HomeScreen({ navigation }) {
       .order('created_at', { ascending: true })
 
     if (error) {
-      setCommentLoading(false)
-      Alert.alert('Error', error.message)
+      if (showLoader) {
+        setCommentLoading(false)
+        Alert.alert('Error', error.message)
+      }
+
       return
     }
 
     const commentIds = (data || []).map((comment) => String(comment.id))
+    const profilesByUserId = await fetchCommentProfilesByUserId(
+      (data || []).map((comment) => comment.user_id)
+    )
     let likes = []
 
     if (commentIds.length > 0) {
@@ -930,6 +1104,7 @@ export default function HomeScreen({ navigation }) {
       }
     }
 
+    const enrichedComments = enrichCommentsWithProfiles(data || [], profilesByUserId)
     const likesByCommentId = likes.reduce((groupedLikes, like) => {
       const commentId = String(like.comment_id)
 
@@ -939,13 +1114,16 @@ export default function HomeScreen({ navigation }) {
       }
     }, {})
 
-    const commentsWithLikes = (data || []).map((comment) => ({
+    const commentsWithLikes = enrichedComments.map((comment) => ({
       ...comment,
       property_comment_likes: likesByCommentId[String(comment.id)] || [],
     }))
 
     setComments(buildCommentThread(commentsWithLikes))
-    setCommentLoading(false)
+
+    if (showLoader) {
+      setCommentLoading(false)
+    }
   }
 
   async function openComments(post) {
@@ -962,6 +1140,10 @@ export default function HomeScreen({ navigation }) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    if (!user) return
+
+    const profilesByUserId = await fetchCommentProfilesByUserId([user.id])
+    const profile = profilesByUserId[user.id]
     const basePayload = {
       property_id: selectedPost.id,
       user_id: user.id,
@@ -971,8 +1153,8 @@ export default function HomeScreen({ navigation }) {
 
     const enhancedPayload = {
       ...basePayload,
-      user_name: getUserDisplayName(user),
-      avatar_url: getUserAvatarUrl(user),
+      user_name: profile?.display_name || getUserDisplayName(user),
+      avatar_url: profile?.avatar_url || getUserAvatarUrl(user),
       parent_comment_id: replyTarget ? String(replyTarget.id) : null,
     }
 
@@ -994,10 +1176,15 @@ export default function HomeScreen({ navigation }) {
           setCommentText('')
           setReplyTarget(null)
           setComments((oldComments) =>
-            appendCommentToTree(oldComments, {
-              ...fallbackComment,
-              property_comment_likes: [],
-            })
+            appendCommentToTree(
+              oldComments,
+              enrichCommentsWithProfiles([
+                {
+                  ...fallbackComment,
+                  property_comment_likes: [],
+                },
+              ], profilesByUserId)[0]
+            )
           )
           adjustPostCommentCount(selectedPost.id, 1)
           return
@@ -1011,10 +1198,15 @@ export default function HomeScreen({ navigation }) {
     setCommentText('')
     setReplyTarget(null)
     setComments((oldComments) =>
-      appendCommentToTree(oldComments, {
-        ...insertedComment,
-        property_comment_likes: [],
-      })
+      appendCommentToTree(
+        oldComments,
+        enrichCommentsWithProfiles([
+          {
+            ...insertedComment,
+            property_comment_likes: [],
+          },
+        ], profilesByUserId)[0]
+      )
     )
     adjustPostCommentCount(selectedPost.id, 1)
   }
@@ -1230,11 +1422,13 @@ export default function HomeScreen({ navigation }) {
   }, [])
 
   const openOwnerProfile = useCallback((post) => {
+    const ownerProfile = post.owner_profile || {}
+
     navigation.navigate('OwnerProfile', {
       owner: {
         id: post.owner_id,
-        email: post.owner_email,
-        name: post.owner_name,
+        email: ownerProfile.email || post.owner_email,
+        name: ownerProfile.display_name || post.owner_name,
       },
     })
   }, [navigation])

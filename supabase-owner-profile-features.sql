@@ -34,6 +34,11 @@ create index if not exists user_follows_following_id_idx
 alter table public.user_profiles enable row level security;
 alter table public.user_follows enable row level security;
 
+grant select on public.user_profiles to anon, authenticated;
+grant insert, update on public.user_profiles to authenticated;
+grant select on public.user_follows to anon, authenticated;
+grant insert, delete on public.user_follows to authenticated;
+
 do $$
 begin
   if not exists (
