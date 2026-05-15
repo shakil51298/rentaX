@@ -372,7 +372,7 @@ export default function ChatScreen({ route, navigation }) {
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const [uploading, setUpFloading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [openedFromList, setOpenedFromList] = useState(false)
   const [otherPresence, setOtherPresence] = useState(null)
   const [isTyping, setIsTyping] = useState(false)
