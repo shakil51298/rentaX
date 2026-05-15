@@ -377,6 +377,7 @@ export default function ChatScreen({ route, navigation }) {
   const [otherPresence, setOtherPresence] = useState(null)
   const [isTyping, setIsTyping] = useState(false)
   const typingTimeoutRef = useRef(null)
+  const [presenceByUserId, setPresenceByUserId] = useState({})
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const canSend = Boolean(currentUser?.id && otherUser?.id && conversation?.id)
@@ -447,6 +448,21 @@ export default function ChatScreen({ route, navigation }) {
         : item.participant_one_id
     )
     const profilesById = await fetchProfiles(otherIds)
+    let presenceById = {}
+
+    if (otherIds.length > 0) {
+      const { data: presenceRows } = await supabase
+        .from('user_presence')
+        .select('user_id, is_online, last_seen_at')
+        .in('user_id', otherIds)
+
+      presenceById = (presenceRows || []).reduce((acc, row) => {
+        acc[row.user_id] = row
+        return acc
+      }, {})
+
+      setPresenceByUserId(presenceById)
+    }
     const unreadCountsByConversation = {}
 
     if ((data || []).length > 0) {
@@ -476,6 +492,7 @@ export default function ChatScreen({ route, navigation }) {
             id: otherId,
             ...(profilesById[otherId] || { user_id: otherId }),
           },
+          presence: presenceById[otherId] || null,
           unread_count: unreadCountsByConversation[item.id] || 0,
         }
       })
@@ -654,6 +671,43 @@ export default function ChatScreen({ route, navigation }) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
     }
   }, [messages.length, mode])
+
+  useEffect(() => {
+    if (mode !== 'list' || !currentUser?.id) return undefined
+
+    const channel = supabase
+      .channel(`message-list-presence-${currentUser.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_presence',
+        },
+        (payload) => {
+          const row = payload.new
+          if (!row?.user_id) return
+
+          setPresenceByUserId((previous) => ({
+            ...previous,
+            [row.user_id]: row,
+          }))
+
+          setConversationRows((previousRows) =>
+            previousRows.map((conversationItem) =>
+              conversationItem.other_user_id === row.user_id
+                ? { ...conversationItem, presence: row }
+                : conversationItem
+            )
+          )
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser?.id, mode])
 
   async function updateMyPresence({ online = true, typing = false } = {}) {
     if (!currentUser?.id) return
@@ -970,7 +1024,25 @@ export default function ChatScreen({ route, navigation }) {
           borderBottomColor: '#eef2f7',
         }}
       >
-        <Avatar profile={profile} name={name} size={52} />
+        <View>
+          <Avatar profile={profile} name={name} size={52} />
+
+          {(item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online) ? (
+            <View
+              style={{
+                position: 'absolute',
+                right: 1,
+                bottom: 1,
+                width: 15,
+                height: 15,
+                borderRadius: 8,
+                backgroundColor: '#22c55e',
+                borderWidth: 2,
+                borderColor: '#fff',
+              }}
+            />
+          ) : null}
+        </View>
 
         <View style={{ flex: 1, marginLeft: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
