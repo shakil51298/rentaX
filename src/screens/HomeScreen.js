@@ -246,6 +246,7 @@ const PostCard = memo(function PostCard({
   onToggleFavorite,
   onShare,
   onOpenMedia,
+  onOpenOwnerProfile,
 }) {
   const totalReacts = item.property_reactions?.length || 0
   const totalComments = item.property_comments?.length || 0
@@ -262,28 +263,34 @@ const PostCard = memo(function PostCard({
   return (
     <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 21,
-            backgroundColor: '#ddd',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+        <TouchableOpacity
+          onPress={() => onOpenOwnerProfile(item)}
+          activeOpacity={0.82}
+          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
         >
-          <Ionicons name="person" size={22} color="#666" />
-        </View>
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: '#ddd',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="person" size={22} color="#666" />
+          </View>
 
-        <View style={{ marginLeft: 10, flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700' }}>
-            {item.owner_name || item.owner_email || 'Property Owner'}
-          </Text>
+          <View style={{ marginLeft: 10, flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700' }}>
+              {item.owner_name || item.owner_email || 'Property Owner'}
+            </Text>
 
-          <Text style={{ fontSize: 12, color: '#777' }}>
-            {timeAgo(item.created_at)}
-          </Text>
-        </View>
+            <Text style={{ fontSize: 12, color: '#777' }}>
+              {timeAgo(item.created_at)}
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
       </View>
@@ -1222,6 +1229,16 @@ export default function HomeScreen({ navigation }) {
     }))
   }, [])
 
+  const openOwnerProfile = useCallback((post) => {
+    navigation.navigate('OwnerProfile', {
+      owner: {
+        id: post.owner_id,
+        email: post.owner_email,
+        name: post.owner_name,
+      },
+    })
+  }, [navigation])
+
   function closeCommentModal() {
     setCommentModal(false)
     setReplyTarget(null)
@@ -1250,8 +1267,9 @@ export default function HomeScreen({ navigation }) {
       onToggleFavorite={toggleFavorite}
       onShare={sharePost}
       onOpenMedia={openMediaViewer}
+      onOpenOwnerProfile={openOwnerProfile}
     />
-  ), [currentUser, openMediaViewer, properties])
+  ), [currentUser, openMediaViewer, openOwnerProfile, properties])
 
   const showInitialLoader = loading && properties.length === 0
 
