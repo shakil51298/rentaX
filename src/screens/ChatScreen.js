@@ -372,8 +372,11 @@ export default function ChatScreen({ route, navigation }) {
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [uploading, setUpFloading] = useState(false)
   const [openedFromList, setOpenedFromList] = useState(false)
+  const [otherPresence, setOtherPresence] = useState(null)
+  const [isTyping, setIsTyping] = useState(false)
+  const typingTimeoutRef = useRef(null)
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const canSend = Boolean(currentUser?.id && otherUser?.id && conversation?.id)
@@ -453,10 +456,10 @@ export default function ChatScreen({ route, navigation }) {
         .eq('receiver_id', user.id)
         .is('seen_at', null)
 
-      ;(unreadMessages || []).forEach((message) => {
-        unreadCountsByConversation[message.conversation_id] =
-          (unreadCountsByConversation[message.conversation_id] || 0) + 1
-      })
+        ; (unreadMessages || []).forEach((message) => {
+          unreadCountsByConversation[message.conversation_id] =
+            (unreadCountsByConversation[message.conversation_id] || 0) + 1
+        })
     }
 
     setConversationRows(
@@ -652,6 +655,48 @@ export default function ChatScreen({ route, navigation }) {
     }
   }, [messages.length, mode])
 
+  async function updateMyPresence({ online = true, typing = false } = {}) {
+    if (!currentUser?.id) return
+
+    await supabase.from('user_presence').upsert({
+      user_id: currentUser.id,
+      is_online: online,
+      last_seen_at: new Date().toISOString(),
+      typing_conversation_id: typing ? conversation?.id : null,
+      typing_to_user_id: typing ? otherUser?.id : null,
+      typing_updated_at: typing ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+  }
+
+  function formatLastSeen(date) {
+    if (!date) return 'Offline'
+
+    const diffMs = Date.now() - new Date(date).getTime()
+    const diffMinutes = Math.floor(diffMs / 60000)
+
+    if (diffMinutes < 1) return 'Last seen just now'
+    if (diffMinutes < 60) return `Last seen ${diffMinutes} min ago`
+
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) return `Last seen ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+
+    return `Last seen ${new Date(date).toLocaleDateString()}`
+  }
+
+  function getChatStatusText() {
+    const typingFresh =
+      otherPresence?.typing_conversation_id === conversation?.id &&
+      otherPresence?.typing_to_user_id === currentUser?.id &&
+      otherPresence?.typing_updated_at &&
+      Date.now() - new Date(otherPresence.typing_updated_at).getTime() < 5000
+
+    if (typingFresh) return 'typing...'
+    if (otherPresence?.is_online) return 'Online'
+
+    return formatLastSeen(otherPresence?.last_seen_at)
+  }
+
   async function sendMessage({
     body = '',
     messageType = 'text',
@@ -712,6 +757,7 @@ export default function ChatScreen({ route, navigation }) {
       eventKey: `chat_message:${conversation.id}:${createdAt}`,
     })
 
+    await updateMyPresence({ online: true, typing: false })
     setMessageText('')
     setSending(false)
   }
@@ -853,6 +899,57 @@ export default function ChatScreen({ route, navigation }) {
       subscription.remove()
     }
   }, [goBackFromChat, mode])
+
+  useEffect(() => {
+    if (!currentUser?.id) return undefined
+
+    updateMyPresence({ online: true })
+
+    const interval = setInterval(() => {
+      updateMyPresence({ online: true })
+    }, 30000)
+
+    return () => {
+      clearInterval(interval)
+      updateMyPresence({ online: false, typing: false })
+    }
+  }, [currentUser?.id])
+
+  useEffect(() => {
+    if (!otherUser?.id || mode !== 'chat') return undefined
+
+    const loadOtherPresence = async () => {
+      const { data } = await supabase
+        .from('user_presence')
+        .select('*')
+        .eq('user_id', otherUser.id)
+        .maybeSingle()
+
+      setOtherPresence(data)
+    }
+
+    loadOtherPresence()
+
+    const channel = supabase
+      .channel(`presence-${otherUser.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_presence',
+          filter: `user_id=eq.${otherUser.id}`,
+        },
+        (payload) => {
+          setOtherPresence(payload.new)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [otherUser?.id, mode])
 
   function renderConversation({ item }) {
     const profile = item.other_profile
@@ -1195,8 +1292,14 @@ export default function ChatScreen({ route, navigation }) {
                   />
                 ) : null}
               </View>
-              <Text style={{ color: '#64748b', fontSize: 12 }}>
-                Rental X private chat
+              <Text
+                style={{
+                  color: getChatStatusText() === 'Online' ? '#16a34a' : '#64748b',
+                  fontSize: 12,
+                  fontWeight: getChatStatusText() === 'typing...' ? '800' : '500',
+                }}
+              >
+                {getChatStatusText()}
               </Text>
             </View>
           </Pressable>
@@ -1321,7 +1424,21 @@ export default function ChatScreen({ route, navigation }) {
 
           <TextInput
             value={messageText}
-            onChangeText={setMessageText}
+            onChangeText={(text) => {
+              setMessageText(text)
+
+              if (!conversation?.id || !otherUser?.id) return
+
+              updateMyPresence({ online: true, typing: text.trim().length > 0 })
+
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current)
+              }
+
+              typingTimeoutRef.current = setTimeout(() => {
+                updateMyPresence({ online: true, typing: false })
+              }, 2500)
+            }}
             placeholder="Message"
             placeholderTextColor="#94a3b8"
             multiline
