@@ -374,6 +374,199 @@ function timeAgo(date) {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
+function displayNameFromEmail(email) {
+  if (!email) return 'User'
+
+  return email.split('@')[0]
+}
+
+function getUserDisplayName(user) {
+  return (
+    user?.user_metadata?.name ||
+    user?.user_metadata?.full_name ||
+    displayNameFromEmail(user?.email)
+  )
+}
+
+function getUserAvatarUrl(user) {
+  return (
+    user?.user_metadata?.avatar_url ||
+    user?.user_metadata?.picture ||
+    user?.user_metadata?.profile_picture ||
+    null
+  )
+}
+
+function getCommentAuthorName(comment) {
+  return (
+    comment.user_name ||
+    comment.owner_name ||
+    comment.full_name ||
+    displayNameFromEmail(comment.user_email)
+  )
+}
+
+function getCommentAvatarUrl(comment) {
+  return (
+    comment.avatar_url ||
+    comment.user_avatar ||
+    comment.profile_picture ||
+    comment.photo_url ||
+    null
+  )
+}
+
+function getCommentParentId(comment) {
+  return comment.parent_comment_id || comment.parent_id || comment.reply_to_comment_id || null
+}
+
+function buildCommentThread(rawComments) {
+  const commentsById = new Map()
+  const rootComments = []
+
+  rawComments.forEach((comment) => {
+    commentsById.set(String(comment.id), {
+      ...comment,
+      replies: [],
+    })
+  })
+
+  commentsById.forEach((comment) => {
+    const parentId = getCommentParentId(comment)
+
+    if (parentId && commentsById.has(String(parentId))) {
+      commentsById.get(String(parentId)).replies.push(comment)
+    } else {
+      rootComments.push(comment)
+    }
+  })
+
+  return rootComments
+}
+
+function Avatar({ name, uri, size = 34 }) {
+  const initial = name?.trim()?.charAt(0)?.toUpperCase() || 'U'
+
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: '#ddd',
+        }}
+      />
+    )
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: '#dfe3ee',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text style={{ color: '#38445a', fontWeight: '700' }}>{initial}</Text>
+    </View>
+  )
+}
+
+const CommentItem = memo(function CommentItem({
+  comment,
+  currentUser,
+  onLike,
+  onReply,
+  depth = 0,
+}) {
+  const authorName = getCommentAuthorName(comment)
+  const avatarUrl = getCommentAvatarUrl(comment)
+  const likes = comment.property_comment_likes || []
+  const isLiked = likes.some((like) => like.user_id === currentUser?.id)
+  const replyIndent = depth > 0 ? 34 : 0
+
+  return (
+    <View style={{ marginLeft: replyIndent, marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+        <Avatar name={authorName} uri={avatarUrl} size={depth > 0 ? 30 : 36} />
+
+        <View style={{ marginLeft: 8, flex: 1 }}>
+          <View
+            style={{
+              backgroundColor: '#f0f2f5',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+            }}
+          >
+            <Text style={{ fontWeight: '700', fontSize: 13 }}>
+              {authorName}
+            </Text>
+
+            <Text style={{ marginTop: 3, fontSize: 14, lineHeight: 19 }}>
+              {comment.comment}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              marginTop: 5,
+              paddingLeft: 8,
+            }}
+          >
+            <Text style={{ color: '#777', fontSize: 12 }}>
+              {timeAgo(comment.created_at)}
+            </Text>
+
+            <TouchableOpacity onPress={() => onLike(comment)}>
+              <Text
+                style={{
+                  color: isLiked ? '#1877F2' : '#666',
+                  fontWeight: '700',
+                  fontSize: 12,
+                }}
+              >
+                {isLiked ? 'Unlike' : 'Like'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => onReply(comment)}>
+              <Text style={{ color: '#666', fontWeight: '700', fontSize: 12 }}>
+                Reply
+              </Text>
+            </TouchableOpacity>
+
+            {likes.length > 0 ? (
+              <Text style={{ color: '#777', fontSize: 12 }}>
+                👍 {likes.length}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      </View>
+
+      {comment.replies?.map((reply) => (
+        <CommentItem
+          key={reply.id}
+          comment={reply}
+          currentUser={currentUser}
+          onLike={onLike}
+          onReply={onReply}
+          depth={depth + 1}
+        />
+      ))}
+    </View>
+  )
+})
+
 export default function HomeScreen({ navigation }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -381,6 +574,8 @@ export default function HomeScreen({ navigation }) {
   const [selectedPost, setSelectedPost] = useState(null)
   const [comments, setComments] = useState([])
   const [commentText, setCommentText] = useState('')
+  const [replyTarget, setReplyTarget] = useState(null)
+  const [commentLoading, setCommentLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
@@ -566,41 +761,145 @@ export default function HomeScreen({ navigation }) {
 
   }
 
-  async function openComments(post) {
-    setSelectedPost(post)
-    setCommentModal(true)
+  async function loadComments(propertyId) {
+    setCommentLoading(true)
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('property_comments')
       .select('*')
-      .eq('property_id', post.id)
+      .eq('property_id', propertyId)
       .order('created_at', { ascending: true })
 
-    setComments(data || [])
+    if (error) {
+      setCommentLoading(false)
+      Alert.alert('Error', error.message)
+      return
+    }
+
+    const commentIds = (data || []).map((comment) => String(comment.id))
+    let likes = []
+
+    if (commentIds.length > 0) {
+      const { data: likesData, error: likesError } = await supabase
+        .from('property_comment_likes')
+        .select('*')
+        .in('comment_id', commentIds)
+
+      if (!likesError) {
+        likes = likesData || []
+      }
+    }
+
+    const likesByCommentId = likes.reduce((groupedLikes, like) => {
+      const commentId = String(like.comment_id)
+
+      return {
+        ...groupedLikes,
+        [commentId]: [...(groupedLikes[commentId] || []), like],
+      }
+    }, {})
+
+    const commentsWithLikes = (data || []).map((comment) => ({
+      ...comment,
+      property_comment_likes: likesByCommentId[String(comment.id)] || [],
+    }))
+
+    setComments(buildCommentThread(commentsWithLikes))
+    setCommentLoading(false)
+  }
+
+  async function openComments(post) {
+    setSelectedPost(post)
+    setReplyTarget(null)
+    setCommentModal(true)
+    loadComments(post.id)
   }
 
   async function addComment() {
-    if (!commentText.trim()) return
+    if (!commentText.trim() || !selectedPost) return
 
     const {
       data: { user },
     } = await supabase.auth.getUser()
 
-    const { error } = await supabase.from('property_comments').insert({
+    const basePayload = {
       property_id: selectedPost.id,
       user_id: user.id,
       user_email: user.email,
       comment: commentText,
-    })
+    }
+
+    const enhancedPayload = {
+      ...basePayload,
+      user_name: getUserDisplayName(user),
+      avatar_url: getUserAvatarUrl(user),
+      parent_comment_id: replyTarget ? String(replyTarget.id) : null,
+    }
+
+    const { error } = await supabase
+      .from('property_comments')
+      .insert(enhancedPayload)
 
     if (error) {
+      if (!replyTarget) {
+        const { error: fallbackError } = await supabase
+          .from('property_comments')
+          .insert(basePayload)
+
+        if (!fallbackError) {
+          setCommentText('')
+          setReplyTarget(null)
+          loadComments(selectedPost.id)
+          loadProperties()
+          return
+        }
+      }
+
       Alert.alert('Error', error.message)
       return
     }
 
     setCommentText('')
-    openComments(selectedPost)
+    setReplyTarget(null)
+    loadComments(selectedPost.id)
     loadProperties()
+  }
+
+  async function toggleCommentLike(comment) {
+    if (!currentUser) return
+
+    const likes = comment.property_comment_likes || []
+    const isLiked = likes.some((like) => like.user_id === currentUser.id)
+    const commentId = String(comment.id)
+
+    if (isLiked) {
+      const { error } = await supabase
+        .from('property_comment_likes')
+        .delete()
+        .eq('comment_id', commentId)
+        .eq('user_id', currentUser.id)
+
+      if (error) {
+        Alert.alert('Database update needed', error.message)
+        return
+      }
+    } else {
+      const { error } = await supabase
+        .from('property_comment_likes')
+        .insert({
+          comment_id: commentId,
+          user_id: currentUser.id,
+        })
+
+      if (error) {
+        Alert.alert('Database update needed', error.message)
+        return
+      }
+    }
+
+    if (selectedPost) {
+      loadComments(selectedPost.id)
+    }
   }
 
   async function toggleFavorite(post) {
@@ -789,22 +1088,62 @@ export default function HomeScreen({ navigation }) {
           >
             <Text style={{ fontSize: 20, fontWeight: '700' }}>Comments</Text>
 
-            <TouchableOpacity onPress={() => setCommentModal(false)}>
+            <TouchableOpacity
+              onPress={() => {
+                setCommentModal(false)
+                setReplyTarget(null)
+                setCommentText('')
+              }}
+            >
               <Ionicons name="close" size={28} color="#111" />
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ flex: 1, padding: 14 }}>
-            {comments.map((item) => (
-              <View key={item.id} style={{ marginBottom: 14 }}>
-                <Text style={{ fontWeight: '700' }}>
-                  {item.user_email || 'User'}
-                </Text>
-
-                <Text style={{ marginTop: 4 }}>{item.comment}</Text>
-              </View>
-            ))}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 14, paddingBottom: 24 }}
+          >
+            {commentLoading ? (
+              <ActivityIndicator style={{ marginTop: 30 }} />
+            ) : comments.length > 0 ? (
+              comments.map((item) => (
+                <CommentItem
+                  key={item.id}
+                  comment={item}
+                  currentUser={currentUser}
+                  onLike={toggleCommentLike}
+                  onReply={setReplyTarget}
+                />
+              ))
+            ) : (
+              <Text style={{ color: '#666', textAlign: 'center', marginTop: 30 }}>
+                No comments yet
+              </Text>
+            )}
           </ScrollView>
+
+          {replyTarget ? (
+            <View
+              style={{
+                backgroundColor: '#f7f7f7',
+                borderTopWidth: 1,
+                borderTopColor: '#eee',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Text style={{ color: '#555', flex: 1 }}>
+                Replying to {getCommentAuthorName(replyTarget)}
+              </Text>
+
+              <TouchableOpacity onPress={() => setReplyTarget(null)}>
+                <Ionicons name="close-circle" size={21} color="#777" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <View
             style={{
@@ -817,12 +1156,15 @@ export default function HomeScreen({ navigation }) {
             <TextInput
               value={commentText}
               onChangeText={setCommentText}
-              placeholder="Write a comment..."
+              placeholder={replyTarget ? 'Write a reply...' : 'Write a comment...'}
+              multiline
               style={{
                 flex: 1,
                 backgroundColor: '#f1f1f1',
                 borderRadius: 20,
                 paddingHorizontal: 14,
+                paddingVertical: 9,
+                maxHeight: 100,
               }}
             />
 
