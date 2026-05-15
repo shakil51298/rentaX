@@ -101,7 +101,7 @@ function safelyRunPlayerCommand(command) {
     const result = command()
 
     if (result && typeof result.catch === 'function') {
-      result.catch(() => {})
+      result.catch(() => { })
     }
   } catch {
     // Expo releases video shared objects during close/unmount; ignore stale player calls.
@@ -814,6 +814,7 @@ export default function HomeScreen({ navigation, route }) {
   const [commentLoading, setCommentLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -893,6 +894,50 @@ export default function HomeScreen({ navigation, route }) {
       }
     }, [navigation, properties, route?.params])
   )
+
+  async function refreshMessageBadge(userId) {
+    if (!userId) {
+      setMessageUnreadCount(0)
+      return
+    }
+
+    const { count, error } = await supabase
+      .from('chat_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('receiver_id', userId)
+      .is('seen_at', null)
+
+    if (!error) {
+      setMessageUnreadCount(count || 0)
+    }
+  }
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setMessageUnreadCount(0)
+      return undefined
+    }
+
+    refreshMessageBadge(currentUser.id)
+
+    const channel = supabase
+      .channel(`home-message-badge-${currentUser.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `receiver_id=eq.${currentUser.id}`,
+        },
+        () => refreshMessageBadge(currentUser.id)
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser?.id])
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -997,7 +1042,7 @@ export default function HomeScreen({ navigation, route }) {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-  
+
     setCurrentUser(user)
   }
 
@@ -1045,7 +1090,7 @@ export default function HomeScreen({ navigation, route }) {
 
   async function selectReaction(propertyId, reaction) {
     if (!currentUser) return
-  
+
     const { error } = await supabase
       .from('property_reactions')
       .upsert(
@@ -1058,12 +1103,12 @@ export default function HomeScreen({ navigation, route }) {
           onConflict: 'property_id,user_id',
         }
       )
-  
+
     if (error) {
       Alert.alert('Error', error.message)
       return
     }
-  
+
     updateLocalReaction(propertyId, reaction)
   }
 
@@ -1071,20 +1116,20 @@ export default function HomeScreen({ navigation, route }) {
     setProperties((oldPosts) =>
       oldPosts.map((post) => {
         if (post.id !== propertyId) return post
-  
+
         const oldReactions = post.property_reactions || []
-  
+
         const withoutMine = oldReactions.filter(
           (item) => item.user_id !== currentUser.id
         )
-  
+
         if (!reaction) {
           return {
             ...post,
             property_reactions: withoutMine,
           }
         }
-  
+
         return {
           ...post,
           property_reactions: [
@@ -1103,13 +1148,13 @@ export default function HomeScreen({ navigation, route }) {
 
   async function toggleLike(propertyId) {
     if (!currentUser) return
-  
+
     const post = properties.find((item) => item.id === propertyId)
-  
+
     const myReaction = post?.property_reactions?.find(
       (item) => item.user_id === currentUser.id
     )
-  
+
     // If already reacted with anything, clicking like button removes reaction
     if (myReaction) {
       const { error } = await supabase
@@ -1117,28 +1162,28 @@ export default function HomeScreen({ navigation, route }) {
         .delete()
         .eq('property_id', propertyId)
         .eq('user_id', currentUser.id)
-  
+
       if (error) {
         Alert.alert('Error', error.message)
         return
       }
-  
+
       updateLocalReaction(propertyId, null)
       return
     }
-  
+
     // If no reaction, default like
     const { error } = await supabase.from('property_reactions').insert({
       property_id: propertyId,
       user_id: currentUser.id,
       reaction: '👍',
     })
-  
+
     if (error) {
       Alert.alert('Error', error.message)
       return
     }
-  
+
     updateLocalReaction(propertyId, '👍')
     await createNotification({
       recipientId: post?.owner_id,
@@ -1150,16 +1195,16 @@ export default function HomeScreen({ navigation, route }) {
       eventKey: `property_like:${propertyId}:${currentUser.id}`,
     })
   }
-  
+
   async function reactToPost(propertyId, reaction) {
     if (!currentUser) return
-  
+
     const post = properties.find((item) => item.id === propertyId)
-  
+
     const myReaction = post?.property_reactions?.find(
       (item) => item.user_id === currentUser.id
     )
-  
+
     // if already same reaction, remove reaction
     if (myReaction?.reaction === reaction) {
       const { error } = await supabase
@@ -1167,16 +1212,16 @@ export default function HomeScreen({ navigation, route }) {
         .delete()
         .eq('property_id', propertyId)
         .eq('user_id', currentUser.id)
-  
+
       if (error) {
         Alert.alert('Error', error.message)
         return
       }
-  
+
       updateLocalReaction(propertyId, null)
       return
     }
-  
+
     // if different reaction, update/insert reaction
     const { error } = await supabase
       .from('property_reactions')
@@ -1190,12 +1235,12 @@ export default function HomeScreen({ navigation, route }) {
           onConflict: 'property_id,user_id',
         }
       )
-  
+
     if (error) {
       Alert.alert('Error', error.message)
       return
     }
-  
+
     updateLocalReaction(propertyId, reaction)
     await createNotification({
       recipientId: post?.owner_id,
@@ -1526,22 +1571,22 @@ export default function HomeScreen({ navigation, route }) {
 
   async function toggleFavorite(post) {
     if (!currentUser) return
-  
+
     const isFavorite = post.property_favorites?.some(
       (item) => item.user_id === currentUser.id
     )
-  
+
     if (isFavorite) {
       await supabase
         .from('property_favorites')
         .delete()
         .eq('property_id', post.id)
         .eq('user_id', currentUser.id)
-  
+
       setProperties((oldPosts) =>
         oldPosts.map((item) => {
           if (item.id !== post.id) return item
-  
+
           return {
             ...item,
             property_favorites: item.property_favorites.filter(
@@ -1555,11 +1600,11 @@ export default function HomeScreen({ navigation, route }) {
         property_id: post.id,
         user_id: currentUser.id,
       })
-  
+
       setProperties((oldPosts) =>
         oldPosts.map((item) => {
           if (item.id !== post.id) return item
-  
+
           return {
             ...item,
             property_favorites: [
@@ -1901,7 +1946,39 @@ export default function HomeScreen({ navigation, route }) {
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('Chat')}>
-          <Ionicons name="chatbubble-outline" size={25} color="#111" />
+          <View>
+            <Ionicons name="chatbubble-outline" size={25} color="#111" />
+
+            {messageUnreadCount > 0 ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -7,
+                  right: -10,
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: '#ef4444',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 4,
+                  borderWidth: 1,
+                  borderColor: '#fff',
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: '900',
+                    fontVariant: ['tabular-nums'],
+                  }}
+                >
+                  {messageUnreadCount > 99 ? '99+' : messageUnreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('Favorite')}>
