@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 
 function displayNameFromEmail(email) {
-  if (!email) return 'Property Owner'
+  if (!email) return 'Rental X member'
 
   return email.split('@')[0]
 }
@@ -321,11 +321,11 @@ export default function OwnerProfileScreen({ route, navigation }) {
               }}
             >
               <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
-                Owner details
+                Profile details
               </Text>
 
               <Text style={{ color: '#4b5563', lineHeight: 20, marginTop: 8 }}>
-                {profile?.bio || 'No owner bio added yet.'}
+                {profile?.bio || 'No profile bio added yet.'}
               </Text>
 
               <View style={{ marginTop: 12, gap: 8 }}>
@@ -367,7 +367,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
         }
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: '#64748b', marginTop: 20 }}>
-            No posts from this owner yet.
+            No posts yet.
           </Text>
         }
         style={{ flex: 1 }}

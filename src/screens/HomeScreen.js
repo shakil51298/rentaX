@@ -16,6 +16,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
 
@@ -516,7 +517,7 @@ async function fetchCommentProfilesByUserId(userIds) {
 
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('user_id, display_name, avatar_url, is_verified')
+    .select('user_id, email, display_name, avatar_url, is_verified')
     .in('user_id', uniqueUserIds)
 
   if (error) return {}
@@ -680,6 +681,7 @@ const CommentItem = memo(function CommentItem({
   onLike,
   onReply,
   onDelete,
+  onOpenProfile,
   depth = 0,
 }) {
   const authorName = getCommentAuthorName(comment)
@@ -687,12 +689,19 @@ const CommentItem = memo(function CommentItem({
   const likes = comment.property_comment_likes || []
   const isLiked = likes.some((like) => like.user_id === currentUser?.id)
   const isOwner = currentUser?.id && String(comment.user_id) === currentUser.id
+  const canOpenProfile = Boolean(comment.user_id)
   const replyIndent = depth > 0 ? 34 : 0
 
   return (
     <View style={{ marginLeft: replyIndent, marginBottom: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-        <Avatar name={authorName} uri={avatarUrl} size={depth > 0 ? 30 : 36} />
+        <TouchableOpacity
+          activeOpacity={0.82}
+          disabled={!canOpenProfile}
+          onPress={() => onOpenProfile(comment)}
+        >
+          <Avatar name={authorName} uri={avatarUrl} size={depth > 0 ? 30 : 36} />
+        </TouchableOpacity>
 
         <View style={{ marginLeft: 8, flex: 1 }}>
           <TouchableOpacity
@@ -709,7 +718,12 @@ const CommentItem = memo(function CommentItem({
               paddingVertical: 8,
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              activeOpacity={0.82}
+              disabled={!canOpenProfile}
+              onPress={() => onOpenProfile(comment)}
+              style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}
+            >
               <Text style={{ fontWeight: '700', fontSize: 13 }}>
                 {authorName}
               </Text>
@@ -722,7 +736,7 @@ const CommentItem = memo(function CommentItem({
                   style={{ marginLeft: 4 }}
                 />
               ) : null}
-            </View>
+            </TouchableOpacity>
 
             <Text style={{ marginTop: 3, fontSize: 14, lineHeight: 19 }}>
               {comment.comment}
@@ -777,6 +791,7 @@ const CommentItem = memo(function CommentItem({
           onLike={onLike}
           onReply={onReply}
           onDelete={onDelete}
+          onOpenProfile={onOpenProfile}
           depth={depth + 1}
         />
       ))}
@@ -799,11 +814,22 @@ export default function HomeScreen({ navigation }) {
     media: [],
     index: 0,
   })
+  const reopenCommentsOnFocus = useRef(false)
 
   useEffect(() => {
     loadUser()
     loadProperties()
   }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!reopenCommentsOnFocus.current || !selectedPost?.id) return
+
+      reopenCommentsOnFocus.current = false
+      setCommentModal(true)
+      loadComments(selectedPost.id)
+    }, [selectedPost])
+  )
 
   useEffect(() => {
     if (!commentModal || !selectedPost?.id) return undefined
@@ -1433,6 +1459,21 @@ export default function HomeScreen({ navigation }) {
     })
   }, [navigation])
 
+  const openCommentProfile = useCallback((comment) => {
+    if (!comment?.user_id) return
+
+    reopenCommentsOnFocus.current = true
+    closeCommentModal()
+
+    navigation.navigate('OwnerProfile', {
+      owner: {
+        id: comment.user_id,
+        email: comment.profile?.email || comment.user_email,
+        name: getCommentAuthorName(comment),
+      },
+    })
+  }, [navigation])
+
   function closeCommentModal() {
     setCommentModal(false)
     setReplyTarget(null)
@@ -1611,6 +1652,7 @@ export default function HomeScreen({ navigation }) {
                   onLike={toggleCommentLike}
                   onReply={setReplyTarget}
                   onDelete={deleteComment}
+                  onOpenProfile={openCommentProfile}
                 />
               ))
             ) : (

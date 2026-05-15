@@ -22,7 +22,11 @@ export default function AppNavigator() {
         <Stack.Screen name="CreatePost" component={CreatePostScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="OwnerProfile" component={OwnerProfileScreen} />
+        <Stack.Screen
+          name="OwnerProfile"
+          component={OwnerProfileScreen}
+          options={{ title: 'Public Profile' }}
+        />
         <Stack.Screen name="Favorite" component={FavoriteScreen} />
       </Stack.Navigator>
     </NavigationContainer>
