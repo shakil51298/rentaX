@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -11,10 +11,368 @@ import {
   ScrollView,
   TextInput,
   Share,
+  useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
+
+function distanceBetweenTouches(touches) {
+  if (touches.length < 2) return 0
+
+  const [firstTouch, secondTouch] = touches
+  const xDistance = firstTouch.pageX - secondTouch.pageX
+  const yDistance = firstTouch.pageY - secondTouch.pageY
+
+  return Math.sqrt(xDistance * xDistance + yDistance * yDistance)
+}
+
+function ZoomableImage({ uri, width, height }) {
+  const [scale, setScale] = useState(1)
+  const baseScale = useRef(1)
+  const startDistance = useRef(0)
+
+  function onTouchStart(event) {
+    const { touches } = event.nativeEvent
+
+    if (touches.length === 2) {
+      startDistance.current = distanceBetweenTouches(touches)
+      baseScale.current = scale
+    }
+  }
+
+  function onTouchMove(event) {
+    const { touches } = event.nativeEvent
+
+    if (touches.length !== 2 || !startDistance.current) return
+
+    const nextDistance = distanceBetweenTouches(touches)
+    const nextScale = Math.min(
+      Math.max(baseScale.current * (nextDistance / startDistance.current), 1),
+      4
+    )
+
+    setScale(nextScale)
+  }
+
+  function onTouchEnd(event) {
+    if (event.nativeEvent.touches.length < 2) {
+      startDistance.current = 0
+      baseScale.current = scale
+    }
+  }
+
+  return (
+    <View
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+      style={{
+        width,
+        height,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <Image
+        source={{ uri }}
+        style={{
+          width,
+          height,
+          transform: [{ scale }],
+        }}
+        resizeMode="contain"
+      />
+    </View>
+  )
+}
+
+function MediaViewer({ visible, media, initialIndex, onClose }) {
+  const { width, height } = useWindowDimensions()
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const imageCount = media?.length || 0
+  const safeInitialIndex = Math.min(initialIndex, Math.max(imageCount - 1, 0))
+
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(safeInitialIndex)
+    }
+  }, [safeInitialIndex, visible])
+
+  const onGalleryScroll = useCallback((event) => {
+    setCurrentIndex(Math.round(event.nativeEvent.contentOffset.x / width))
+  }, [width])
+
+  const renderMediaItem = useCallback(({ item }) => (
+    <View style={{ width, height, backgroundColor: '#000' }}>
+      {item.type === 'video' ? (
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 24,
+          }}
+        >
+          <Ionicons name="play-circle" size={72} color="#fff" />
+          <Text style={{ color: '#fff', marginTop: 12, textAlign: 'center' }}>
+            Video preview
+          </Text>
+        </View>
+      ) : (
+        <ZoomableImage uri={item.uri} width={width} height={height} />
+      )}
+    </View>
+  ), [height, width])
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent={false}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 2,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: 'rgba(0,0,0,0.35)',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>
+            {imageCount ? `${currentIndex + 1} / ${imageCount}` : ''}
+          </Text>
+
+          <TouchableOpacity
+            onPress={onClose}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: 'rgba(255,255,255,0.16)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="close" size={26} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {imageCount > 0 ? (
+          <FlatList
+            key={`${width}-${safeInitialIndex}`}
+            data={media}
+            horizontal
+            pagingEnabled
+            initialScrollIndex={safeInitialIndex}
+            getItemLayout={(_, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
+            keyExtractor={(item, index) => `${item.uri}-${index}`}
+            renderItem={renderMediaItem}
+            onMomentumScrollEnd={onGalleryScroll}
+            showsHorizontalScrollIndicator={false}
+            windowSize={3}
+            maxToRenderPerBatch={2}
+            initialNumToRender={1}
+          />
+        ) : null}
+      </SafeAreaView>
+    </Modal>
+  )
+}
+
+const PostCard = memo(function PostCard({
+  item,
+  currentUser,
+  onToggleLike,
+  onOpenComments,
+  onToggleFavorite,
+  onShare,
+  onOpenMedia,
+}) {
+  const totalReacts = item.property_reactions?.length || 0
+  const totalComments = item.property_comments?.length || 0
+  const totalFavorites = item.property_favorites?.length || 0
+  const media = item.media || []
+  const myReaction = item.property_reactions?.find(
+    (react) => react.user_id === currentUser?.id
+  )
+
+  const isFavorite = item.property_favorites?.some(
+    (fav) => fav.user_id === currentUser?.id
+  )
+
+  return (
+    <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: '#ddd',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="person" size={22} color="#666" />
+        </View>
+
+        <View style={{ marginLeft: 10, flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700' }}>
+            {item.owner_name || item.owner_email || 'Property Owner'}
+          </Text>
+
+          <Text style={{ fontSize: 12, color: '#777' }}>
+            {timeAgo(item.created_at)}
+          </Text>
+        </View>
+
+        <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+      </View>
+
+      <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>
+        {item.title}
+        {'\n'}
+        {item.description}
+        {'\n\n'}Rent: ৳ {item.price}
+        {'\n'}Location: {item.location || 'Location not added'}
+      </Text>
+
+      {media.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, paddingHorizontal: 8 }}>
+          {media.slice(0, 4).map((mediaItem, index) => (
+            <TouchableOpacity
+              key={`${mediaItem.uri}-${index}`}
+              onPress={() => onOpenMedia(media, index)}
+              activeOpacity={0.9}
+              style={{ width: '50%', padding: 3 }}
+            >
+              {mediaItem.type === 'video' ? (
+                <View
+                  style={{
+                    height: 130,
+                    backgroundColor: '#111',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="play-circle" size={40} color="#fff" />
+                </View>
+              ) : (
+                <Image
+                  source={{ uri: mediaItem.uri }}
+                  style={{ width: '100%', height: 130, backgroundColor: '#eee' }}
+                  resizeMode="cover"
+                  resizeMethod="resize"
+                  fadeDuration={120}
+                />
+              )}
+
+              {index === 3 && media.length > 4 ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: 3,
+                    right: 3,
+                    top: 3,
+                    bottom: 3,
+                    backgroundColor: 'rgba(0,0,0,0.45)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>
+                    +{media.length - 4}
+                  </Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          paddingHorizontal: 14,
+          paddingVertical: 9,
+        }}
+      >
+        <Text style={{ color: '#666' }}>
+          {totalReacts > 0 ? `👍 ${totalReacts}` : ''}
+        </Text>
+
+        <Text style={{ color: '#666' }}>
+          👁 {item.view_count || 0} · 💬 {totalComments} · ❤️ {totalFavorites}
+        </Text>
+      </View>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          borderTopWidth: 1,
+          borderTopColor: '#eee',
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => onToggleLike(item.id)}
+          style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+        >
+          <Ionicons
+            name={myReaction ? 'thumbs-up' : 'thumbs-up-outline'}
+            size={22}
+            color={myReaction ? '#1877F2' : '#555'}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onOpenComments(item)}
+          style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+        >
+          <Ionicons name="chatbubble-outline" size={22} color="#555" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onToggleFavorite(item)}
+          style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+        >
+          <Ionicons
+            name={isFavorite ? 'heart' : 'heart-outline'}
+            size={23}
+            color={isFavorite ? 'red' : '#555'}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onShare(item)}
+          style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+        >
+          <Ionicons name="share-social-outline" size={22} color="#555" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+})
+
+function timeAgo(date) {
+  const seconds = Math.floor((new Date() - new Date(date)) / 1000)
+
+  if (seconds < 60) return 'Just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  return `${Math.floor(seconds / 86400)}d ago`
+}
 
 export default function HomeScreen({ navigation }) {
   const [properties, setProperties] = useState([])
@@ -24,20 +382,16 @@ export default function HomeScreen({ navigation }) {
   const [comments, setComments] = useState([])
   const [commentText, setCommentText] = useState('')
   const [currentUser, setCurrentUser] = useState(null)
+  const [mediaViewer, setMediaViewer] = useState({
+    visible: false,
+    media: [],
+    index: 0,
+  })
 
   useEffect(() => {
     loadUser()
     loadProperties()
   }, [])
-
-  function timeAgo(date) {
-    const seconds = Math.floor((new Date() - new Date(date)) / 1000)
-
-    if (seconds < 60) return 'Just now'
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
-  }
 
   async function loadUser() {
     const {
@@ -306,165 +660,34 @@ export default function HomeScreen({ navigation }) {
     })
   }
 
-  function PostCard({ item }) {
-    const totalReacts = item.property_reactions?.length || 0
-    const totalComments = item.property_comments?.length || 0
-    const totalFavorites = item.property_favorites?.length || 0
-    const media = item.media || []
-    const myReaction = item.property_reactions?.find(
-      (react) => react.user_id === currentUser?.id
-    )
-    
-    const isFavorite = item.property_favorites?.some(
-      (fav) => fav.user_id === currentUser?.id
-    )
+  const openMediaViewer = useCallback((media, index) => {
+    setMediaViewer({
+      visible: true,
+      media,
+      index,
+    })
+  }, [])
 
-    return (
-      <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              backgroundColor: '#ddd',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="person" size={22} color="#666" />
-          </View>
+  const closeMediaViewer = useCallback(() => {
+    setMediaViewer((current) => ({
+      ...current,
+      visible: false,
+    }))
+  }, [])
 
-          <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700' }}>
-              {item.owner_name || item.owner_email || 'Property Owner'}
-            </Text>
+  const renderPost = useCallback(({ item }) => (
+    <PostCard
+      item={item}
+      currentUser={currentUser}
+      onToggleLike={toggleLike}
+      onOpenComments={openComments}
+      onToggleFavorite={toggleFavorite}
+      onShare={sharePost}
+      onOpenMedia={openMediaViewer}
+    />
+  ), [currentUser, openMediaViewer, properties])
 
-            <Text style={{ fontSize: 12, color: '#777' }}>
-              {timeAgo(item.created_at)}
-            </Text>
-          </View>
-
-          <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
-        </View>
-
-        <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>
-          {item.title}
-          {'\n'}
-          {item.description}
-          {'\n\n'}Rent: ৳ {item.price}
-          {'\n'}Location: {item.location || 'Location not added'}
-        </Text>
-
-        {media.length > 0 ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, paddingHorizontal: 8 }}>
-            {media.slice(0, 4).map((mediaItem, index) => (
-              <TouchableOpacity key={index} style={{ width: '50%', padding: 3 }}>
-                {mediaItem.type === 'video' ? (
-                  <View
-                    style={{
-                      height: 130,
-                      backgroundColor: '#111',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="play-circle" size={40} color="#fff" />
-                  </View>
-                ) : (
-                  <Image
-                    source={{ uri: mediaItem.uri }}
-                    style={{ width: '100%', height: 130, backgroundColor: '#eee' }}
-                    resizeMode="cover"
-                  />
-                )}
-
-                {index === 3 && media.length > 4 ? (
-                  <View
-                    style={{
-                      position: 'absolute',
-                      left: 3,
-                      right: 3,
-                      top: 3,
-                      bottom: 3,
-                      backgroundColor: 'rgba(0,0,0,0.45)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>
-                      +{media.length - 4}
-                    </Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-
-<View
-  style={{
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  }}
->
-<Text style={{ color: '#666' }}>
-  {totalReacts > 0 ? `👍 ${totalReacts}` : ''}
-</Text>
-
-  <Text style={{ color: '#666' }}>
-    👁 {item.view_count || 0} · 💬 {totalComments} · ❤️ {totalFavorites}
-  </Text>
-</View>
-
-        <View
-          style={{
-            flexDirection: 'row',
-            borderTopWidth: 1,
-            borderTopColor: '#eee',
-          }}
-        >
-<TouchableOpacity
-  onPress={() => toggleLike(item.id)}
-  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
->
-  <Ionicons
-    name={myReaction ? 'thumbs-up' : 'thumbs-up-outline'}
-    size={22}
-    color={myReaction ? '#1877F2' : '#555'}
-  />
-</TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => openComments(item)}
-            style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
-          >
-            <Ionicons name="chatbubble-outline" size={22} color="#555" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-  onPress={() => toggleFavorite(item)}
-  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
->
-  <Ionicons
-    name={isFavorite ? 'heart' : 'heart-outline'}
-    size={23}
-    color={isFavorite ? 'red' : '#555'}
-  />
-</TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => sharePost(item)}
-            style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
-          >
-            <Ionicons name="share-social-outline" size={22} color="#555" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    )
-  }
+  const showInitialLoader = loading && properties.length === 0
 
   function CreatePostBox() {
     return (
@@ -508,10 +731,6 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
-      <TouchableOpacity
-  activeOpacity={1}
-  style={{ flex: 1 }}
->
       <View
         style={{
           backgroundColor: '#fff',
@@ -538,19 +757,24 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 30 }} />
-      ) : (
-        <FlatList
-          data={properties}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <PostCard item={item} />}
-          ListHeaderComponent={<CreatePostBox />}
-          contentContainerStyle={{ paddingBottom: 80 }}
-          refreshing={loading}
-          onRefresh={loadProperties}
-        />
-      )}
+      <FlatList
+        data={properties}
+        keyExtractor={(item) => item.id}
+        renderItem={renderPost}
+        ListHeaderComponent={<CreatePostBox />}
+        ListEmptyComponent={
+          showInitialLoader ? <ActivityIndicator style={{ marginTop: 30 }} /> : null
+        }
+        contentContainerStyle={{ paddingBottom: 80 }}
+        contentInsetAdjustmentBehavior="automatic"
+        refreshing={loading && properties.length > 0}
+        onRefresh={loadProperties}
+        removeClippedSubviews
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        updateCellsBatchingPeriod={60}
+        windowSize={7}
+      />
 
       <Modal visible={commentModal} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -609,6 +833,13 @@ export default function HomeScreen({ navigation }) {
         </SafeAreaView>
       </Modal>
 
+      <MediaViewer
+        visible={mediaViewer.visible}
+        media={mediaViewer.media}
+        initialIndex={mediaViewer.index}
+        onClose={closeMediaViewer}
+      />
+
       <View
         style={{
           flexDirection: 'row',
@@ -635,7 +866,6 @@ export default function HomeScreen({ navigation }) {
           <Ionicons name="person-outline" size={25} color="#111" />
         </TouchableOpacity>
       </View>
-      </TouchableOpacity>
     </SafeAreaView>
   )
 }
