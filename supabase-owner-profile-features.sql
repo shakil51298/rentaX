@@ -3,6 +3,7 @@ create table if not exists public.user_profiles (
   email text,
   display_name text,
   avatar_url text,
+  cover_url text,
   bio text,
   phone text,
   location text,
@@ -11,6 +12,9 @@ create table if not exists public.user_profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.user_profiles
+  add column if not exists cover_url text;
 
 create table if not exists public.user_follows (
   id uuid primary key default gen_random_uuid(),

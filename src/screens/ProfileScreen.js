@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -23,12 +25,43 @@ function displayNameFromEmail(email) {
   return email.split('@')[0]
 }
 
+function Field({ label, value, onChangeText, placeholder, multiline, keyboardType }) {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 7 }}>
+        {label}
+      </Text>
+
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        multiline={multiline}
+        keyboardType={keyboardType}
+        blurOnSubmit={false}
+        autoCorrect={false}
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#e2e8f0',
+          borderRadius: 12,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          minHeight: multiline ? 92 : undefined,
+          textAlignVertical: multiline ? 'top' : 'center',
+        }}
+      />
+    </View>
+  )
+}
+
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [coverUrl, setCoverUrl] = useState('')
   const [bio, setBio] = useState('')
   const [phone, setPhone] = useState('')
   const [location, setLocation] = useState('')
@@ -51,6 +84,7 @@ export default function ProfileScreen({ navigation }) {
     const metadata = user?.user_metadata || {}
     setDisplayName(metadata.name || metadata.full_name || displayNameFromEmail(user?.email))
     setAvatarUrl(metadata.avatar_url || metadata.picture || '')
+    setCoverUrl(metadata.cover_url || '')
     setUserType(metadata.user_type || 'renter')
 
     if (user?.id) {
@@ -63,6 +97,7 @@ export default function ProfileScreen({ navigation }) {
       if (data) {
         setDisplayName(data.display_name || metadata.name || displayNameFromEmail(user.email))
         setAvatarUrl(data.avatar_url || metadata.avatar_url || '')
+        setCoverUrl(data.cover_url || metadata.cover_url || '')
         setBio(data.bio || '')
         setPhone(data.phone || '')
         setLocation(data.location || '')
@@ -90,6 +125,7 @@ export default function ProfileScreen({ navigation }) {
         name: displayName.trim(),
         full_name: displayName.trim(),
         avatar_url: avatarUrl.trim() || null,
+        cover_url: coverUrl.trim() || null,
         user_type: userType,
         user_type_label: selectedType?.title,
       },
@@ -107,6 +143,7 @@ export default function ProfileScreen({ navigation }) {
         email: user.email,
         display_name: displayName.trim(),
         avatar_url: avatarUrl.trim() || null,
+        cover_url: coverUrl.trim() || null,
         bio: bio.trim() || null,
         phone: phone.trim() || null,
         location: location.trim() || null,
@@ -135,34 +172,6 @@ export default function ProfileScreen({ navigation }) {
     navigation.replace('Login')
   }
 
-  function Field({ label, value, onChangeText, placeholder, multiline, keyboardType }) {
-    return (
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 7 }}>
-          {label}
-        </Text>
-
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          multiline={multiline}
-          keyboardType={keyboardType}
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#e2e8f0',
-            borderRadius: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            minHeight: multiline ? 92 : undefined,
-            textAlignVertical: multiline ? 'top' : 'center',
-          }}
-        />
-      </View>
-    )
-  }
-
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
@@ -172,16 +181,41 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: '#f7f7f7' }}
-      contentContainerStyle={{ paddingBottom: 30 }}
-      keyboardShouldPersistTaps="handled"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={80}
     >
-      <View style={{ backgroundColor: '#fff', padding: 20, alignItems: 'center' }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 140 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+        automaticallyAdjustKeyboardInsets
+      >
+      <View style={{ backgroundColor: '#fff', paddingBottom: 20 }}>
+        <View style={{ height: 118, backgroundColor: '#1877F2' }}>
+          {coverUrl ? (
+            <Image
+              source={{ uri: coverUrl }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          ) : null}
+        </View>
+
+        <View style={{ alignItems: 'center', marginTop: -42 }}>
         {avatarUrl ? (
           <Image
             source={{ uri: avatarUrl }}
-            style={{ width: 86, height: 86, borderRadius: 43, backgroundColor: '#ddd' }}
+            style={{
+              width: 86,
+              height: 86,
+              borderRadius: 43,
+              backgroundColor: '#ddd',
+              borderWidth: 4,
+              borderColor: '#fff',
+            }}
           />
         ) : (
           <View
@@ -190,6 +224,8 @@ export default function ProfileScreen({ navigation }) {
               height: 86,
               borderRadius: 43,
               backgroundColor: '#dbeafe',
+              borderWidth: 4,
+              borderColor: '#fff',
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -218,6 +254,7 @@ export default function ProfileScreen({ navigation }) {
         <Text style={{ marginTop: 4, color: '#666' }}>
           {user?.email || ''}
         </Text>
+        </View>
       </View>
 
       <View style={{ padding: 16 }}>
@@ -236,6 +273,13 @@ export default function ProfileScreen({ navigation }) {
           label="Profile picture URL"
           value={avatarUrl}
           onChangeText={setAvatarUrl}
+          placeholder="https://..."
+        />
+
+        <Field
+          label="Cover photo URL"
+          value={coverUrl}
+          onChangeText={setCoverUrl}
           placeholder="https://..."
         />
 
@@ -326,6 +370,7 @@ export default function ProfileScreen({ navigation }) {
           <Text style={{ color: '#fff', fontWeight: '800' }}>Logout</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   )
 }

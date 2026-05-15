@@ -220,7 +220,15 @@ export default function OwnerProfileScreen({ route, navigation }) {
         ListHeaderComponent={
           <>
             <View style={{ backgroundColor: '#fff', marginBottom: 12 }}>
-              <View style={{ height: 118, backgroundColor: '#1877F2' }} />
+              <View style={{ height: 118, backgroundColor: '#1877F2' }}>
+                {profile?.cover_url ? (
+                  <Image
+                    source={{ uri: profile.cover_url }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
+                ) : null}
+              </View>
 
               <View style={{ paddingHorizontal: 18, paddingBottom: 18, marginTop: -48 }}>
                 <Avatar name={ownerName} uri={profile?.avatar_url} />
