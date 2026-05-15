@@ -9,6 +9,7 @@ import ChatScreen from '../screens/ChatScreen'
 import ProfileScreen from '../screens/ProfileScreen'
 import FavoriteScreen from '../screens/FavoriteScreen'
 import OwnerProfileScreen from '../screens/OwnerProfileScreen'
+import NotificationsScreen from '../screens/NotificationsScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -22,6 +23,11 @@ export default function AppNavigator() {
         <Stack.Screen name="CreatePost" component={CreatePostScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
+        />
         <Stack.Screen
           name="OwnerProfile"
           component={OwnerProfileScreen}

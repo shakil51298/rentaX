@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
+import { createNotification } from '../lib/notifications'
 
 function displayNameFromEmail(email) {
   if (!email) return 'Rental X member'
@@ -166,6 +167,14 @@ export default function OwnerProfileScreen({ route, navigation }) {
 
     setIsFollowing(true)
     setFollowers((count) => count + 1)
+    await createNotification({
+      recipientId: ownerId,
+      actorId: currentUser.id,
+      type: 'user_follow',
+      title: 'New follower',
+      body: 'started following you',
+      eventKey: `user_follow:${ownerId}:${currentUser.id}`,
+    })
   }
 
   function renderPost({ item }) {

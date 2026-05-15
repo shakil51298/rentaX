@@ -19,6 +19,10 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
+import {
+  createNotification,
+  getUnreadNotificationCount,
+} from '../lib/notifications'
 
 function distanceBetweenTouches(touches) {
   if (touches.length < 2) return 0
@@ -809,6 +813,7 @@ export default function HomeScreen({ navigation }) {
   const [replyTarget, setReplyTarget] = useState(null)
   const [commentLoading, setCommentLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -830,6 +835,33 @@ export default function HomeScreen({ navigation }) {
       loadComments(selectedPost.id)
     }, [selectedPost])
   )
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setNotificationUnreadCount(0)
+      return undefined
+    }
+
+    refreshNotificationBadge(currentUser.id)
+
+    const channel = supabase
+      .channel(`home-notifications-${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `recipient_id=eq.${currentUser.id}`,
+        },
+        () => refreshNotificationBadge(currentUser.id)
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser?.id])
 
   useEffect(() => {
     if (!commentModal || !selectedPost?.id) return undefined
@@ -903,6 +935,10 @@ export default function HomeScreen({ navigation }) {
     } = await supabase.auth.getUser()
   
     setCurrentUser(user)
+  }
+
+  async function refreshNotificationBadge(userId = currentUser?.id) {
+    setNotificationUnreadCount(await getUnreadNotificationCount(userId))
   }
 
   async function loadProperties() {
@@ -1040,6 +1076,15 @@ export default function HomeScreen({ navigation }) {
     }
   
     updateLocalReaction(propertyId, '👍')
+    await createNotification({
+      recipientId: post?.owner_id,
+      actorId: currentUser.id,
+      type: 'property_like',
+      propertyId,
+      title: 'New like',
+      body: 'liked your post',
+      eventKey: `property_like:${propertyId}:${currentUser.id}`,
+    })
   }
   
   async function reactToPost(propertyId, reaction) {
@@ -1088,6 +1133,15 @@ export default function HomeScreen({ navigation }) {
     }
   
     updateLocalReaction(propertyId, reaction)
+    await createNotification({
+      recipientId: post?.owner_id,
+      actorId: currentUser.id,
+      type: 'property_like',
+      propertyId,
+      title: 'New reaction',
+      body: 'reacted to your post',
+      eventKey: `property_reaction:${propertyId}:${currentUser.id}`,
+    })
 
   }
 
@@ -1213,6 +1267,16 @@ export default function HomeScreen({ navigation }) {
             )
           )
           adjustPostCommentCount(selectedPost.id, 1)
+          await createNotification({
+            recipientId: replyTarget?.user_id || selectedPost.owner_id,
+            actorId: user.id,
+            type: replyTarget ? 'comment_reply' : 'property_comment',
+            propertyId: selectedPost.id,
+            commentId: fallbackComment.id,
+            title: replyTarget ? 'New reply' : 'New comment',
+            body: replyTarget ? 'replied to your comment' : 'commented on your post',
+            eventKey: `comment:${fallbackComment.id}`,
+          })
           return
         }
       }
@@ -1235,6 +1299,16 @@ export default function HomeScreen({ navigation }) {
       )
     )
     adjustPostCommentCount(selectedPost.id, 1)
+    await createNotification({
+      recipientId: replyTarget?.user_id || selectedPost.owner_id,
+      actorId: user.id,
+      type: replyTarget ? 'comment_reply' : 'property_comment',
+      propertyId: selectedPost.id,
+      commentId: insertedComment.id,
+      title: replyTarget ? 'New reply' : 'New comment',
+      body: replyTarget ? 'replied to your comment' : 'commented on your post',
+      eventKey: `comment:${insertedComment.id}`,
+    })
   }
 
   async function toggleCommentLike(comment) {
@@ -1290,6 +1364,16 @@ export default function HomeScreen({ navigation }) {
           ],
         }))
       )
+      await createNotification({
+        recipientId: comment.user_id,
+        actorId: currentUser.id,
+        type: 'comment_like',
+        propertyId: selectedPost?.id,
+        commentId,
+        title: 'New comment like',
+        body: 'liked your comment',
+        eventKey: `comment_like:${commentId}:${currentUser.id}`,
+      })
     }
   }
 
@@ -1423,6 +1507,15 @@ export default function HomeScreen({ navigation }) {
           }
         })
       )
+      await createNotification({
+        recipientId: post.owner_id,
+        actorId: currentUser.id,
+        type: 'property_favorite',
+        propertyId: post.id,
+        title: 'New favorite',
+        body: 'saved your post',
+        eventKey: `property_favorite:${post.id}:${currentUser.id}`,
+      })
     }
   }
 
@@ -1742,6 +1835,42 @@ export default function HomeScreen({ navigation }) {
 
         <TouchableOpacity onPress={() => navigation.navigate('Favorite')}>
           <Ionicons name="heart-outline" size={25} color="#111" />
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
+          <View>
+            <Ionicons name="notifications-outline" size={25} color="#111" />
+
+            {notificationUnreadCount > 0 ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -7,
+                  right: -10,
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: '#ef4444',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 4,
+                  borderWidth: 1,
+                  borderColor: '#fff',
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: '900',
+                    fontVariant: ['tabular-nums'],
+                  }}
+                >
+                  {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
