@@ -32,6 +32,7 @@ function getActorName(notification) {
 }
 
 function getNotificationIcon(type) {
+  if (type === 'chat_message') return 'chatbubble'
   if (type === 'property_comment') return 'chatbubble-ellipses'
   if (type === 'comment_reply') return 'return-down-forward'
   if (type === 'comment_like') return 'thumbs-up'
@@ -44,6 +45,7 @@ function getNotificationIcon(type) {
 function getNotificationColor(type) {
   if (type === 'property_favorite') return '#ef4444'
   if (type === 'user_follow') return '#16a34a'
+  if (type === 'chat_message') return '#22c55e'
   return '#1877F2'
 }
 
@@ -237,6 +239,19 @@ export default function NotificationsScreen({ navigation }) {
 
   async function openNotification(notification) {
     await markNotificationRead(notification)
+
+    if (notification.type === 'chat_message' && notification.actor_id) {
+      navigation.navigate('Chat', {
+        participant: {
+          id: notification.actor_id,
+          name: getActorName(notification),
+          avatar_url: notification.actor_profile?.avatar_url,
+          is_verified: notification.actor_profile?.is_verified,
+        },
+        property: notification.property || null,
+      })
+      return
+    }
 
     if (shouldOpenCommentSheet(notification.type) && notification.property_id) {
       navigation.navigate('Home', {

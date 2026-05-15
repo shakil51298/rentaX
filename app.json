@@ -27,7 +27,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-video"
+      "expo-video",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Rental X to record and send voice messages."
+        }
+      ]
     ]
   }
 }
