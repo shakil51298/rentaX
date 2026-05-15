@@ -19,7 +19,6 @@ import { supabase } from '../lib/supabase'
 export default function HomeScreen({ navigation }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showReacts, setShowReacts] = useState(null)
   const [commentModal, setCommentModal] = useState(false)
   const [selectedPost, setSelectedPost] = useState(null)
   const [comments, setComments] = useState([])
@@ -65,36 +64,55 @@ export default function HomeScreen({ navigation }) {
     setLoading(false)
   }
 
-  async function reactToPost(propertyId, reaction) {
+  async function selectReaction(propertyId, reaction) {
     if (!currentUser) return
   
-    const { error } = await supabase.from('property_reactions').upsert({
-      property_id: propertyId,
-      user_id: currentUser.id,
-      reaction,
-    })
+    const { error } = await supabase
+      .from('property_reactions')
+      .upsert(
+        {
+          property_id: propertyId,
+          user_id: currentUser.id,
+          reaction,
+        },
+        {
+          onConflict: 'property_id,user_id',
+        }
+      )
   
     if (error) {
       Alert.alert('Error', error.message)
       return
     }
   
+    updateLocalReaction(propertyId, reaction)
+  }
+
+  function updateLocalReaction(propertyId, reaction) {
     setProperties((oldPosts) =>
       oldPosts.map((post) => {
         if (post.id !== propertyId) return post
   
         const oldReactions = post.property_reactions || []
   
-        const withoutMyReaction = oldReactions.filter(
+        const withoutMine = oldReactions.filter(
           (item) => item.user_id !== currentUser.id
         )
+  
+        if (!reaction) {
+          return {
+            ...post,
+            property_reactions: withoutMine,
+          }
+        }
   
         return {
           ...post,
           property_reactions: [
-            ...withoutMyReaction,
+            ...withoutMine,
             {
-              id: Date.now().toString(),
+              id: `${propertyId}-${currentUser.id}`,
+              property_id: propertyId,
               user_id: currentUser.id,
               reaction,
             },
@@ -102,8 +120,96 @@ export default function HomeScreen({ navigation }) {
         }
       })
     )
+  }
+
+  async function toggleLike(propertyId) {
+    if (!currentUser) return
   
-    setShowReacts(null)
+    const post = properties.find((item) => item.id === propertyId)
+  
+    const myReaction = post?.property_reactions?.find(
+      (item) => item.user_id === currentUser.id
+    )
+  
+    // If already reacted with anything, clicking like button removes reaction
+    if (myReaction) {
+      const { error } = await supabase
+        .from('property_reactions')
+        .delete()
+        .eq('property_id', propertyId)
+        .eq('user_id', currentUser.id)
+  
+      if (error) {
+        Alert.alert('Error', error.message)
+        return
+      }
+  
+      updateLocalReaction(propertyId, null)
+      return
+    }
+  
+    // If no reaction, default like
+    const { error } = await supabase.from('property_reactions').insert({
+      property_id: propertyId,
+      user_id: currentUser.id,
+      reaction: '👍',
+    })
+  
+    if (error) {
+      Alert.alert('Error', error.message)
+      return
+    }
+  
+    updateLocalReaction(propertyId, '👍')
+  }
+  
+  async function reactToPost(propertyId, reaction) {
+    if (!currentUser) return
+  
+    const post = properties.find((item) => item.id === propertyId)
+  
+    const myReaction = post?.property_reactions?.find(
+      (item) => item.user_id === currentUser.id
+    )
+  
+    // if already same reaction, remove reaction
+    if (myReaction?.reaction === reaction) {
+      const { error } = await supabase
+        .from('property_reactions')
+        .delete()
+        .eq('property_id', propertyId)
+        .eq('user_id', currentUser.id)
+  
+      if (error) {
+        Alert.alert('Error', error.message)
+        return
+      }
+  
+      updateLocalReaction(propertyId, null)
+      return
+    }
+  
+    // if different reaction, update/insert reaction
+    const { error } = await supabase
+      .from('property_reactions')
+      .upsert(
+        {
+          property_id: propertyId,
+          user_id: currentUser.id,
+          reaction,
+        },
+        {
+          onConflict: 'property_id,user_id',
+        }
+      )
+  
+    if (error) {
+      Alert.alert('Error', error.message)
+      return
+    }
+  
+    updateLocalReaction(propertyId, reaction)
+
   }
 
   async function openComments(post) {
@@ -304,39 +410,14 @@ export default function HomeScreen({ navigation }) {
     paddingVertical: 9,
   }}
 >
-  <Text style={{ color: '#666' }}>
-    {totalReacts > 0 ? `${totalReacts} reactions` : ''}
-  </Text>
+<Text style={{ color: '#666' }}>
+  {totalReacts > 0 ? `👍 ${totalReacts}` : ''}
+</Text>
 
   <Text style={{ color: '#666' }}>
     👁 {item.view_count || 0} · 💬 {totalComments} · ❤️ {totalFavorites}
   </Text>
 </View>
-
-        {showReacts === item.id ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              backgroundColor: '#fff',
-              padding: 8,
-              borderRadius: 30,
-              position: 'absolute',
-              bottom: 48,
-              left: 10,
-              elevation: 5,
-            }}
-          >
-            {['👍', '❤️', '😂', '🔥'].map((react) => (
-              <TouchableOpacity
-                key={react}
-                onPress={() => reactToPost(item.id, react)}
-                style={{ paddingHorizontal: 8 }}
-              >
-                <Text style={{ fontSize: 26 }}>{react}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
 
         <View
           style={{
@@ -346,17 +427,14 @@ export default function HomeScreen({ navigation }) {
           }}
         >
 <TouchableOpacity
-  onPress={() => reactToPost(item.id, myReaction?.reaction || '👍')}
-  onLongPress={() => setShowReacts(item.id)}
+  onPress={() => toggleLike(item.id)}
   style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
 >
-  {myReaction ? (
-    <Text style={{ fontSize: 22 }}>
-      {myReaction.reaction} {totalReacts}
-    </Text>
-  ) : (
-    <Ionicons name="thumbs-up-outline" size={22} color="#555" />
-  )}
+  <Ionicons
+    name={myReaction ? 'thumbs-up' : 'thumbs-up-outline'}
+    size={22}
+    color={myReaction ? '#1877F2' : '#555'}
+  />
 </TouchableOpacity>
 
           <TouchableOpacity
@@ -430,6 +508,10 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+      <TouchableOpacity
+  activeOpacity={1}
+  style={{ flex: 1 }}
+>
       <View
         style={{
           backgroundColor: '#fff',
@@ -553,6 +635,7 @@ export default function HomeScreen({ navigation }) {
           <Ionicons name="person-outline" size={25} color="#111" />
         </TouchableOpacity>
       </View>
+      </TouchableOpacity>
     </SafeAreaView>
   )
 }
