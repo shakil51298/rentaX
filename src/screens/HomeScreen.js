@@ -23,6 +23,7 @@ import {
   createNotification,
   getUnreadNotificationCount,
 } from '../lib/notifications'
+import { playNotificationSound } from '../lib/sounds'
 
 function distanceBetweenTouches(touches) {
   if (touches.length < 2) return 0
@@ -930,7 +931,13 @@ export default function HomeScreen({ navigation, route }) {
           table: 'chat_messages',
           filter: `receiver_id=eq.${currentUser.id}`,
         },
-        () => refreshMessageBadge(currentUser.id)
+        (payload) => {
+          if (payload.new?.sender_id !== currentUser.id) {
+            playNotificationSound()
+          }
+
+          refreshMessageBadge(currentUser.id)
+        }
       )
       .subscribe()
 
@@ -958,7 +965,10 @@ export default function HomeScreen({ navigation, route }) {
           table: 'notifications',
           filter: `recipient_id=eq.${currentUser.id}`,
         },
-        () => refreshNotificationBadge(currentUser.id)
+        () => {
+          playNotificationSound()
+          refreshNotificationBadge(currentUser.id)
+        }
       )
       .subscribe()
 
