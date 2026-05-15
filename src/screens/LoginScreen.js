@@ -155,9 +155,9 @@ export default function LoginScreen({ navigation }) {
         <View style={{ alignItems: 'center', marginBottom: 28 }}>
           <View
             style={{
-              width: 96,
-              height: 96,
-              borderRadius: 24,
+              width: 80,
+              height: 80,
+              borderRadius: 20,
               backgroundColor: '#fff',
               alignItems: 'center',
               justifyContent: 'center',
@@ -166,7 +166,7 @@ export default function LoginScreen({ navigation }) {
             }}
           >
             <Image
-              source={require('../../assets/icon.png')}
+              source={require('../../assets/logo.png')}
               style={{ width: 68, height: 68, borderRadius: 18 }}
               resizeMode="contain"
             />
@@ -175,9 +175,15 @@ export default function LoginScreen({ navigation }) {
           <Text style={{ marginTop: 16, fontSize: 32, fontWeight: '800', color: '#111827' }}>
             Rental X
           </Text>
-
-          <Text style={{ marginTop: 6, fontSize: 15, color: '#64748b', textAlign: 'center' }}>
-            {isRegisterMode ? 'Create your rental account' : 'Welcome back to your rental marketplace'}
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 15,
+              color: '#64748b',
+              fontWeight: '600',
+            }}
+          >
+            Find • Rent • Live
           </Text>
         </View>
 
