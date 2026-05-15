@@ -803,7 +803,7 @@ const CommentItem = memo(function CommentItem({
   )
 })
 
-export default function HomeScreen({ navigation }) {
+export default function HomeScreen({ navigation, route }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [commentModal, setCommentModal] = useState(false)
@@ -820,6 +820,8 @@ export default function HomeScreen({ navigation }) {
     index: 0,
   })
   const reopenCommentsOnFocus = useRef(false)
+  const handledCommentRouteRequest = useRef(null)
+  const commentReturnRoute = useRef(null)
 
   useEffect(() => {
     loadUser()
@@ -836,6 +838,62 @@ export default function HomeScreen({ navigation }) {
     }, [selectedPost])
   )
 
+  useFocusEffect(
+    useCallback(() => {
+      const params = route?.params || {}
+      const postId = params.openCommentsForPostId || params.openCommentsForPost?.id
+
+      if (!postId) return undefined
+
+      const requestId = params.openCommentsRequestId || `${postId}-${params.openCommentsTargetCommentId || ''}`
+
+      if (handledCommentRouteRequest.current === requestId) return undefined
+
+      handledCommentRouteRequest.current = requestId
+      let isActive = true
+
+      async function openRouteCommentSheet() {
+        let post =
+          params.openCommentsForPost ||
+          properties.find((item) => String(item.id) === String(postId)) ||
+          null
+
+        if (!post) {
+          const { data } = await supabase
+            .from('properties')
+            .select('*')
+            .eq('id', postId)
+            .maybeSingle()
+
+          post = data || { id: postId }
+        }
+
+        if (!isActive) return
+
+        commentReturnRoute.current = params.openCommentsReturnTo || null
+        setSelectedPost(post)
+        setReplyTarget(null)
+        setCommentText('')
+        setCommentModal(true)
+        loadComments(post.id)
+
+        navigation.setParams({
+          openCommentsForPostId: undefined,
+          openCommentsForPost: undefined,
+          openCommentsTargetCommentId: undefined,
+          openCommentsRequestId: undefined,
+          openCommentsReturnTo: undefined,
+        })
+      }
+
+      openRouteCommentSheet()
+
+      return () => {
+        isActive = false
+      }
+    }, [navigation, properties, route?.params])
+  )
+
   useEffect(() => {
     if (!currentUser?.id) {
       setNotificationUnreadCount(0)
@@ -844,8 +902,9 @@ export default function HomeScreen({ navigation }) {
 
     refreshNotificationBadge(currentUser.id)
 
+    const channelName = `home-notifications-${currentUser.id}-${Date.now()}-${Math.random()}`
     const channel = supabase
-      .channel(`home-notifications-${currentUser.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -859,7 +918,9 @@ export default function HomeScreen({ navigation }) {
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
     }
   }, [currentUser?.id])
 
@@ -878,8 +939,9 @@ export default function HomeScreen({ navigation }) {
       }, 250)
     }
 
+    const channelName = `property-comments-${postId}-${Date.now()}-${Math.random()}`
     const channel = supabase
-      .channel(`property-comments-${postId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -925,7 +987,9 @@ export default function HomeScreen({ navigation }) {
         clearTimeout(refreshTimer)
       }
 
-      supabase.removeChannel(channel)
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
     }
   }, [commentModal, selectedPost?.id])
 
@@ -1207,6 +1271,7 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function openComments(post) {
+    commentReturnRoute.current = null
     setSelectedPost(post)
     setReplyTarget(null)
     setCommentModal(true)
@@ -1556,7 +1621,7 @@ export default function HomeScreen({ navigation }) {
     if (!comment?.user_id) return
 
     reopenCommentsOnFocus.current = true
-    closeCommentModal()
+    closeCommentModal({ skipReturn: true })
 
     navigation.navigate('OwnerProfile', {
       owner: {
@@ -1567,10 +1632,16 @@ export default function HomeScreen({ navigation }) {
     })
   }, [navigation])
 
-  function closeCommentModal() {
+  function closeCommentModal(options = {}) {
     setCommentModal(false)
     setReplyTarget(null)
     setCommentText('')
+
+    if (!options.skipReturn && commentReturnRoute.current) {
+      const returnRoute = commentReturnRoute.current
+      commentReturnRoute.current = null
+      navigation.navigate(returnRoute)
+    }
   }
 
   const commentSheetPanResponder = useRef(

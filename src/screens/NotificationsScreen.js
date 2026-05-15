@@ -47,6 +47,10 @@ function getNotificationColor(type) {
   return '#1877F2'
 }
 
+function shouldOpenCommentSheet(type) {
+  return ['property_comment', 'comment_reply', 'comment_like'].includes(type)
+}
+
 function Avatar({ name, uri }) {
   const initial = name?.trim()?.charAt(0)?.toUpperCase() || 'U'
 
@@ -172,8 +176,9 @@ export default function NotificationsScreen({ navigation }) {
       loadNotifications(false)
     }
 
+    const channelName = `notifications-page-${currentUser.id}-${Date.now()}-${Math.random()}`
     const channel = supabase
-      .channel(`notifications-page-${currentUser.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -187,7 +192,9 @@ export default function NotificationsScreen({ navigation }) {
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
     }
   }, [currentUser?.id, loadNotifications])
 
@@ -230,6 +237,17 @@ export default function NotificationsScreen({ navigation }) {
 
   async function openNotification(notification) {
     await markNotificationRead(notification)
+
+    if (shouldOpenCommentSheet(notification.type) && notification.property_id) {
+      navigation.navigate('Home', {
+        openCommentsForPostId: String(notification.property_id),
+        openCommentsForPost: notification.property || null,
+        openCommentsTargetCommentId: notification.comment_id || null,
+        openCommentsRequestId: notification.id,
+        openCommentsReturnTo: 'Notifications',
+      })
+      return
+    }
 
     if (notification.property) {
       navigation.navigate('Property', { property: notification.property })
