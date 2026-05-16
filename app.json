@@ -21,7 +21,12 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.zikaiwe02.rentalx"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,6 +39,11 @@
           "microphonePermission": "Allow Rental X to record and send voice messages."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c20c214f-f3f6-483d-b954-273ae7822e5b"
+      }
+    }
   }
 }
