@@ -13,6 +13,10 @@ create table if not exists public.chat_conversations (
   check (participant_one_id <> participant_two_id)
 );
 
+alter table public.chat_conversations
+  add column if not exists participant_one_deleted_at timestamptz,
+  add column if not exists participant_two_deleted_at timestamptz;
+
 create unique index if not exists chat_conversations_pair_property_idx
   on public.chat_conversations (
     participant_one_id,

@@ -9,6 +9,9 @@ export default function ConversationRow({
   currentUserId,
   presenceByUserId,
   onPress,
+  onLongPress,
+  selected = false,
+  selectionMode = false,
 }) {
   const profile = item.other_profile
   const name = getProfileName(profile)
@@ -18,15 +21,17 @@ export default function ConversationRow({
   return (
     <TouchableOpacity
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={220}
       activeOpacity={0.82}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 13,
-        backgroundColor: '#fff',
+        backgroundColor: selected ? '#eff6ff' : '#fff',
         borderBottomWidth: 1,
-        borderBottomColor: '#eef2f7',
+        borderBottomColor: selected ? '#bfdbfe' : '#eef2f7',
       }}
     >
       <View>
@@ -102,6 +107,22 @@ export default function ConversationRow({
           <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>
             {item.unread_count}
           </Text>
+        </View>
+      ) : null}
+
+      {selectionMode ? (
+        <View
+          style={{
+            width: 24,
+            alignItems: 'flex-end',
+            marginLeft: 10,
+          }}
+        >
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={22}
+            color={selected ? '#1877F2' : '#94a3b8'}
+          />
         </View>
       ) : null}
     </TouchableOpacity>

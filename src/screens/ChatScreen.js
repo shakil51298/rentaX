@@ -40,6 +40,40 @@ import { displayNameFromEmail, getProfileName } from '../lib/userDisplay'
 
 const EMPTY_ROUTE_PARAMS = {}
 
+function getConversationDeletionField(conversation, userId) {
+  if (!conversation || !userId) return null
+
+  if (conversation.participant_one_id === userId) {
+    return 'participant_one_deleted_at'
+  }
+
+  if (conversation.participant_two_id === userId) {
+    return 'participant_two_deleted_at'
+  }
+
+  return null
+}
+
+function getConversationDeletedAt(conversation, userId) {
+  const field = getConversationDeletionField(conversation, userId)
+  return field ? conversation?.[field] || null : null
+}
+
+function isConversationVisibleForUser(conversation, userId) {
+  const deletedAt = getConversationDeletedAt(conversation, userId)
+
+  if (!deletedAt) return true
+
+  const lastActivityAt =
+    conversation.last_message_at ||
+    conversation.updated_at ||
+    conversation.created_at
+
+  if (!lastActivityAt) return false
+
+  return new Date(lastActivityAt).getTime() > new Date(deletedAt).getTime()
+}
+
 async function fetchProfiles(userIds) {
   const uniqueIds = [...new Set(userIds.filter(Boolean))]
 
@@ -76,6 +110,7 @@ export default function ChatScreen({ route, navigation }) {
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [openedFromList, setOpenedFromList] = useState(false)
+  const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -97,7 +132,12 @@ export default function ChatScreen({ route, navigation }) {
     otherUserId: otherUser?.id,
   })
 
-  const loadMessages = useCallback(async (conversationId, currentUserId, showLoader = false) => {
+  const loadMessages = useCallback(async (
+    conversationId,
+    currentUserId,
+    showLoader = false,
+    activeConversation = null
+  ) => {
     if (!conversationId) return
 
     if (showLoader) {
@@ -119,7 +159,14 @@ export default function ChatScreen({ route, navigation }) {
       return
     }
 
-    setMessages(data || [])
+    const deletedAt = getConversationDeletedAt(activeConversation, currentUserId)
+    const visibleMessages = deletedAt
+      ? (data || []).filter(
+        (item) => new Date(item.created_at).getTime() > new Date(deletedAt).getTime()
+      )
+      : (data || [])
+
+    setMessages(visibleMessages)
 
     if (currentUserId) {
       await supabase
@@ -195,8 +242,10 @@ export default function ChatScreen({ route, navigation }) {
         })
     }
 
+    const visibleRows = (data || []).filter((item) => isConversationVisibleForUser(item, user.id))
+
     setConversationRows(
-      (data || []).map((item) => {
+      visibleRows.map((item) => {
         const otherId =
           item.participant_one_id === user.id
             ? item.participant_two_id
@@ -213,6 +262,9 @@ export default function ChatScreen({ route, navigation }) {
           unread_count: unreadCountsByConversation[item.id] || 0,
         }
       })
+    )
+    setSelectedConversationIds((current) =>
+      current.filter((id) => visibleRows.some((item) => item.id === id))
     )
     setLoading(false)
   }, [])
@@ -253,12 +305,13 @@ export default function ChatScreen({ route, navigation }) {
   }, [])
 
   const openConversation = useCallback(async ({ item, profile, fromList = false }) => {
+    setSelectedConversationIds([])
     setOpenedFromList(fromList)
     setMode('chat')
     setConversation(item)
     setOtherUser(profile)
     setConversationProperty(null)
-    await loadMessages(item.id, currentUser?.id, true)
+    await loadMessages(item.id, currentUser?.id, true, item)
   }, [currentUser?.id, loadMessages])
 
   const initializeChat = useCallback(async () => {
@@ -306,7 +359,7 @@ export default function ChatScreen({ route, navigation }) {
       setOtherUser(hydratedTarget)
       setConversationProperty(directProperty)
       setConversation(nextConversation)
-      await loadMessages(nextConversation.id, user.id, true)
+      await loadMessages(nextConversation.id, user.id, true, nextConversation)
     } catch (error) {
       Alert.alert('Chat unavailable', error.message)
       setLoading(false)
@@ -327,7 +380,7 @@ export default function ChatScreen({ route, navigation }) {
     if (mode !== 'chat' || !conversation?.id || !currentUser?.id) return undefined
 
     const refreshMessages = () => {
-      loadMessages(conversation.id, currentUser.id, false)
+      loadMessages(conversation.id, currentUser.id, false, conversation)
     }
     const channelName = `chat-messages-${conversation.id}-${Date.now()}-${Math.random()}`
     const channel = supabase
@@ -426,15 +479,22 @@ export default function ChatScreen({ route, navigation }) {
       return
     }
 
+    const conversationUpdate = {
+      last_message: lastMessage,
+      last_message_type: messageType,
+      last_message_at: createdAt,
+      last_sender_id: currentUser.id,
+      updated_at: createdAt,
+    }
+    const deletionField = getConversationDeletionField(conversation, currentUser.id)
+
+    if (deletionField) {
+      conversationUpdate[deletionField] = null
+    }
+
     await supabase
       .from('chat_conversations')
-      .update({
-        last_message: lastMessage,
-        last_message_type: messageType,
-        last_message_at: createdAt,
-        last_sender_id: currentUser.id,
-        updated_at: createdAt,
-      })
+      .update(conversationUpdate)
       .eq('id', conversation.id)
 
     await createNotification({
@@ -581,6 +641,96 @@ export default function ChatScreen({ route, navigation }) {
     navigation.goBack()
   }, [currentUser, loadConversationList, navigation, openedFromList])
 
+  const selectionMode = selectedConversationIds.length > 0
+
+  const toggleConversationSelection = useCallback((conversationId) => {
+    setSelectedConversationIds((current) =>
+      current.includes(conversationId)
+        ? current.filter((id) => id !== conversationId)
+        : [...current, conversationId]
+    )
+  }, [])
+
+  const clearConversationSelection = useCallback(() => {
+    setSelectedConversationIds([])
+  }, [])
+
+  const deleteSelectedConversations = useCallback(async () => {
+    if (!currentUser?.id || selectedConversationIds.length === 0) return
+
+    const targetRows = conversationRows.filter((item) => selectedConversationIds.includes(item.id))
+
+    if (targetRows.length === 0) {
+      clearConversationSelection()
+      return
+    }
+
+    Alert.alert(
+      selectedConversationIds.length > 1 ? 'Delete conversations?' : 'Delete conversation?',
+      selectedConversationIds.length > 1
+        ? 'These chats will be removed from your message list.'
+        : 'This chat will be removed from your message list.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const deletedAt = new Date().toISOString()
+            const groups = targetRows.reduce((acc, item) => {
+              const field = getConversationDeletionField(item, currentUser.id)
+
+              if (!field) return acc
+
+              if (!acc[field]) {
+                acc[field] = []
+              }
+
+              acc[field].push(item.id)
+              return acc
+            }, {})
+
+            const groupEntries = Object.entries(groups)
+
+            if (groupEntries.length === 0) {
+              Alert.alert('Delete unavailable', 'Unable to identify your chat records right now.')
+              return
+            }
+
+            for (const [field, ids] of groupEntries) {
+              const { error } = await supabase
+                .from('chat_conversations')
+                .update({
+                  [field]: deletedAt,
+                  updated_at: deletedAt,
+                })
+                .in('id', ids)
+
+              if (error) {
+                const message = error.message?.includes('participant_one_deleted_at')
+                  || error.message?.includes('participant_two_deleted_at')
+                  ? 'Run the latest supabase-chat-features.sql in Supabase, then try deleting chats again.'
+                  : error.message
+
+                Alert.alert('Delete failed', message)
+                return
+              }
+            }
+
+            clearConversationSelection()
+            await loadConversationList(currentUser)
+          },
+        },
+      ]
+    )
+  }, [
+    clearConversationSelection,
+    conversationRows,
+    currentUser,
+    loadConversationList,
+    selectedConversationIds,
+  ])
+
   useEffect(() => {
     if (mode !== 'chat') return undefined
 
@@ -593,6 +743,19 @@ export default function ChatScreen({ route, navigation }) {
       subscription.remove()
     }
   }, [goBackFromChat, mode])
+
+  useEffect(() => {
+    if (mode !== 'list' || !selectionMode) return undefined
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      clearConversationSelection()
+      return true
+    })
+
+    return () => {
+      subscription.remove()
+    }
+  }, [clearConversationSelection, mode, selectionMode])
 
   const openMediaViewer = useCallback((media, index) => {
     setMediaViewer({
@@ -653,12 +816,55 @@ export default function ChatScreen({ route, navigation }) {
             borderBottomColor: '#e5e7eb',
           }}
         >
-          <Text style={{ color: '#111827', fontSize: 26, fontWeight: '900' }}>
-            Messages
-          </Text>
-          <Text style={{ color: '#64748b', marginTop: 3 }}>
-            Chat with property owners and renters
-          </Text>
+          {selectionMode ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity
+                onPress={clearConversationSelection}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#111827', fontSize: 24, fontWeight: '900' }}>
+                  {selectedConversationIds.length} selected
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 3 }}>
+                  Choose chats to remove from your list
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={deleteSelectedConversations}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#fee2e2',
+                }}
+              >
+                <Ionicons name="trash-outline" size={22} color="#dc2626" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <Text style={{ color: '#111827', fontSize: 26, fontWeight: '900' }}>
+                Messages
+              </Text>
+              <Text style={{ color: '#64748b', marginTop: 3 }}>
+                Chat with property owners and renters
+              </Text>
+            </>
+          )}
         </View>
 
         <FlatList
@@ -669,13 +875,21 @@ export default function ChatScreen({ route, navigation }) {
               item={item}
               currentUserId={currentUser?.id}
               presenceByUserId={presenceByUserId}
-              onPress={() =>
+              selected={selectedConversationIds.includes(item.id)}
+              selectionMode={selectionMode}
+              onPress={() => {
+                if (selectionMode) {
+                  toggleConversationSelection(item.id)
+                  return
+                }
+
                 openConversation({
                   item,
                   profile: item.other_profile,
                   fromList: true,
                 })
-              }
+              }}
+              onLongPress={() => toggleConversationSelection(item.id)}
             />
           )}
           refreshing={loading}
