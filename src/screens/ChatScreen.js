@@ -4,7 +4,6 @@ import {
   Alert,
   BackHandler,
   FlatList,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,191 +15,30 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
-import { VideoView, useVideoPlayer } from 'expo-video'
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio'
 import { supabase } from '../lib/supabase'
 import { createNotification } from '../lib/notifications'
+import Avatar from '../components/common/Avatar'
+import MediaViewer from '../components/common/MediaViewer'
+import ConversationRow from '../components/chat/ConversationRow'
+import MessageBubble from '../components/chat/MessageBubble'
+import useChatPresence from '../hooks/useChatPresence'
+import { CHAT_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
+import {
+  formatDuration,
+  getDirectTarget,
+  getPropertyId,
+  mediaLabel,
+} from '../lib/chatUtils'
+import { displayNameFromEmail, getProfileName } from '../lib/userDisplay'
 
-const CHAT_BUCKET = 'chat-media'
 const EMPTY_ROUTE_PARAMS = {}
-
-function displayNameFromEmail(email) {
-  if (!email) return 'Rental X member'
-
-  return email.split('@')[0]
-}
-
-function getProfileName(profile, fallback = 'Rental X member') {
-  return (
-    profile?.display_name ||
-    profile?.name ||
-    displayNameFromEmail(profile?.email) ||
-    fallback
-  )
-}
-
-function getAvatarSource(profile) {
-  return profile?.avatar_url || profile?.photo_url || profile?.picture || null
-}
-
-function Avatar({ profile, name, size = 44 }) {
-  const resolvedName = name || getProfileName(profile)
-  const uri = getAvatarSource(profile)
-  const initial = resolvedName?.trim()?.charAt(0)?.toUpperCase() || 'U'
-
-  if (uri) {
-    return (
-      <Image
-        source={{ uri }}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: '#e5e7eb',
-        }}
-      />
-    )
-  }
-
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: '#dbeafe',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Text style={{ color: '#1d4ed8', fontWeight: '900', fontSize: size * 0.38 }}>
-        {initial}
-      </Text>
-    </View>
-  )
-}
-
-function formatClock(date) {
-  if (!date) return ''
-
-  return new Date(date).toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function formatDayLabel(date) {
-  if (!date) return ''
-
-  const value = new Date(date)
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
-
-  if (value.toDateString() === today.toDateString()) return 'Today'
-  if (value.toDateString() === yesterday.toDateString()) return 'Yesterday'
-
-  return value.toLocaleDateString([], {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-function isSameDay(firstDate, secondDate) {
-  if (!firstDate || !secondDate) return false
-
-  return new Date(firstDate).toDateString() === new Date(secondDate).toDateString()
-}
-
-function formatDuration(milliseconds = 0) {
-  const totalSeconds = Math.max(Math.floor(milliseconds / 1000), 0)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-}
-
-function mediaLabel(type) {
-  if (type === 'image') return 'Photo'
-  if (type === 'video') return 'Video'
-  if (type === 'voice') return 'Voice message'
-  return 'Message'
-}
-
-function getFileExtension(uri, mimeType, type) {
-  const uriExtension = uri?.split('?')?.[0]?.split('.')?.pop()?.toLowerCase()
-
-  if (uriExtension && uriExtension.length <= 5) return uriExtension
-  if (mimeType?.includes('png')) return 'png'
-  if (mimeType?.includes('webp')) return 'webp'
-  if (mimeType?.includes('jpeg')) return 'jpg'
-  if (mimeType?.includes('jpg')) return 'jpg'
-  if (mimeType?.includes('quicktime')) return 'mov'
-  if (mimeType?.includes('video')) return 'mp4'
-  if (mimeType?.includes('mpeg')) return 'mp3'
-  if (mimeType?.includes('webm')) return 'webm'
-  if (type === 'voice') return 'm4a'
-
-  return 'jpg'
-}
-
-function fallbackMimeType(type, extension) {
-  if (type === 'video') return extension === 'mov' ? 'video/quicktime' : 'video/mp4'
-  if (type === 'voice') return 'audio/mp4'
-  if (extension === 'png') return 'image/png'
-  if (extension === 'webp') return 'image/webp'
-
-  return 'image/jpeg'
-}
-
-function getPropertyId(property) {
-  if (!property?.id) return null
-
-  return String(property.id)
-}
-
-function getDirectTarget(routeParams) {
-  const owner = routeParams?.owner
-  const profile = routeParams?.profile
-  const property = routeParams?.property
-
-  if (owner?.id) {
-    return {
-      id: owner.id,
-      email: owner.email || profile?.email,
-      display_name: profile?.display_name || owner.name,
-      avatar_url: profile?.avatar_url,
-      is_verified: profile?.is_verified,
-    }
-  }
-
-  if (property?.owner_id) {
-    const ownerProfile = property.owner_profile || {}
-
-    return {
-      id: property.owner_id,
-      email: ownerProfile.email || property.owner_email,
-      display_name: ownerProfile.display_name || property.owner_name,
-      avatar_url: ownerProfile.avatar_url,
-      is_verified: ownerProfile.is_verified,
-    }
-  }
-
-  if (routeParams?.participant?.id) {
-    return routeParams.participant
-  }
-
-  return null
-}
 
 async function fetchProfiles(userIds) {
   const uniqueIds = [...new Set(userIds.filter(Boolean))]
@@ -216,142 +54,6 @@ async function fetchProfiles(userIds) {
     profilesById[profile.user_id] = profile
     return profilesById
   }, {})
-}
-
-async function uploadChatAsset({ uri, type, mimeType, userId }) {
-  const extension = getFileExtension(uri, mimeType, type)
-  const contentType = mimeType || fallbackMimeType(type, extension)
-  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
-  const path = `${userId}/${safeName}`
-  const response = await fetch(uri)
-  const arrayBuffer = await response.arrayBuffer()
-
-  const { data, error } = await supabase.storage
-    .from(CHAT_BUCKET)
-    .upload(path, arrayBuffer, {
-      contentType,
-      upsert: false,
-    })
-
-  if (error) throw error
-
-  const { data: publicUrlData } = supabase.storage.from(CHAT_BUCKET).getPublicUrl(data.path)
-
-  return {
-    mediaUrl: publicUrlData.publicUrl,
-    mediaMimeType: contentType,
-  }
-}
-
-function ChatVideo({ uri }) {
-  const player = useVideoPlayer(uri, (videoPlayer) => {
-    videoPlayer.loop = false
-  })
-
-  return (
-    <View
-      style={{
-        width: 232,
-        height: 154,
-        borderRadius: 14,
-        overflow: 'hidden',
-        backgroundColor: '#000',
-      }}
-    >
-      <VideoView
-        player={player}
-        style={{ width: '100%', height: '100%' }}
-        nativeControls
-        contentFit="cover"
-        fullscreenOptions={{ enable: true }}
-        allowsPictureInPicture
-        surfaceType="textureView"
-      />
-    </View>
-  )
-}
-
-function VoiceMessage({ message, isMine }) {
-  const player = useAudioPlayer(message.media_url, { updateInterval: 500 })
-  const status = useAudioPlayerStatus(player)
-  const isPlaying = Boolean(status?.playing)
-  const positionMillis = Math.floor((status?.currentTime || 0) * 1000)
-  const durationMillis =
-    message.audio_duration_ms || Math.floor((status?.duration || 0) * 1000)
-
-  function togglePlayback() {
-    try {
-      if (isPlaying) {
-        player.pause()
-      } else {
-        player.play()
-      }
-    } catch {
-      Alert.alert('Audio unavailable', 'This voice message could not be played.')
-    }
-  }
-
-  return (
-    <TouchableOpacity
-      onPress={togglePlayback}
-      activeOpacity={0.82}
-      style={{
-        width: 220,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 4,
-      }}
-    >
-      <View
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.28)' : '#dbeafe',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Ionicons
-          name={isPlaying ? 'pause' : 'play'}
-          size={18}
-          color={isMine ? '#fff' : '#1877F2'}
-        />
-      </View>
-
-      <View style={{ flex: 1, marginLeft: 10 }}>
-        <View
-          style={{
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: isMine ? 'rgba(255,255,255,0.28)' : '#cbd5e1',
-            overflow: 'hidden',
-          }}
-        >
-          <View
-            style={{
-              width: durationMillis
-                ? `${Math.min((positionMillis / durationMillis) * 100, 100)}%`
-                : '0%',
-              height: '100%',
-              backgroundColor: isMine ? '#fff' : '#1877F2',
-            }}
-          />
-        </View>
-
-        <Text
-          style={{
-            color: isMine ? 'rgba(255,255,255,0.86)' : '#64748b',
-            fontSize: 11,
-            fontWeight: '700',
-            marginTop: 5,
-          }}
-        >
-          {formatDuration(durationMillis || positionMillis)}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  )
 }
 
 export default function ChatScreen({ route, navigation }) {
@@ -374,13 +76,26 @@ export default function ChatScreen({ route, navigation }) {
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [openedFromList, setOpenedFromList] = useState(false)
-  const [otherPresence, setOtherPresence] = useState(null)
-  const [isTyping, setIsTyping] = useState(false)
+  const [mediaViewer, setMediaViewer] = useState({
+    visible: false,
+    media: [],
+    index: 0,
+  })
   const typingTimeoutRef = useRef(null)
-  const [presenceByUserId, setPresenceByUserId] = useState({})
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const canSend = Boolean(currentUser?.id && otherUser?.id && conversation?.id)
+  const {
+    presenceByUserId,
+    setPresenceByUserId,
+    updateMyPresence,
+    getChatStatusText,
+  } = useChatPresence({
+    currentUserId: currentUser?.id,
+    mode,
+    conversationId: conversation?.id,
+    otherUserId: otherUser?.id,
+  })
 
   const loadMessages = useCallback(async (conversationId, currentUserId, showLoader = false) => {
     if (!conversationId) return
@@ -451,17 +166,19 @@ export default function ChatScreen({ route, navigation }) {
     let presenceById = {}
 
     if (otherIds.length > 0) {
-      const { data: presenceRows } = await supabase
+      const { data: presenceRows, error: presenceError } = await supabase
         .from('user_presence')
         .select('user_id, is_online, last_seen_at')
         .in('user_id', otherIds)
 
-      presenceById = (presenceRows || []).reduce((acc, row) => {
-        acc[row.user_id] = row
-        return acc
-      }, {})
+      if (!presenceError) {
+        presenceById = (presenceRows || []).reduce((acc, row) => {
+          acc[row.user_id] = row
+          return acc
+        }, {})
 
-      setPresenceByUserId(presenceById)
+        setPresenceByUserId(presenceById)
+      }
     }
     const unreadCountsByConversation = {}
 
@@ -672,85 +389,6 @@ export default function ChatScreen({ route, navigation }) {
     }
   }, [messages.length, mode])
 
-  useEffect(() => {
-    if (mode !== 'list' || !currentUser?.id) return undefined
-
-    const channel = supabase
-      .channel(`message-list-presence-${currentUser.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_presence',
-        },
-        (payload) => {
-          const row = payload.new
-          if (!row?.user_id) return
-
-          setPresenceByUserId((previous) => ({
-            ...previous,
-            [row.user_id]: row,
-          }))
-
-          setConversationRows((previousRows) =>
-            previousRows.map((conversationItem) =>
-              conversationItem.other_user_id === row.user_id
-                ? { ...conversationItem, presence: row }
-                : conversationItem
-            )
-          )
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [currentUser?.id, mode])
-
-  async function updateMyPresence({ online = true, typing = false } = {}) {
-    if (!currentUser?.id) return
-
-    await supabase.from('user_presence').upsert({
-      user_id: currentUser.id,
-      is_online: online,
-      last_seen_at: new Date().toISOString(),
-      typing_conversation_id: typing ? conversation?.id : null,
-      typing_to_user_id: typing ? otherUser?.id : null,
-      typing_updated_at: typing ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-  }
-
-  function formatLastSeen(date) {
-    if (!date) return 'Offline'
-
-    const diffMs = Date.now() - new Date(date).getTime()
-    const diffMinutes = Math.floor(diffMs / 60000)
-
-    if (diffMinutes < 1) return 'Last seen just now'
-    if (diffMinutes < 60) return `Last seen ${diffMinutes} min ago`
-
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `Last seen ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-
-    return `Last seen ${new Date(date).toLocaleDateString()}`
-  }
-
-  function getChatStatusText() {
-    const typingFresh =
-      otherPresence?.typing_conversation_id === conversation?.id &&
-      otherPresence?.typing_to_user_id === currentUser?.id &&
-      otherPresence?.typing_updated_at &&
-      Date.now() - new Date(otherPresence.typing_updated_at).getTime() < 5000
-
-    if (typingFresh) return 'typing...'
-    if (otherPresence?.is_online) return 'Online'
-
-    return formatLastSeen(otherPresence?.last_seen_at)
-  }
-
   async function sendMessage({
     body = '',
     messageType = 'text',
@@ -837,11 +475,12 @@ export default function ChatScreen({ route, navigation }) {
     try {
       setUploading(true)
 
-      const uploadResult = await uploadChatAsset({
+      const uploadResult = await uploadMediaAsset({
         uri: asset.uri,
         type: messageType,
         mimeType: asset.mimeType,
         userId: currentUser.id,
+        bucket: CHAT_MEDIA_BUCKET,
       })
 
       await sendMessage({
@@ -897,11 +536,12 @@ export default function ChatScreen({ route, navigation }) {
         throw new Error('No recording file was created.')
       }
 
-      const uploadResult = await uploadChatAsset({
+      const uploadResult = await uploadMediaAsset({
         uri,
         type: 'voice',
         mimeType: 'audio/mp4',
         userId: currentUser.id,
+        bucket: CHAT_MEDIA_BUCKET,
       })
 
       await sendMessage({
@@ -954,279 +594,22 @@ export default function ChatScreen({ route, navigation }) {
     }
   }, [goBackFromChat, mode])
 
-  useEffect(() => {
-    if (!currentUser?.id) return undefined
+  const openMediaViewer = useCallback((media, index) => {
+    setMediaViewer({
+      visible: true,
+      media,
+      index,
+    })
+  }, [])
 
-    updateMyPresence({ online: true })
+  const closeMediaViewer = useCallback(() => {
+    setMediaViewer((current) => ({
+      ...current,
+      visible: false,
+    }))
+  }, [])
 
-    const interval = setInterval(() => {
-      updateMyPresence({ online: true })
-    }, 30000)
-
-    return () => {
-      clearInterval(interval)
-      updateMyPresence({ online: false, typing: false })
-    }
-  }, [currentUser?.id])
-
-  useEffect(() => {
-    if (!otherUser?.id || mode !== 'chat') return undefined
-
-    const loadOtherPresence = async () => {
-      const { data } = await supabase
-        .from('user_presence')
-        .select('*')
-        .eq('user_id', otherUser.id)
-        .maybeSingle()
-
-      setOtherPresence(data)
-    }
-
-    loadOtherPresence()
-
-    const channel = supabase
-      .channel(`presence-${otherUser.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_presence',
-          filter: `user_id=eq.${otherUser.id}`,
-        },
-        (payload) => {
-          setOtherPresence(payload.new)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [otherUser?.id, mode])
-
-  function renderConversation({ item }) {
-    const profile = item.other_profile
-    const name = getProfileName(profile)
-    const isLastMine = item.last_sender_id === currentUser?.id
-
-    return (
-      <TouchableOpacity
-        onPress={() => openConversation({ item, profile, fromList: true })}
-        activeOpacity={0.82}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingVertical: 13,
-          backgroundColor: '#fff',
-          borderBottomWidth: 1,
-          borderBottomColor: '#eef2f7',
-        }}
-      >
-        <View>
-          <Avatar profile={profile} name={name} size={52} />
-
-          {(item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online) ? (
-            <View
-              style={{
-                position: 'absolute',
-                right: 1,
-                bottom: 1,
-                width: 15,
-                height: 15,
-                borderRadius: 8,
-                backgroundColor: '#22c55e',
-                borderWidth: 2,
-                borderColor: '#fff',
-              }}
-            />
-          ) : null}
-        </View>
-
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text
-              style={{ flex: 1, color: '#111827', fontSize: 16, fontWeight: '900' }}
-              numberOfLines={1}
-            >
-              {name}
-            </Text>
-
-            <Text style={{ color: '#64748b', fontSize: 12, marginLeft: 8 }}>
-              {formatClock(item.last_message_at || item.created_at)}
-            </Text>
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
-            {isLastMine ? (
-              <Ionicons
-                name="checkmark-done"
-                size={15}
-                color="#64748b"
-                style={{ marginRight: 4 }}
-              />
-            ) : null}
-
-            <Text
-              style={{
-                flex: 1,
-                color: item.unread_count ? '#111827' : '#64748b',
-                fontWeight: item.unread_count ? '800' : '500',
-              }}
-              numberOfLines={1}
-            >
-              {item.last_message || 'Start the conversation'}
-            </Text>
-          </View>
-        </View>
-
-        {item.unread_count ? (
-          <View
-            style={{
-              minWidth: 22,
-              height: 22,
-              borderRadius: 11,
-              paddingHorizontal: 6,
-              backgroundColor: '#1877F2',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: 8,
-            }}
-          >
-            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>
-              {item.unread_count}
-            </Text>
-          </View>
-        ) : null}
-      </TouchableOpacity>
-    )
-  }
-
-  function renderMessageContent(item, isMine) {
-    if (item.message_type === 'image' && item.media_url) {
-      return (
-        <Image
-          source={{ uri: item.media_url }}
-          style={{
-            width: 232,
-            height: 188,
-            borderRadius: 14,
-            backgroundColor: isMine ? '#0f5fbf' : '#e5e7eb',
-          }}
-          resizeMode="cover"
-        />
-      )
-    }
-
-    if (item.message_type === 'video' && item.media_url) {
-      return <ChatVideo uri={item.media_url} />
-    }
-
-    if (item.message_type === 'voice' && item.media_url) {
-      return <VoiceMessage message={item} isMine={isMine} />
-    }
-
-    return (
-      <Text
-        style={{
-          color: isMine ? '#fff' : '#111827',
-          fontSize: 15,
-          lineHeight: 21,
-        }}
-      >
-        {item.body}
-      </Text>
-    )
-  }
-
-  function renderMessage({ item, index }) {
-    const previousMessage = messages[index - 1]
-    const shouldShowDay = !isSameDay(item.created_at, previousMessage?.created_at)
-    const isMine = item.sender_id === currentUser?.id
-
-    return (
-      <>
-        {shouldShowDay ? (
-          <View style={{ alignItems: 'center', marginVertical: 10 }}>
-            <View
-              style={{
-                backgroundColor: '#e2e8f0',
-                borderRadius: 12,
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-              }}
-            >
-              <Text style={{ color: '#475569', fontSize: 12, fontWeight: '800' }}>
-                {formatDayLabel(item.created_at)}
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
-        <View
-          style={{
-            alignItems: isMine ? 'flex-end' : 'flex-start',
-            paddingHorizontal: 12,
-            marginBottom: 8,
-          }}
-        >
-          <View
-            style={{
-              maxWidth: '82%',
-              backgroundColor: isMine ? '#1877F2' : '#fff',
-              borderRadius: 18,
-              borderBottomRightRadius: isMine ? 5 : 18,
-              borderBottomLeftRadius: isMine ? 18 : 5,
-              padding: item.message_type === 'text' ? 11 : 5,
-              borderWidth: isMine ? 0 : 1,
-              borderColor: '#e5e7eb',
-              shadowColor: '#0f172a',
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 1,
-            }}
-          >
-            {renderMessageContent(item, isMine)}
-
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-                marginTop: item.message_type === 'text' ? 4 : 6,
-                paddingHorizontal: item.message_type === 'text' ? 0 : 5,
-              }}
-            >
-              <Text
-                style={{
-                  color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
-                  fontSize: 10,
-                  fontWeight: '700',
-                }}
-              >
-                {formatClock(item.created_at)}
-              </Text>
-
-              {isMine ? (
-                <Text
-                  style={{
-                    color: item.seen_at ? '#9be7ff' : 'rgba(255,255,255,0.78)',
-                    marginLeft: 4,
-                    fontSize: 12,
-                    fontWeight: '900',
-                  }}
-                >
-                  {item.seen_at ? '✓✓' : '✓'}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        </View>
-      </>
-    )
-  }
+  const chatStatusText = getChatStatusText()
 
   if (loading && !conversation && conversationRows.length === 0) {
     return (
@@ -1281,7 +664,20 @@ export default function ChatScreen({ route, navigation }) {
         <FlatList
           data={conversationRows}
           keyExtractor={(item) => item.id}
-          renderItem={renderConversation}
+          renderItem={({ item }) => (
+            <ConversationRow
+              item={item}
+              currentUserId={currentUser?.id}
+              presenceByUserId={presenceByUserId}
+              onPress={() =>
+                openConversation({
+                  item,
+                  profile: item.other_profile,
+                  fromList: true,
+                })
+              }
+            />
+          )}
           refreshing={loading}
           onRefresh={() => loadConversationList(currentUser)}
           ListEmptyComponent={
@@ -1366,12 +762,12 @@ export default function ChatScreen({ route, navigation }) {
               </View>
               <Text
                 style={{
-                  color: getChatStatusText() === 'Online' ? '#16a34a' : '#64748b',
+                  color: chatStatusText === 'Online' ? '#16a34a' : '#64748b',
                   fontSize: 12,
-                  fontWeight: getChatStatusText() === 'typing...' ? '800' : '500',
+                  fontWeight: chatStatusText === 'typing...' ? '800' : '500',
                 }}
               >
-                {getChatStatusText()}
+                {chatStatusText}
               </Text>
             </View>
           </Pressable>
@@ -1426,7 +822,14 @@ export default function ChatScreen({ route, navigation }) {
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
+          renderItem={({ item, index }) => (
+            <MessageBubble
+              item={item}
+              previousMessage={messages[index - 1]}
+              currentUserId={currentUser?.id}
+              onOpenMedia={openMediaViewer}
+            />
+          )}
           contentContainerStyle={{ paddingTop: 10, paddingBottom: 8 }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           ListEmptyComponent={
@@ -1577,6 +980,13 @@ export default function ChatScreen({ route, navigation }) {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <MediaViewer
+        visible={mediaViewer.visible}
+        media={mediaViewer.media}
+        initialIndex={mediaViewer.index}
+        onClose={closeMediaViewer}
+      />
     </SafeAreaView>
   )
 }

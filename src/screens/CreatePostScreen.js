@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import * as ImagePicker from 'expo-image-picker'
+import { PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 
 export default function CreatePostScreen({ navigation }) {
   const [title, setTitle] = useState('')
@@ -18,50 +19,31 @@ export default function CreatePostScreen({ navigation }) {
   const [price, setPrice] = useState('')
   const [location, setLocation] = useState('')
   const [loading, setLoading] = useState(false)
-  const [image, setImage] = useState(null)
   const [media, setMedia] = useState([])
-
 
   async function pickMedia() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
-  
+
     if (!permission.granted) {
       Alert.alert('Permission needed', 'Please allow gallery access')
       return
     }
-  
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       allowsMultipleSelection: true,
       quality: 0.7,
     })
-  
+
     if (!result.canceled) {
       const selected = result.assets.map((asset) => ({
         uri: asset.uri,
         type: asset.type,
+        mimeType: asset.mimeType,
+        fileName: asset.fileName,
       }))
-  
-      setMedia([...media, ...selected])
-    }
-  }
 
-  async function pickImage() {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync()
-  
-    if (!permission.granted) {
-      Alert.alert('Permission needed')
-      return
-    }
-  
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    })
-  
-    if (!result.canceled) {
-      setImage(result.assets[0].uri)
+      setMedia((currentMedia) => [...currentMedia, ...selected])
     }
   }
 
@@ -76,7 +58,43 @@ export default function CreatePostScreen({ navigation }) {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    
+
+    if (!user) {
+      setLoading(false)
+      Alert.alert('Login required', 'Please log in again before posting.')
+      return
+    }
+
+    let uploadedMedia = []
+
+    try {
+      uploadedMedia = await Promise.all(
+        media.map(async (item) => {
+          const messageType = item.type === 'video' ? 'video' : 'image'
+          const uploadResult = await uploadMediaAsset({
+            uri: item.uri,
+            type: messageType,
+            mimeType: item.mimeType,
+            userId: user.id,
+            bucket: PROPERTY_MEDIA_BUCKET,
+          })
+
+          return {
+            uri: uploadResult.mediaUrl,
+            type: messageType,
+            mimeType: uploadResult.mediaMimeType,
+          }
+        })
+      )
+    } catch (error) {
+      setLoading(false)
+      Alert.alert(
+        'Media upload failed',
+        'Please run supabase-property-media-features.sql in Supabase, then try again.'
+      )
+      return
+    }
+
     const { error } = await supabase.from('properties').insert({
       title,
       description,
@@ -85,8 +103,8 @@ export default function CreatePostScreen({ navigation }) {
       owner_id: user.id,
       owner_email: user.email,
       owner_name: user.user_metadata?.name || user.email,
-      image_url: media[0]?.uri || null,
-      media: media,
+      image_url: uploadedMedia[0]?.uri || null,
+      media: uploadedMedia,
     })
 
     setLoading(false)
@@ -215,11 +233,11 @@ export default function CreatePostScreen({ navigation }) {
     flexDirection: 'row',
     justifyContent: 'center',
   }}
->
-  <Ionicons name="images-outline" size={22} color="#555" />
+        >
+          <Ionicons name="images-outline" size={22} color="#555" />
 
-  <Text style={{ marginLeft: 8, color: '#555', fontWeight: '600' }}>
-    Add Photos / Videos
+          <Text style={{ marginLeft: 8, color: '#555', fontWeight: '600' }}>
+            Add Photos / Videos
   </Text>
 </TouchableOpacity>
 
@@ -246,20 +264,8 @@ export default function CreatePostScreen({ navigation }) {
         />
       )}
     </View>
-  ))}
-</ScrollView>
-
-{image ? (
-  <Image
-    source={{ uri: image }}
-    style={{
-      width: '100%',
-      height: 220,
-      borderRadius: 12,
-      marginBottom: 18,
-    }}
-  />
-) : null}
+          ))}
+        </ScrollView>
 
         {/* POST BUTTON */}
         <TouchableOpacity

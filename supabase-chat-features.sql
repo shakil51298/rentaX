@@ -49,11 +49,23 @@ create index if not exists chat_messages_conversation_created_at_idx
 create index if not exists chat_messages_receiver_seen_idx
   on public.chat_messages(receiver_id, seen_at);
 
+create table if not exists public.user_presence (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  is_online boolean not null default false,
+  last_seen_at timestamptz,
+  typing_conversation_id uuid references public.chat_conversations(id) on delete set null,
+  typing_to_user_id uuid references auth.users(id) on delete set null,
+  typing_updated_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.chat_conversations enable row level security;
 alter table public.chat_messages enable row level security;
+alter table public.user_presence enable row level security;
 
 grant select, insert, update on public.chat_conversations to authenticated;
 grant select, insert, update on public.chat_messages to authenticated;
+grant select, insert, update on public.user_presence to authenticated;
 
 do $$
 begin
@@ -149,6 +161,43 @@ begin
       using (auth.uid() = receiver_id)
       with check (auth.uid() = receiver_id);
   end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'user_presence'
+      and policyname = 'Authenticated users can read presence'
+  ) then
+    create policy "Authenticated users can read presence"
+      on public.user_presence
+      for select
+      using (auth.role() = 'authenticated');
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'user_presence'
+      and policyname = 'Users can create their presence'
+  ) then
+    create policy "Users can create their presence"
+      on public.user_presence
+      for insert
+      with check (auth.uid() = user_id);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'user_presence'
+      and policyname = 'Users can update their presence'
+  ) then
+    create policy "Users can update their presence"
+      on public.user_presence
+      for update
+      using (auth.uid() = user_id)
+      with check (auth.uid() = user_id);
+  end if;
 end $$;
 
 insert into storage.buckets (
@@ -223,6 +272,13 @@ begin
 
   begin
     alter publication supabase_realtime add table public.chat_messages;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.user_presence;
   exception
     when duplicate_object then null;
     when undefined_object then null;
