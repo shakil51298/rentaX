@@ -12,6 +12,8 @@ import {
   Modal,
   Share,
   Pressable,
+  Image,
+  Keyboard,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -41,7 +43,7 @@ import {
 } from '../lib/commentUtils'
 import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
-import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
+import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 
 function formatCurrency(value) {
@@ -151,6 +153,138 @@ function FilterSection({ title, subtitle, children }) {
   )
 }
 
+function getShortLocationLabel(location) {
+  if (!location) return ''
+
+  return String(location)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)[0]
+}
+
+function getSearchTextForPost(post) {
+  const ownerProfile = post.owner_profile || {}
+  const ownerName = getProfileName(
+    {
+      ...ownerProfile,
+      display_name: ownerProfile.display_name || post.owner_name,
+      email: ownerProfile.email || post.owner_email,
+    },
+    'Property Owner'
+  )
+
+  return [
+    post.title,
+    post.description,
+    post.location,
+    ownerName,
+    post.price ? String(post.price) : '',
+    post.status === 'rented' ? 'rented rented out unavailable' : 'open for rent available',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function SearchResultRow({ item, onPress }) {
+  const ownerProfile = item.owner_profile || {}
+  const ownerName = getProfileName(
+    {
+      ...ownerProfile,
+      display_name: ownerProfile.display_name || item.owner_name,
+      email: ownerProfile.email || item.owner_email,
+    },
+    'Property Owner'
+  )
+  const media = normalizeMediaList(item.media?.length ? item.media : item.image_url ? [item.image_url] : [])
+  const previewMedia = media[0]
+  const locationLabel = getShortLocationLabel(item.location)
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPress(item)}
+      activeOpacity={0.9}
+      style={{
+        backgroundColor: '#fff',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        padding: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+      }}
+    >
+      <View
+        style={{
+          width: 62,
+          height: 62,
+          borderRadius: 14,
+          overflow: 'hidden',
+          backgroundColor: '#e2e8f0',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {previewMedia?.type === 'image' ? (
+          <Image
+            source={{ uri: previewMedia.uri }}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode="cover"
+          />
+        ) : previewMedia?.type === 'video' ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="play-circle" size={28} color="#0f172a" />
+          </View>
+        ) : (
+          <Ionicons name="home-outline" size={24} color="#64748b" />
+        )}
+      </View>
+
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text numberOfLines={1} style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>
+          {item.title || 'Property post'}
+        </Text>
+        <Text numberOfLines={1} style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+          {ownerName}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+          {locationLabel ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+                borderRadius: 999,
+                paddingHorizontal: 7,
+                paddingVertical: 3,
+                marginRight: 6,
+              }}
+            >
+              <Ionicons name="location-outline" size={10} color="#64748b" style={{ marginRight: 3 }} />
+              <Text style={{ color: '#475569', fontSize: 10, fontWeight: '800' }}>{locationLabel}</Text>
+            </View>
+          ) : null}
+
+          <View
+            style={{
+              backgroundColor: '#fff7ed',
+              borderRadius: 999,
+              paddingHorizontal: 7,
+              paddingVertical: 3,
+            }}
+          >
+            <Text style={{ color: '#ea580c', fontSize: 10, fontWeight: '900' }}>
+              {formatCurrency(item.price)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <Ionicons name="arrow-forward" size={18} color="#94a3b8" />
+    </TouchableOpacity>
+  )
+}
+
 export default function HomeScreen({ navigation, route }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -167,6 +301,10 @@ export default function HomeScreen({ navigation, route }) {
   const [locationFullLabel, setLocationFullLabel] = useState('Detecting location...')
   const [locationLoading, setLocationLoading] = useState(false)
   const [filterModalVisible, setFilterModalVisible] = useState(false)
+  const [searchModalVisible, setSearchModalVisible] = useState(false)
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
+  const [draftSearchQuery, setDraftSearchQuery] = useState('')
+  const [recentSearches, setRecentSearches] = useState([])
   const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
   const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
   const [mediaViewer, setMediaViewer] = useState({
@@ -251,6 +389,42 @@ export default function HomeScreen({ navigation, route }) {
 
     return items
   }, [appliedFilters, priceCeiling, properties])
+
+  const searchResults = useMemo(() => {
+    const query = (draftSearchQuery || '').trim().toLowerCase()
+
+    if (!query) return []
+
+    return filteredProperties.filter((post) => getSearchTextForPost(post).includes(query))
+  }, [draftSearchQuery, filteredProperties])
+
+  const visibleProperties = useMemo(() => {
+    const query = (appliedSearchQuery || '').trim().toLowerCase()
+
+    if (!query) return filteredProperties
+
+    return filteredProperties.filter((post) => getSearchTextForPost(post).includes(query))
+  }, [appliedSearchQuery, filteredProperties])
+
+  const suggestionChips = useMemo(() => {
+    const locations = filteredProperties
+      .map((post) => getShortLocationLabel(post.location))
+      .filter(Boolean)
+    const owners = filteredProperties
+      .map((post) =>
+        getProfileName(
+          {
+            ...(post.owner_profile || {}),
+            display_name: post.owner_profile?.display_name || post.owner_name,
+            email: post.owner_profile?.email || post.owner_email,
+          },
+          'Property Owner'
+        )
+      )
+      .filter(Boolean)
+
+    return [...new Set([...locations, ...owners])].slice(0, 8)
+  }, [filteredProperties])
 
   useEffect(() => {
     loadUser()
@@ -601,6 +775,44 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     updateDraftFilter('location', detectedLabel)
+  }
+
+  function openSearch() {
+    setDraftSearchQuery(appliedSearchQuery)
+    setSearchModalVisible(true)
+  }
+
+  function closeSearch() {
+    Keyboard.dismiss()
+    setSearchModalVisible(false)
+  }
+
+  function rememberSearch(value) {
+    const cleanedValue = (value || '').trim()
+    if (!cleanedValue) return
+
+    setRecentSearches((current) => [
+      cleanedValue,
+      ...current.filter((item) => item.toLowerCase() !== cleanedValue.toLowerCase()),
+    ].slice(0, 6))
+  }
+
+  function applySearch(value = draftSearchQuery) {
+    const cleanedValue = (value || '').trim()
+    setAppliedSearchQuery(cleanedValue)
+    rememberSearch(cleanedValue)
+    closeSearch()
+  }
+
+  function clearSearch() {
+    setDraftSearchQuery('')
+    setAppliedSearchQuery('')
+  }
+
+  function openSearchResult(post) {
+    rememberSearch(draftSearchQuery)
+    closeSearch()
+    navigation.navigate('Property', { property: post })
   }
 
   async function selectReaction(propertyId, reaction) {
@@ -1233,7 +1445,7 @@ export default function HomeScreen({ navigation, route }) {
 
   const showInitialLoader = loading && properties.length === 0
   const canCreatePosts = currentUser?.user_metadata?.user_type === 'property_owner'
-  const showFilteredEmptyState = !showInitialLoader && filteredProperties.length === 0
+  const showFilteredEmptyState = !showInitialLoader && visibleProperties.length === 0
 
   function CreatePostBox() {
     return (
@@ -1367,22 +1579,62 @@ export default function HomeScreen({ navigation, route }) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            onPress={openSearch}
             style={{
               width: 38,
               height: 38,
               borderRadius: 19,
-              backgroundColor: '#f1f1f1',
+              backgroundColor: appliedSearchQuery ? '#eff6ff' : '#f1f1f1',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="search" size={22} color="#111" />
+            <Ionicons
+              name="search"
+              size={20}
+              color={appliedSearchQuery ? '#2563eb' : '#111'}
+            />
           </TouchableOpacity>
         </View>
       </View>
 
+      {appliedSearchQuery ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            paddingHorizontal: 16,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: '#eee',
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#eff6ff',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
+              <Ionicons name="search" size={15} color="#2563eb" style={{ marginRight: 7 }} />
+              <Text numberOfLines={1} style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '800', flexShrink: 1 }}>
+                Searching: {appliedSearchQuery}
+              </Text>
+            </View>
+
+            <TouchableOpacity onPress={clearSearch}>
+              <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       <FlatList
-        data={filteredProperties}
+        data={visibleProperties}
         keyExtractor={(item) => item.id}
         renderItem={renderPost}
         ListHeaderComponent={canCreatePosts ? <CreatePostBox /> : null}
@@ -1392,13 +1644,21 @@ export default function HomeScreen({ navigation, route }) {
           ) : showFilteredEmptyState ? (
             <View style={{ paddingHorizontal: 22, paddingTop: 28, alignItems: 'center' }}>
               <Text style={{ fontSize: 15, fontWeight: '800', color: '#0f172a' }}>
-                No ads match these filters
+                {appliedSearchQuery ? 'No ads match this search' : 'No ads match these filters'}
               </Text>
               <Text style={{ marginTop: 6, fontSize: 12, color: '#64748b', textAlign: 'center' }}>
-                Try a wider budget, another area, or reset the filters.
+                {appliedSearchQuery
+                  ? 'Try another keyword, owner name, or area.'
+                  : 'Try a wider budget, another area, or reset the filters.'}
               </Text>
               <TouchableOpacity
-                onPress={() => setAppliedFilters(createDefaultFilters(priceCeiling))}
+                onPress={() => {
+                  if (appliedSearchQuery) {
+                    clearSearch()
+                  } else {
+                    setAppliedFilters(createDefaultFilters(priceCeiling))
+                  }
+                }}
                 style={{
                   marginTop: 14,
                   paddingHorizontal: 14,
@@ -1408,7 +1668,7 @@ export default function HomeScreen({ navigation, route }) {
                 }}
               >
                 <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>
-                  Clear filters
+                  {appliedSearchQuery ? 'Clear search' : 'Clear filters'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1424,6 +1684,154 @@ export default function HomeScreen({ navigation, route }) {
         updateCellsBatchingPeriod={60}
         windowSize={7}
       />
+
+      <Modal
+        visible={searchModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeSearch}
+      >
+        <Pressable
+          onPress={closeSearch}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.32)',
+            paddingHorizontal: 12,
+            paddingTop: 54,
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: '#dbe4ee',
+              maxHeight: '80%',
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: '#eef2f7' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#dbe4ee',
+                  paddingHorizontal: 12,
+                  height: 48,
+                }}
+              >
+                <Ionicons name="search" size={18} color="#64748b" />
+                <TextInput
+                  value={draftSearchQuery}
+                  onChangeText={setDraftSearchQuery}
+                  onSubmitEditing={() => applySearch()}
+                  autoFocus
+                  placeholder="Search by area, owner, title, or rent"
+                  placeholderTextColor="#94a3b8"
+                  style={{ flex: 1, marginLeft: 8, color: '#0f172a', fontSize: 14 }}
+                  returnKeyType="search"
+                />
+                {draftSearchQuery ? (
+                  <TouchableOpacity onPress={() => setDraftSearchQuery('')}>
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800' }}>
+                  {draftSearchQuery
+                    ? `${searchResults.length} results ready`
+                    : 'Search rentals fast'}
+                </Text>
+
+                <TouchableOpacity onPress={closeSearch}>
+                  <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: 480 }}
+              contentContainerStyle={{ padding: 14, gap: 12 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {!draftSearchQuery ? (
+                <>
+                  {recentSearches.length > 0 ? (
+                    <FilterSection title="Recent searches">
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {recentSearches.map((term) => (
+                          <FilterChip
+                            key={term}
+                            label={term}
+                            icon="time-outline"
+                            active={false}
+                            onPress={() => setDraftSearchQuery(term)}
+                          />
+                        ))}
+                      </View>
+                    </FilterSection>
+                  ) : null}
+
+                  <FilterSection title="Popular shortcuts" subtitle="Tap a quick term to search instantly.">
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {suggestionChips.map((term) => (
+                        <FilterChip
+                          key={term}
+                          label={term}
+                          icon="sparkles-outline"
+                          active={false}
+                          onPress={() => setDraftSearchQuery(term)}
+                        />
+                      ))}
+                    </View>
+                  </FilterSection>
+                </>
+              ) : searchResults.length > 0 ? (
+                <>
+                  <FilterSection title="Live results" subtitle="Open a post directly or apply this search to the feed.">
+                    <View style={{ gap: 10 }}>
+                      {searchResults.slice(0, 6).map((item) => (
+                        <SearchResultRow key={item.id} item={item} onPress={openSearchResult} />
+                      ))}
+                    </View>
+                  </FilterSection>
+
+                  <TouchableOpacity
+                    onPress={() => applySearch()}
+                    style={{
+                      height: 46,
+                      borderRadius: 16,
+                      backgroundColor: '#2563eb',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>
+                      Show {searchResults.length} result{searchResults.length === 1 ? '' : 's'} in feed
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={{ paddingVertical: 10 }}>
+                  <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>
+                    No results for "{draftSearchQuery}"
+                  </Text>
+                  <Text style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
+                    Try another area, owner name, post title, or a lower rent number.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={filterModalVisible}
