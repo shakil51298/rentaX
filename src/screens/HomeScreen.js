@@ -41,6 +41,13 @@ import {
   removeCommentFromTree,
   updateCommentTree,
 } from '../lib/commentUtils'
+import {
+  getHomeLocationArea,
+  loadSeenHomePostIds,
+  mergeSeenHomePostIds,
+  rankHomePosts,
+  saveSeenHomePostIds,
+} from '../lib/homeFeed'
 import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
@@ -241,7 +248,7 @@ function createDefaultFilters(maxPrice) {
     maxPrice,
     status: 'all',
     media: 'all',
-    sort: 'newest',
+    sort: 'smart',
     verifiedOnly: false,
   }
 }
@@ -267,7 +274,7 @@ function countActiveFilters(filters, maxPrice) {
     Number(filters.maxPrice) < Number(maxPrice || 0),
     filters.status !== 'all',
     filters.media !== 'all',
-    filters.sort !== 'newest',
+    filters.sort !== 'smart',
     Boolean(filters.verifiedOnly),
   ].filter(Boolean).length
 }
@@ -497,6 +504,7 @@ export default function HomeScreen({ navigation, route }) {
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
   const [draftSearchQuery, setDraftSearchQuery] = useState('')
   const [recentSearches, setRecentSearches] = useState([])
+  const [seenPostIds, setSeenPostIds] = useState([])
   const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
   const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
   const [mediaViewer, setMediaViewer] = useState({
@@ -508,21 +516,44 @@ export default function HomeScreen({ navigation, route }) {
   const handledCommentRouteRequest = useRef(null)
   const commentReturnRoute = useRef(null)
   const manualLocationOverride = useRef(false)
+  const postListRef = useRef(null)
+  const currentUserIdRef = useRef(null)
+  const seenPostIdsRef = useRef([])
+  const viewabilityConfig = useRef({
+    minimumViewTime: 650,
+    itemVisiblePercentThreshold: 55,
+  }).current
 
   function formatLocationLabel(value) {
     if (!value) return ''
     return value.length > 5 ? `${value.slice(0, 5)}..` : value
   }
 
+  useEffect(() => {
+    currentUserIdRef.current = currentUser?.id || null
+  }, [currentUser?.id])
+
+  useEffect(() => {
+    seenPostIdsRef.current = seenPostIds
+  }, [seenPostIds])
+
   const priceCeiling = useMemo(() => getPriceCeiling(properties), [properties])
   const activeFilterCount = useMemo(
     () => countActiveFilters(appliedFilters, priceCeiling),
     [appliedFilters, priceCeiling]
   )
+  const defaultLocationArea = useMemo(
+    () => getHomeLocationArea(locationFullLabel),
+    [locationFullLabel]
+  )
+  const rankedProperties = useMemo(
+    () => rankHomePosts(properties, { userArea: defaultLocationArea, seenPostIds }),
+    [defaultLocationArea, properties, seenPostIds]
+  )
 
   const filteredProperties = useMemo(() => {
     const locationNeedle = (appliedFilters.location || '').trim().toLowerCase()
-    const items = properties
+    const items = rankedProperties
       .filter((post) => {
         const price = getPropertyPrice(post)
         const status = post.status || 'open'
@@ -561,26 +592,30 @@ export default function HomeScreen({ navigation, route }) {
 
         return true
       })
-      .sort((leftPost, rightPost) => {
-        const leftPrice = getPropertyPrice(leftPost)
-        const rightPrice = getPropertyPrice(rightPost)
-        const leftDate = new Date(leftPost.created_at || 0).getTime()
-        const rightDate = new Date(rightPost.created_at || 0).getTime()
+    if (appliedFilters.sort === 'smart') {
+      return items
+    }
 
-        switch (appliedFilters.sort) {
-          case 'oldest':
-            return leftDate - rightDate
-          case 'price_low':
-            return leftPrice - rightPrice
-          case 'price_high':
-            return rightPrice - leftPrice
-          default:
-            return rightDate - leftDate
-        }
-      })
+    return [...items].sort((leftPost, rightPost) => {
+      const leftPrice = getPropertyPrice(leftPost)
+      const rightPrice = getPropertyPrice(rightPost)
+      const leftDate = new Date(leftPost.created_at || 0).getTime()
+      const rightDate = new Date(rightPost.created_at || 0).getTime()
 
-    return items
-  }, [appliedFilters, priceCeiling, properties])
+      switch (appliedFilters.sort) {
+        case 'oldest':
+          return leftDate - rightDate
+        case 'price_low':
+          return leftPrice - rightPrice
+        case 'price_high':
+          return rightPrice - leftPrice
+        case 'newest':
+          return rightDate - leftDate
+        default:
+          return 0
+      }
+    })
+  }, [appliedFilters, priceCeiling, rankedProperties])
 
   const searchResults = useMemo(() => {
     const query = normalizeSearchText(draftSearchQuery)
@@ -670,6 +705,31 @@ export default function HomeScreen({ navigation, route }) {
     setAppliedFilters((current) => normalizeFilters(current, priceCeiling))
     setDraftFilters((current) => normalizeFilters(current, priceCeiling))
   }, [priceCeiling])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function hydrateSeenPosts() {
+      if (!currentUser?.id) {
+        if (isMounted) {
+          setSeenPostIds([])
+        }
+        return
+      }
+
+      const cachedPostIds = await loadSeenHomePostIds(currentUser.id)
+
+      if (isMounted) {
+        setSeenPostIds(cachedPostIds)
+      }
+    }
+
+    hydrateSeenPosts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentUser?.id])
 
   useFocusEffect(
     useCallback(() => {
@@ -965,8 +1025,10 @@ export default function HomeScreen({ navigation, route }) {
     setNotificationUnreadCount(await getUnreadNotificationCount(userId))
   }
 
-  async function loadProperties() {
-    setLoading(true)
+  async function loadProperties(options = {}) {
+    if (!options.silent) {
+      setLoading(true)
+    }
 
     try {
       setProperties(await fetchPropertiesWithProfiles())
@@ -974,7 +1036,44 @@ export default function HomeScreen({ navigation, route }) {
       Alert.alert('Error', error.message)
     }
 
-    setLoading(false)
+    if (!options.silent) {
+      setLoading(false)
+    }
+  }
+
+  async function markPostsAsSeen(postIds) {
+    if (!currentUser?.id || !postIds?.length) return
+
+    const normalizedIds = postIds.map((id) => String(id)).filter(Boolean)
+    const nextSeenIds = mergeSeenHomePostIds(seenPostIdsRef.current, normalizedIds)
+
+    if (nextSeenIds.length === seenPostIdsRef.current.length) {
+      return
+    }
+
+    seenPostIdsRef.current = nextSeenIds
+    setSeenPostIds(nextSeenIds)
+    await saveSeenHomePostIds(currentUser.id, nextSeenIds)
+  }
+
+  async function refreshHomeFeed({ scrollToTop = false } = {}) {
+    await loadProperties()
+
+    if (scrollToTop) {
+      postListRef.current?.scrollToOffset?.({
+        animated: true,
+        offset: 0,
+      })
+    }
+  }
+
+  function handleMainTabPress(tabKey, { isActive }) {
+    if (tabKey !== 'home' || !isActive) {
+      return false
+    }
+
+    refreshHomeFeed({ scrollToTop: true })
+    return true
   }
 
   function openFilters() {
@@ -1278,6 +1377,7 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   async function openComments(post) {
+    markPostsAsSeen([post.id])
     commentReturnRoute.current = null
     setSelectedPost(post)
     setReplyTarget(null)
@@ -1674,9 +1774,34 @@ export default function HomeScreen({ navigation, route }) {
       onShare={sharePost}
       onOpenMedia={openMediaViewer}
       onOpenOwnerProfile={openOwnerProfile}
-      onOpenPost={(post) => navigation.navigate('Property', { property: post })}
+      onOpenPost={(post) => {
+        markPostsAsSeen([post.id])
+        navigation.navigate('Property', { property: post })
+      }}
     />
   ), [currentUser, navigation, openMediaViewer, openOwnerProfile])
+  const handleViewableItemsChanged = useRef(({ viewableItems }) => {
+    const userId = currentUserIdRef.current
+
+    if (!userId) return
+
+    const visibleIds = viewableItems
+      .map((entry) => entry?.item?.id)
+      .filter(Boolean)
+      .map((id) => String(id))
+
+    if (!visibleIds.length) return
+
+    const nextSeenIds = mergeSeenHomePostIds(seenPostIdsRef.current, visibleIds)
+
+    if (nextSeenIds.length === seenPostIdsRef.current.length) {
+      return
+    }
+
+    seenPostIdsRef.current = nextSeenIds
+    setSeenPostIds(nextSeenIds)
+    saveSeenHomePostIds(userId, nextSeenIds)
+  }).current
 
   const showInitialLoader = loading && properties.length === 0
   const canCreatePosts = currentUser?.user_metadata?.user_type === 'property_owner'
@@ -1869,9 +1994,12 @@ export default function HomeScreen({ navigation, route }) {
       ) : null}
 
       <FlatList
+        ref={postListRef}
         data={visibleProperties}
         keyExtractor={(item) => item.id}
         renderItem={renderPost}
+        onViewableItemsChanged={handleViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         ListHeaderComponent={canCreatePosts ? <CreatePostBox /> : null}
         ListEmptyComponent={
           showInitialLoader ? (
@@ -2289,6 +2417,11 @@ export default function HomeScreen({ navigation, route }) {
               <FilterSection title="Sort">
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   <FilterChip
+                    label="Smart"
+                    active={draftFilters.sort === 'smart'}
+                    onPress={() => updateDraftFilter('sort', 'smart')}
+                  />
+                  <FilterChip
                     label="Newest"
                     active={draftFilters.sort === 'newest'}
                     onPress={() => updateDraftFilter('sort', 'newest')}
@@ -2498,6 +2631,7 @@ export default function HomeScreen({ navigation, route }) {
         activeTab="home"
         messageUnreadCount={messageUnreadCount}
         notificationUnreadCount={notificationUnreadCount}
+        onTabPress={handleMainTabPress}
       />
       </SwipeTabView>
     </SafeAreaView>

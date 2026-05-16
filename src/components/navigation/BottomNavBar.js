@@ -44,6 +44,7 @@ export default function BottomNavBar({
   activeTab = 'home',
   messageUnreadCount,
   notificationUnreadCount,
+  onTabPress,
 }) {
   const [counts, setCounts] = useState({
     messageUnreadCount: messageUnreadCount ?? 0,
@@ -185,7 +186,13 @@ export default function BottomNavBar({
         return (
           <TouchableOpacity
             key={tab.key}
-            onPress={() => navigateToMainTab(navigation, tab.screen)}
+            onPress={() => {
+              const wasHandled = onTabPress?.(tab.key, { isActive, screen: tab.screen })
+
+              if (!wasHandled) {
+                navigateToMainTab(navigation, tab.screen)
+              }
+            }}
             style={{ minWidth: 44, alignItems: 'center' }}
           >
             <View>
