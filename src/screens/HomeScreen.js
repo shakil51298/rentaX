@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -11,10 +11,12 @@ import {
   TextInput,
   Modal,
   Share,
+  Pressable,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
+import Slider from '@react-native-community/slider'
 import * as Location from 'expo-location'
 import { supabase } from '../lib/supabase'
 import {
@@ -37,8 +39,116 @@ import {
   removeCommentFromTree,
   updateCommentTree,
 } from '../lib/commentUtils'
+import { normalizeMediaList } from '../lib/media'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
+
+function formatCurrency(value) {
+  return `৳ ${Number(value || 0).toLocaleString()}`
+}
+
+function getPropertyPrice(post) {
+  const price = Number(post?.price || 0)
+  return Number.isFinite(price) ? price : 0
+}
+
+function getPriceCeiling(posts) {
+  const detectedMax = Math.max(...posts.map(getPropertyPrice), 0)
+
+  if (detectedMax <= 10000) return 10000
+  if (detectedMax <= 50000) return Math.ceil(detectedMax / 5000) * 5000
+
+  return Math.ceil(detectedMax / 10000) * 10000
+}
+
+function createDefaultFilters(maxPrice) {
+  return {
+    location: '',
+    minPrice: 0,
+    maxPrice,
+    status: 'all',
+    media: 'all',
+    sort: 'newest',
+    verifiedOnly: false,
+  }
+}
+
+function normalizeFilters(filters, maxPrice) {
+  const safeMax = Math.max(maxPrice || 0, 0)
+  const nextMin = Math.max(0, Math.min(Number(filters.minPrice || 0), safeMax))
+  const nextMax = Math.max(nextMin, Math.min(Number(filters.maxPrice || safeMax), safeMax))
+
+  return {
+    ...createDefaultFilters(safeMax),
+    ...filters,
+    location: (filters.location || '').trim(),
+    minPrice: nextMin,
+    maxPrice: nextMax,
+  }
+}
+
+function countActiveFilters(filters, maxPrice) {
+  return [
+    Boolean(filters.location?.trim()),
+    Number(filters.minPrice) > 0,
+    Number(filters.maxPrice) < Number(maxPrice || 0),
+    filters.status !== 'all',
+    filters.media !== 'all',
+    filters.sort !== 'newest',
+    Boolean(filters.verifiedOnly),
+  ].filter(Boolean).length
+}
+
+function FilterChip({ label, active, onPress, icon }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.86}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 11,
+        paddingVertical: 8,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: active ? '#bfdbfe' : '#dbe4ee',
+        backgroundColor: active ? '#eff6ff' : '#fff',
+      }}
+    >
+      {icon ? (
+        <Ionicons
+          name={icon}
+          size={13}
+          color={active ? '#2563eb' : '#64748b'}
+          style={{ marginRight: 5 }}
+        />
+      ) : null}
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '800',
+          color: active ? '#1d4ed8' : '#475569',
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
+function FilterSection({ title, subtitle, children }) {
+  return (
+    <View style={{ gap: 10 }}>
+      <View>
+        <Text style={{ fontSize: 13, fontWeight: '900', color: '#0f172a' }}>{title}</Text>
+        {subtitle ? (
+          <Text style={{ marginTop: 3, fontSize: 11, color: '#64748b' }}>{subtitle}</Text>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  )
+}
 
 export default function HomeScreen({ navigation, route }) {
   const [properties, setProperties] = useState([])
@@ -55,6 +165,9 @@ export default function HomeScreen({ navigation, route }) {
   const [locationLabel, setLocationLabel] = useState('Detecting location...')
   const [locationFullLabel, setLocationFullLabel] = useState('Detecting location...')
   const [locationLoading, setLocationLoading] = useState(false)
+  const [filterModalVisible, setFilterModalVisible] = useState(false)
+  const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
+  const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -70,10 +183,83 @@ export default function HomeScreen({ navigation, route }) {
     return value.length > 5 ? `${value.slice(0, 5)}..` : value
   }
 
+  const priceCeiling = useMemo(() => getPriceCeiling(properties), [properties])
+  const activeFilterCount = useMemo(
+    () => countActiveFilters(appliedFilters, priceCeiling),
+    [appliedFilters, priceCeiling]
+  )
+
+  const filteredProperties = useMemo(() => {
+    const locationNeedle = (appliedFilters.location || '').trim().toLowerCase()
+    const items = properties
+      .filter((post) => {
+        const price = getPropertyPrice(post)
+        const status = post.status || 'open'
+        const postMedia = normalizeMediaList(post.media?.length ? post.media : post.image_url ? [post.image_url] : [])
+        const hasVideo = postMedia.some((item) => item.type === 'video')
+        const hasImage = postMedia.some((item) => item.type === 'image')
+        const searchableLocation = `${post.location || ''} ${post.title || ''} ${post.description || ''}`.toLowerCase()
+
+        if (locationNeedle && !searchableLocation.includes(locationNeedle)) {
+          return false
+        }
+
+        if (price < Number(appliedFilters.minPrice || 0)) {
+          return false
+        }
+
+        if (price > Number(appliedFilters.maxPrice || priceCeiling)) {
+          return false
+        }
+
+        if (appliedFilters.status !== 'all' && status !== appliedFilters.status) {
+          return false
+        }
+
+        if (appliedFilters.media === 'photos' && !hasImage) {
+          return false
+        }
+
+        if (appliedFilters.media === 'videos' && !hasVideo) {
+          return false
+        }
+
+        if (appliedFilters.verifiedOnly && !post.owner_profile?.is_verified) {
+          return false
+        }
+
+        return true
+      })
+      .sort((leftPost, rightPost) => {
+        const leftPrice = getPropertyPrice(leftPost)
+        const rightPrice = getPropertyPrice(rightPost)
+        const leftDate = new Date(leftPost.created_at || 0).getTime()
+        const rightDate = new Date(rightPost.created_at || 0).getTime()
+
+        switch (appliedFilters.sort) {
+          case 'oldest':
+            return leftDate - rightDate
+          case 'price_low':
+            return leftPrice - rightPrice
+          case 'price_high':
+            return rightPrice - leftPrice
+          default:
+            return rightDate - leftDate
+        }
+      })
+
+    return items
+  }, [appliedFilters, priceCeiling, properties])
+
   useEffect(() => {
     loadUser()
     loadProperties()
   }, [])
+
+  useEffect(() => {
+    setAppliedFilters((current) => normalizeFilters(current, priceCeiling))
+    setDraftFilters((current) => normalizeFilters(current, priceCeiling))
+  }, [priceCeiling])
 
   useFocusEffect(
     useCallback(() => {
@@ -338,7 +524,7 @@ export default function HomeScreen({ navigation, route }) {
         setLocationFullLabel('Location off')
         setLocationLabel(formatLocationLabel('Location off'))
         setLocationLoading(false)
-        return
+        return 'Location off'
       }
 
       const position = await Location.getCurrentPositionAsync({
@@ -361,9 +547,11 @@ export default function HomeScreen({ navigation, route }) {
 
       setLocationFullLabel(label)
       setLocationLabel(formatLocationLabel(label))
+      return label
     } catch (_error) {
       setLocationFullLabel('Location unavailable')
       setLocationLabel(formatLocationLabel('Location unavailable'))
+      return 'Location unavailable'
     } finally {
       setLocationLoading(false)
     }
@@ -383,6 +571,41 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     setLoading(false)
+  }
+
+  function openFilters() {
+    setDraftFilters(normalizeFilters(appliedFilters, priceCeiling))
+    setFilterModalVisible(true)
+  }
+
+  function closeFilters() {
+    setFilterModalVisible(false)
+  }
+
+  function updateDraftFilter(key, value) {
+    setDraftFilters((current) => normalizeFilters({ ...current, [key]: value }, priceCeiling))
+  }
+
+  function resetDraftFilters() {
+    setDraftFilters(createDefaultFilters(priceCeiling))
+  }
+
+  function applyFilters() {
+    setAppliedFilters(normalizeFilters(draftFilters, priceCeiling))
+    setFilterModalVisible(false)
+  }
+
+  async function useAutoLocationFilter() {
+    const detectedLabel = locationFullLabel && !['Location off', 'Location unavailable'].includes(locationFullLabel)
+      ? locationFullLabel
+      : await loadCurrentLocation()
+
+    if (!detectedLabel || ['Location off', 'Location unavailable'].includes(detectedLabel)) {
+      Alert.alert('Location unavailable', 'Allow location access or type an area manually.')
+      return
+    }
+
+    updateDraftFilter('location', detectedLabel)
   }
 
   async function selectReaction(propertyId, reaction) {
@@ -1015,6 +1238,7 @@ export default function HomeScreen({ navigation, route }) {
 
   const showInitialLoader = loading && properties.length === 0
   const canCreatePosts = currentUser?.user_metadata?.user_type === 'property_owner'
+  const showFilteredEmptyState = !showInitialLoader && filteredProperties.length === 0
 
   function CreatePostBox() {
     return (
@@ -1108,27 +1332,92 @@ export default function HomeScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: '#f1f1f1',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="search" size={22} color="#111" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={openFilters}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: activeFilterCount ? '#eff6ff' : '#f1f1f1',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons
+              name="options-outline"
+              size={19}
+              color={activeFilterCount ? '#2563eb' : '#111'}
+            />
+            {activeFilterCount ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -3,
+                  right: -3,
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: '#2563eb',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 4,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>
+                  {activeFilterCount}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: '#f1f1f1',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="search" size={22} color="#111" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
-        data={properties}
+        data={filteredProperties}
         keyExtractor={(item) => item.id}
         renderItem={renderPost}
         ListHeaderComponent={canCreatePosts ? <CreatePostBox /> : null}
         ListEmptyComponent={
-          showInitialLoader ? <ActivityIndicator style={{ marginTop: 30 }} /> : null
+          showInitialLoader ? (
+            <ActivityIndicator style={{ marginTop: 30 }} />
+          ) : showFilteredEmptyState ? (
+            <View style={{ paddingHorizontal: 22, paddingTop: 28, alignItems: 'center' }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: '#0f172a' }}>
+                No ads match these filters
+              </Text>
+              <Text style={{ marginTop: 6, fontSize: 12, color: '#64748b', textAlign: 'center' }}>
+                Try a wider budget, another area, or reset the filters.
+              </Text>
+              <TouchableOpacity
+                onPress={() => setAppliedFilters(createDefaultFilters(priceCeiling))}
+                style={{
+                  marginTop: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: '#eff6ff',
+                }}
+              >
+                <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>
+                  Clear filters
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
         }
         contentContainerStyle={{ paddingBottom: 80 }}
         contentInsetAdjustmentBehavior="automatic"
@@ -1140,6 +1429,285 @@ export default function HomeScreen({ navigation, route }) {
         updateCellsBatchingPeriod={60}
         windowSize={7}
       />
+
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeFilters}
+      >
+        <Pressable
+          onPress={closeFilters}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.35)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingTop: 12,
+              paddingHorizontal: 16,
+              paddingBottom: 18,
+              maxHeight: '82%',
+            }}
+          >
+            <View
+              style={{
+                width: 42,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor: '#dbe4ee',
+                alignSelf: 'center',
+                marginBottom: 12,
+              }}
+            />
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 12,
+              }}
+            >
+              <View>
+                <Text style={{ fontSize: 17, fontWeight: '900', color: '#0f172a' }}>
+                  Advanced Filters
+                </Text>
+                <Text style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>
+                  Narrow rentals by budget, place, media, and availability.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={closeFilters}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: '#f8fafc',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={18} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 10, gap: 18 }}
+            >
+              <FilterSection
+                title="Location"
+                subtitle="Detect your current area automatically or type one yourself."
+              >
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label={locationLoading ? 'Detecting...' : 'Use current area'}
+                    icon="locate"
+                    active={Boolean(draftFilters.location)}
+                    onPress={useAutoLocationFilter}
+                  />
+                </View>
+
+                <TextInput
+                  value={draftFilters.location}
+                  onChangeText={(value) => updateDraftFilter('location', value)}
+                  placeholder="Type area, city, or neighborhood"
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    height: 44,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#dbe4ee',
+                    backgroundColor: '#f8fafc',
+                    paddingHorizontal: 12,
+                    color: '#0f172a',
+                    fontSize: 13,
+                  }}
+                />
+              </FilterSection>
+
+              <FilterSection
+                title="Budget"
+                subtitle="Move the sliders to choose a comfortable rent range."
+              >
+                <View
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    gap: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '800' }}>
+                      Min
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#0f172a', fontWeight: '900' }}>
+                      {formatCurrency(draftFilters.minPrice)}
+                    </Text>
+                  </View>
+                  <Slider
+                    minimumValue={0}
+                    maximumValue={priceCeiling}
+                    step={Math.max(500, Math.round(priceCeiling / 40))}
+                    value={draftFilters.minPrice}
+                    minimumTrackTintColor="#2563eb"
+                    maximumTrackTintColor="#cbd5e1"
+                    thumbTintColor="#2563eb"
+                    onValueChange={(value) => updateDraftFilter('minPrice', value)}
+                  />
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '800' }}>
+                      Max
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#0f172a', fontWeight: '900' }}>
+                      {formatCurrency(draftFilters.maxPrice)}
+                    </Text>
+                  </View>
+                  <Slider
+                    minimumValue={draftFilters.minPrice}
+                    maximumValue={priceCeiling}
+                    step={Math.max(500, Math.round(priceCeiling / 40))}
+                    value={draftFilters.maxPrice}
+                    minimumTrackTintColor="#2563eb"
+                    maximumTrackTintColor="#cbd5e1"
+                    thumbTintColor="#2563eb"
+                    onValueChange={(value) => updateDraftFilter('maxPrice', value)}
+                  />
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Availability">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="All"
+                    active={draftFilters.status === 'all'}
+                    onPress={() => updateDraftFilter('status', 'all')}
+                  />
+                  <FilterChip
+                    label="Open for rent"
+                    active={draftFilters.status === 'open'}
+                    onPress={() => updateDraftFilter('status', 'open')}
+                  />
+                  <FilterChip
+                    label="Rented out"
+                    active={draftFilters.status === 'rented'}
+                    onPress={() => updateDraftFilter('status', 'rented')}
+                  />
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Media">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="All posts"
+                    active={draftFilters.media === 'all'}
+                    onPress={() => updateDraftFilter('media', 'all')}
+                  />
+                  <FilterChip
+                    label="Photos"
+                    active={draftFilters.media === 'photos'}
+                    onPress={() => updateDraftFilter('media', 'photos')}
+                  />
+                  <FilterChip
+                    label="Videos"
+                    active={draftFilters.media === 'videos'}
+                    onPress={() => updateDraftFilter('media', 'videos')}
+                  />
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Sort">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="Newest"
+                    active={draftFilters.sort === 'newest'}
+                    onPress={() => updateDraftFilter('sort', 'newest')}
+                  />
+                  <FilterChip
+                    label="Oldest"
+                    active={draftFilters.sort === 'oldest'}
+                    onPress={() => updateDraftFilter('sort', 'oldest')}
+                  />
+                  <FilterChip
+                    label="Price low"
+                    active={draftFilters.sort === 'price_low'}
+                    onPress={() => updateDraftFilter('sort', 'price_low')}
+                  />
+                  <FilterChip
+                    label="Price high"
+                    active={draftFilters.sort === 'price_high'}
+                    onPress={() => updateDraftFilter('sort', 'price_high')}
+                  />
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Owner">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="Any owner"
+                    active={!draftFilters.verifiedOnly}
+                    onPress={() => updateDraftFilter('verifiedOnly', false)}
+                  />
+                  <FilterChip
+                    label="Verified only"
+                    active={draftFilters.verifiedOnly}
+                    onPress={() => updateDraftFilter('verifiedOnly', true)}
+                  />
+                </View>
+              </FilterSection>
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <TouchableOpacity
+                onPress={resetDraftFilters}
+                style={{
+                  flex: 1,
+                  height: 46,
+                  borderRadius: 15,
+                  backgroundColor: '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: '#dbe4ee',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: '#475569', fontSize: 13, fontWeight: '900' }}>
+                  Reset
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={applyFilters}
+                style={{
+                  flex: 1.4,
+                  height: 46,
+                  borderRadius: 15,
+                  backgroundColor: '#2563eb',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>
+                  Apply Filters
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={commentModal}
