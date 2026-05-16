@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import BottomNavBar from '../components/navigation/BottomNavBar'
+import SwipeTabView from '../components/navigation/SwipeTabView'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
 
 const USER_TYPES = [
@@ -356,6 +357,7 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+      <SwipeTabView navigation={navigation} activeTab="profile">
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: '#f7f7f7' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -644,6 +646,7 @@ export default function ProfileScreen({ navigation }) {
 
         <BottomNavBar navigation={navigation} activeTab="profile" />
       </KeyboardAvoidingView>
+      </SwipeTabView>
     </SafeAreaView>
   )
 }

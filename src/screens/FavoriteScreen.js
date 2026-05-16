@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
+import SwipeTabView from '../components/navigation/SwipeTabView'
 
 export default function FavoriteScreen({ navigation }) {
   const [favorites, setFavorites] = useState([])
@@ -51,6 +52,7 @@ export default function FavoriteScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+      <SwipeTabView navigation={navigation} activeTab="favorite">
       <View style={{ flex: 1, padding: 16 }}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 16 }}>
           Favorite Posts
@@ -102,6 +104,7 @@ export default function FavoriteScreen({ navigation }) {
       </View>
 
       <BottomNavBar navigation={navigation} activeTab="favorite" />
+      </SwipeTabView>
     </SafeAreaView>
   )
 }

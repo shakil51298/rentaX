@@ -28,6 +28,7 @@ import MediaViewer from '../components/common/MediaViewer'
 import ConversationRow from '../components/chat/ConversationRow'
 import MessageBubble from '../components/chat/MessageBubble'
 import BottomNavBar from '../components/navigation/BottomNavBar'
+import SwipeTabView from '../components/navigation/SwipeTabView'
 import useChatPresence from '../hooks/useChatPresence'
 import { CHAT_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { sendPushToUser } from '../lib/pushNotifications'
@@ -1094,6 +1095,7 @@ export default function ChatScreen({ route, navigation }) {
   if (mode === 'list') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+        <SwipeTabView navigation={navigation} activeTab="chat">
         <View style={{ flex: 1 }}>
           <View
             style={{
@@ -1197,6 +1199,7 @@ export default function ChatScreen({ route, navigation }) {
         </View>
 
         <BottomNavBar navigation={navigation} activeTab="chat" />
+        </SwipeTabView>
       </SafeAreaView>
     )
   }

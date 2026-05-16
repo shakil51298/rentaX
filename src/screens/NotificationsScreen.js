@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { getUnreadNotificationCount } from '../lib/notifications'
 import BottomNavBar from '../components/navigation/BottomNavBar'
+import SwipeTabView from '../components/navigation/SwipeTabView'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -351,6 +352,7 @@ export default function NotificationsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+      <SwipeTabView navigation={navigation} activeTab="notifications">
       <View style={{ flex: 1 }}>
         <View
           style={{
@@ -406,6 +408,7 @@ export default function NotificationsScreen({ navigation }) {
       </View>
 
       <BottomNavBar navigation={navigation} activeTab="notifications" />
+      </SwipeTabView>
     </SafeAreaView>
   )
 }

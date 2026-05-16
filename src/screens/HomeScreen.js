@@ -25,6 +25,7 @@ import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import CommentItem from '../components/home/CommentItem'
 import BottomNavBar from '../components/navigation/BottomNavBar'
+import SwipeTabView from '../components/navigation/SwipeTabView'
 import {
   appendCommentToTree,
   buildCommentThread,
@@ -62,6 +63,12 @@ export default function HomeScreen({ navigation, route }) {
     loadUser()
     loadProperties()
   }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUser()
+    }, [])
+  )
 
   useFocusEffect(
     useCallback(() => {
@@ -959,6 +966,7 @@ export default function HomeScreen({ navigation, route }) {
   ), [currentUser, openMediaViewer, openOwnerProfile, properties])
 
   const showInitialLoader = loading && properties.length === 0
+  const canCreatePosts = currentUser?.user_metadata?.user_type === 'property_owner'
 
   function CreatePostBox() {
     return (
@@ -1002,6 +1010,11 @@ export default function HomeScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+      <SwipeTabView
+        navigation={navigation}
+        activeTab="home"
+        disabled={commentModal || mediaViewer.visible}
+      >
       <View
         style={{
           backgroundColor: '#fff',
@@ -1032,7 +1045,7 @@ export default function HomeScreen({ navigation, route }) {
         data={properties}
         keyExtractor={(item) => item.id}
         renderItem={renderPost}
-        ListHeaderComponent={<CreatePostBox />}
+        ListHeaderComponent={canCreatePosts ? <CreatePostBox /> : null}
         ListEmptyComponent={
           showInitialLoader ? <ActivityIndicator style={{ marginTop: 30 }} /> : null
         }
@@ -1180,6 +1193,7 @@ export default function HomeScreen({ navigation, route }) {
         messageUnreadCount={messageUnreadCount}
         notificationUnreadCount={notificationUnreadCount}
       />
+      </SwipeTabView>
     </SafeAreaView>
   )
 }
