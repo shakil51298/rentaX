@@ -14,6 +14,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
+import { deactivateDevicePushToken } from '../lib/pushNotifications'
 
 const USER_TYPES = [
   { id: 'property_owner', title: 'Property owner' },
@@ -254,6 +255,7 @@ export default function ProfileScreen({ navigation }) {
   }
 
   async function logout() {
+    await deactivateDevicePushToken()
     await supabase.auth.signOut()
     navigation.replace('Login')
   }

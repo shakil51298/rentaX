@@ -23,20 +23,20 @@ import {
   useAudioRecorderState,
 } from 'expo-audio'
 import { supabase } from '../lib/supabase'
-import { createNotification } from '../lib/notifications'
 import Avatar from '../components/common/Avatar'
 import MediaViewer from '../components/common/MediaViewer'
 import ConversationRow from '../components/chat/ConversationRow'
 import MessageBubble from '../components/chat/MessageBubble'
 import useChatPresence from '../hooks/useChatPresence'
 import { CHAT_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
+import { sendPushToUser } from '../lib/pushNotifications'
 import {
   formatDuration,
   getDirectTarget,
   getPropertyId,
   mediaLabel,
 } from '../lib/chatUtils'
-import { displayNameFromEmail, getProfileName } from '../lib/userDisplay'
+import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 
 const EMPTY_ROUTE_PARAMS = {}
 
@@ -171,6 +171,7 @@ export default function ChatScreen({ route, navigation }) {
   const typingTimeoutRef = useRef(null)
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
+  const currentUserName = getUserDisplayName(currentUser) || 'Rental X member'
   const canSend = Boolean(currentUser?.id && otherUser?.id && conversation?.id)
   const {
     presenceByUserId,
@@ -554,16 +555,24 @@ export default function ChatScreen({ route, navigation }) {
       .update(conversationUpdate)
       .eq('id', conversation.id)
 
-    await createNotification({
+    await sendPushToUser({
       recipientId: otherUser.id,
-      actorId: currentUser.id,
-      type: 'chat_message',
-      propertyId: getPropertyId(conversationProperty) || conversation.property_id,
-      title: 'New message',
-      body: messageType === 'text'
-        ? cleanBody.slice(0, 90)
-        : `sent a ${mediaLabel(messageType).toLowerCase()}`,
-      eventKey: `chat_message:${conversation.id}:${createdAt}`,
+      title: currentUserName,
+      body:
+        messageType === 'text'
+          ? cleanBody.slice(0, 120)
+          : `Sent a ${mediaLabel(messageType).toLowerCase()}`,
+      data: {
+        type: 'chat_message',
+        actorId: currentUser.id,
+        actorName: currentUserName,
+        actorAvatarUrl: getUserAvatarUrl(currentUser),
+        propertyId: getPropertyId(conversationProperty) || conversation.property_id,
+        propertyTitle: conversationProperty?.title || '',
+        conversationId: conversation.id,
+        messageType,
+        createdAt,
+      },
     })
 
     await updateMyPresence({ online: true, typing: false })

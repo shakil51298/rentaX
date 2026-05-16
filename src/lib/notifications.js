@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { sendPushToUser } from './pushNotifications'
 
 export async function getUnreadNotificationCount(userId) {
   if (!userId) return 0
@@ -7,6 +8,7 @@ export async function getUnreadNotificationCount(userId) {
     .from('notifications')
     .select('id', { count: 'exact', head: true })
     .eq('recipient_id', userId)
+    .neq('type', 'chat_message')
     .eq('is_read', false)
 
   if (error) return 0
@@ -23,10 +25,15 @@ export async function createNotification({
   title,
   body,
   eventKey,
+  pushTitle,
+  pushBody,
+  pushData,
 }) {
   if (!recipientId || !actorId || String(recipientId) === String(actorId)) {
     return
   }
+
+  const createdAt = new Date().toISOString()
 
   await supabase.from('notifications').upsert(
     {
@@ -41,8 +48,22 @@ export async function createNotification({
         eventKey ||
         `${type}:${recipientId}:${actorId}:${propertyId || ''}:${commentId || ''}`,
       is_read: false,
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
     },
     { onConflict: 'event_key' }
   )
+
+  await sendPushToUser({
+    recipientId,
+    title: pushTitle || title || 'Rental X',
+    body: pushBody || body || 'You have a new update.',
+    data: {
+      type,
+      actorId,
+      propertyId: propertyId ? String(propertyId) : null,
+      commentId: commentId ? String(commentId) : null,
+      createdAt,
+      ...(pushData || {}),
+    },
+  })
 }

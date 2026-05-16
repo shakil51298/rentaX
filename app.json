@@ -23,6 +23,7 @@
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
@@ -33,6 +34,7 @@
     },
     "plugins": [
       "expo-video",
+      "expo-notifications",
       [
         "expo-audio",
         {
