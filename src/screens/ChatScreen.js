@@ -59,19 +59,71 @@ function getConversationDeletedAt(conversation, userId) {
   return field ? conversation?.[field] || null : null
 }
 
+function getConversationActivityTime(conversation) {
+  if (!conversation) return 0
+
+  const activityAt =
+    conversation.last_message_at ||
+    conversation.updated_at ||
+    conversation.created_at
+
+  return activityAt ? new Date(activityAt).getTime() : 0
+}
+
 function isConversationVisibleForUser(conversation, userId) {
   const deletedAt = getConversationDeletedAt(conversation, userId)
 
   if (!deletedAt) return true
 
-  const lastActivityAt =
-    conversation.last_message_at ||
-    conversation.updated_at ||
-    conversation.created_at
+  const lastActivityAt = getConversationActivityTime(conversation)
 
   if (!lastActivityAt) return false
 
-  return new Date(lastActivityAt).getTime() > new Date(deletedAt).getTime()
+  return lastActivityAt > new Date(deletedAt).getTime()
+}
+
+function sortConversationsByActivity(conversations = []) {
+  return [...conversations].sort(
+    (firstItem, secondItem) =>
+      getConversationActivityTime(secondItem) - getConversationActivityTime(firstItem)
+  )
+}
+
+function getOtherParticipantId(conversation, currentUserId) {
+  if (!conversation || !currentUserId) return null
+
+  return conversation.participant_one_id === currentUserId
+    ? conversation.participant_two_id
+    : conversation.participant_one_id
+}
+
+function collapseConversationRows(conversations, currentUserId) {
+  const groupedRows = new Map()
+
+  sortConversationsByActivity(conversations).forEach((conversation) => {
+    const otherUserId = getOtherParticipantId(conversation, currentUserId)
+
+    if (!otherUserId) return
+
+    const existingConversation = groupedRows.get(otherUserId)
+
+    if (!existingConversation) {
+      groupedRows.set(otherUserId, { ...conversation })
+      return
+    }
+
+    groupedRows.set(otherUserId, {
+      ...existingConversation,
+      unread_count:
+        (existingConversation.unread_count || 0) + (conversation.unread_count || 0),
+      participant_one_deleted_at:
+        existingConversation.participant_one_deleted_at || conversation.participant_one_deleted_at,
+      participant_two_deleted_at:
+        existingConversation.participant_two_deleted_at || conversation.participant_two_deleted_at,
+    })
+  })
+
+  return [...groupedRows.values()]
 }
 
 async function fetchProfiles(userIds) {
@@ -244,8 +296,7 @@ export default function ChatScreen({ route, navigation }) {
 
     const visibleRows = (data || []).filter((item) => isConversationVisibleForUser(item, user.id))
 
-    setConversationRows(
-      visibleRows.map((item) => {
+    const hydratedRows = visibleRows.map((item) => {
         const otherId =
           item.participant_one_id === user.id
             ? item.participant_two_id
@@ -262,9 +313,9 @@ export default function ChatScreen({ route, navigation }) {
           unread_count: unreadCountsByConversation[item.id] || 0,
         }
       })
-    )
+    setConversationRows(collapseConversationRows(hydratedRows, user.id))
     setSelectedConversationIds((current) =>
-      current.filter((id) => visibleRows.some((item) => item.id === id))
+      current.filter((id) => hydratedRows.some((item) => item.id === id))
     )
     setLoading(false)
   }, [])
@@ -274,18 +325,24 @@ export default function ChatScreen({ route, navigation }) {
 
     const participantIds = [user.id, targetUser.id].sort()
     const propertyId = getPropertyId(property)
-    let query = supabase
+    const { data: existingConversations, error: lookupError } = await supabase
       .from('chat_conversations')
       .select('*')
       .eq('participant_one_id', participantIds[0])
       .eq('participant_two_id', participantIds[1])
-
-    query = propertyId ? query.eq('property_id', propertyId) : query.is('property_id', null)
-
-    const { data: existingConversation, error: lookupError } = await query.maybeSingle()
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
 
     if (lookupError) throw lookupError
-    if (existingConversation) return existingConversation
+
+    if (existingConversations?.length) {
+      const visibleConversation = existingConversations.find((item) =>
+        isConversationVisibleForUser(item, user.id)
+      )
+
+      return visibleConversation || existingConversations[0]
+    }
 
     const { data: createdConversation, error: createError } = await supabase
       .from('chat_conversations')
@@ -501,7 +558,7 @@ export default function ChatScreen({ route, navigation }) {
       recipientId: otherUser.id,
       actorId: currentUser.id,
       type: 'chat_message',
-      propertyId: conversation.property_id || getPropertyId(conversationProperty),
+      propertyId: getPropertyId(conversationProperty) || conversation.property_id,
       title: 'New message',
       body: messageType === 'text'
         ? cleanBody.slice(0, 90)
