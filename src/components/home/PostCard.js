@@ -14,6 +14,7 @@ export default function PostCard({
   onShare,
   onOpenMedia,
   onOpenOwnerProfile,
+  onPressMore,
 }) {
   const totalReacts = item.property_reactions?.length || 0
   const totalComments = item.property_comments?.length || 0
@@ -73,7 +74,17 @@ export default function PostCard({
           </View>
         </TouchableOpacity>
 
-        <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+        {onPressMore ? (
+          <TouchableOpacity
+            onPress={() => onPressMore(item)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ paddingLeft: 10, paddingVertical: 6 }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+          </TouchableOpacity>
+        ) : (
+          <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+        )}
       </View>
 
       <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>

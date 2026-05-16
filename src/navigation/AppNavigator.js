@@ -13,6 +13,8 @@ import ProfileScreen from '../screens/ProfileScreen'
 import FavoriteScreen from '../screens/FavoriteScreen'
 import OwnerProfileScreen from '../screens/OwnerProfileScreen'
 import NotificationsScreen from '../screens/NotificationsScreen'
+import SettingsScreen from '../screens/SettingsScreen'
+import AdsManagementScreen from '../screens/AdsManagementScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -172,6 +174,12 @@ export default function AppNavigator() {
           options={{ title: 'Public Profile' }}
         />
         <Stack.Screen name="Favorite" component={FavoriteScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen
+          name="AdsManagement"
+          component={AdsManagementScreen}
+          options={{ title: 'Ads Management' }}
+        />
       </Stack.Navigator>
       </NavigationContainer>
     </>

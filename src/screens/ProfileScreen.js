@@ -1,28 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
-import { supabase } from '../lib/supabase'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
+import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
-import { deactivateDevicePushToken } from '../lib/pushNotifications'
-
-const USER_TYPES = [
-  { id: 'property_owner', title: 'Property owner' },
-  { id: 'renter', title: 'Finding property' },
-]
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -30,322 +20,101 @@ function displayNameFromEmail(email) {
   return email.split('@')[0]
 }
 
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  multiline,
-  keyboardType,
-  secureTextEntry,
-  autoCapitalize,
-  autoComplete,
-}) {
+function ActionCard({ icon, title, subtitle, onPress }) {
   return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 7 }}>
-        {label}
-      </Text>
-
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        multiline={multiline}
-        keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
-        autoCapitalize={autoCapitalize}
-        autoComplete={autoComplete}
-        blurOnSubmit={false}
-        autoCorrect={false}
-        style={{
-          backgroundColor: '#fff',
-          borderWidth: 1,
-          borderColor: '#e2e8f0',
-          borderRadius: 12,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          minHeight: multiline ? 92 : undefined,
-          textAlignVertical: multiline ? 'top' : 'center',
-        }}
-      />
-    </View>
-  )
-}
-
-function SectionTitle({ children }) {
-  return (
-    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 12 }}>
-      {children}
-    </Text>
-  )
-}
-
-function CollapsibleSection({ title, expanded, onPress, children }) {
-  return (
-    <View>
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.8}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: expanded ? 12 : 0,
-        }}
-      >
-        <SectionTitle>{title}</SectionTitle>
-
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={20}
-          color="#334155"
-          style={{ marginTop: -10 }}
-        />
-      </TouchableOpacity>
-
-      {expanded ? children : null}
-    </View>
-  )
-}
-
-function SectionCard({ children }) {
-  return (
-    <View
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.86}
       style={{
         backgroundColor: '#fff',
         borderRadius: 18,
-        padding: 16,
         borderWidth: 1,
         borderColor: '#e2e8f0',
-      }}
-    >
-      {children}
-    </View>
-  )
-}
-
-function SettingRow({ title, subtitle, value, onValueChange }) {
-  return (
-    <View
-      style={{
+        padding: 16,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 12,
       }}
     >
-      <View style={{ flex: 1, paddingRight: 16 }}>
-        <Text style={{ color: '#111827', fontWeight: '800', fontSize: 15 }}>{title}</Text>
-        <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 18 }}>{subtitle}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: '#eff6ff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icon} size={22} color="#2563eb" />
+        </View>
+
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+            {title}
+          </Text>
+          <Text style={{ color: '#64748b', marginTop: 4 }}>
+            {subtitle}
+          </Text>
+        </View>
       </View>
 
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: '#cbd5e1', true: '#93c5fd' }}
-        thumbColor={value ? '#1877F2' : '#f8fafc'}
-      />
-    </View>
+      <Ionicons name="chevron-forward" size={20} color="#64748b" />
+    </TouchableOpacity>
   )
 }
 
 export default function ProfileScreen({ navigation }) {
-  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [displayName, setDisplayName] = useState('')
-  const [avatarUrl, setAvatarUrl] = useState('')
-  const [coverUrl, setCoverUrl] = useState('')
-  const [bio, setBio] = useState('')
-  const [phone, setPhone] = useState('')
-  const [location, setLocation] = useState('')
-  const [userType, setUserType] = useState('renter')
-  const [isVerified, setIsVerified] = useState(false)
-  const [notifyMessages, setNotifyMessages] = useState(true)
-  const [notifyActivity, setNotifyActivity] = useState(true)
-  const [profileExpanded, setProfileExpanded] = useState(false)
-  const [notificationExpanded, setNotificationExpanded] = useState(false)
-  const [securityExpanded, setSecurityExpanded] = useState(false)
-  const [securitySaving, setSecuritySaving] = useState(false)
-  const [loginEmail, setLoginEmail] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [profile, setProfile] = useState(null)
+  const [email, setEmail] = useState('')
 
-  useEffect(() => {
-    loadUser()
-  }, [])
-
-  async function loadUser() {
+  const loadProfile = useCallback(async () => {
     setLoading(true)
 
     const {
       data: { user },
     } = await supabase.auth.getUser()
 
-    setUser(user)
-
-    const metadata = user?.user_metadata || {}
-    setDisplayName(metadata.name || metadata.full_name || displayNameFromEmail(user?.email))
-    setAvatarUrl(metadata.avatar_url || metadata.picture || '')
-    setCoverUrl(metadata.cover_url || '')
-    setUserType(metadata.user_type || 'renter')
-    setNotifyMessages(metadata.notify_messages !== false)
-    setNotifyActivity(metadata.notify_activity !== false)
-    setLoginEmail(user?.email || '')
-
-    if (user?.id) {
-      const { data } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (data) {
-        setDisplayName(data.display_name || metadata.name || displayNameFromEmail(user.email))
-        setAvatarUrl(data.avatar_url || metadata.avatar_url || '')
-        setCoverUrl(data.cover_url || metadata.cover_url || '')
-        setBio(data.bio || '')
-        setPhone(data.phone || '')
-        setLocation(data.location || '')
-        setUserType(data.user_type || metadata.user_type || 'renter')
-        setIsVerified(Boolean(data.is_verified))
-      }
-    }
-
-    setLoading(false)
-  }
-
-  async function saveProfile() {
-    if (!user) return
-    if (!displayName.trim()) {
-      Alert.alert('Missing name', 'Please add your display name.')
+    if (!user?.id) {
+      setProfile(null)
+      setEmail('')
+      setLoading(false)
       return
     }
 
-    setSaving(true)
+    const metadata = user.user_metadata || {}
+    const fallbackProfile = {
+      display_name: metadata.name || metadata.full_name || displayNameFromEmail(user.email),
+      avatar_url: metadata.avatar_url || metadata.picture || null,
+      cover_url: metadata.cover_url || null,
+      is_verified: false,
+    }
 
-    const selectedType = USER_TYPES.find((item) => item.id === userType)
+    const { data: dbProfile } = await supabase
+      .from('user_profiles')
+      .select('display_name, avatar_url, cover_url, is_verified')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    const { error: authError } = await supabase.auth.updateUser({
-      data: {
-        name: displayName.trim(),
-        full_name: displayName.trim(),
-        avatar_url: avatarUrl.trim() || null,
-        cover_url: coverUrl.trim() || null,
-        user_type: userType,
-        user_type_label: selectedType?.title,
-        notify_messages: notifyMessages,
-        notify_activity: notifyActivity,
-      },
+    setProfile({
+      ...fallbackProfile,
+      ...(dbProfile || {}),
     })
+    setEmail(user.email || '')
+    setLoading(false)
+  }, [])
 
-    if (authError) {
-      setSaving(false)
-      Alert.alert('Profile update failed', authError.message)
-      return
-    }
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile()
+    }, [loadProfile])
+  )
 
-    const { error } = await supabase.from('user_profiles').upsert(
-      {
-        user_id: user.id,
-        email: user.email,
-        display_name: displayName.trim(),
-        avatar_url: avatarUrl.trim() || null,
-        cover_url: coverUrl.trim() || null,
-        bio: bio.trim() || null,
-        phone: phone.trim() || null,
-        location: location.trim() || null,
-        user_type: userType,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id' }
-    )
-
-    setSaving(false)
-
-    if (error) {
-      Alert.alert(
-        'Database update needed',
-        'Run supabase-owner-profile-features.sql in Supabase, then try saving again.'
-      )
-      return
-    }
-
-    Alert.alert('Saved', 'Your public profile was updated.')
-    loadUser()
-  }
-
-  async function saveSecuritySettings() {
-    if (!user) return
-
-    const trimmedEmail = loginEmail.trim().toLowerCase()
-    const emailChanged = Boolean(trimmedEmail && trimmedEmail !== (user.email || '').toLowerCase())
-    const passwordChanged = Boolean(newPassword)
-
-    if (!emailChanged && !passwordChanged) {
-      Alert.alert('Nothing to update', 'Change your email or password first.')
-      return
-    }
-
-    if (passwordChanged) {
-      if (newPassword.length < 6) {
-        Alert.alert('Weak password', 'Use at least 6 characters for the new password.')
-        return
-      }
-
-      if (newPassword !== confirmPassword) {
-        Alert.alert('Password mismatch', 'Your password confirmation does not match.')
-        return
-      }
-    }
-
-    setSecuritySaving(true)
-
-    const payload = {}
-
-    if (emailChanged) {
-      payload.email = trimmedEmail
-    }
-
-    if (passwordChanged) {
-      payload.password = newPassword
-    }
-
-    const { error } = await supabase.auth.updateUser(payload)
-
-    setSecuritySaving(false)
-
-    if (error) {
-      Alert.alert('Security update failed', error.message)
-      return
-    }
-
-    setNewPassword('')
-    setConfirmPassword('')
-
-    if (emailChanged && passwordChanged) {
-      Alert.alert(
-        'Security updated',
-        'Your password was updated. Check your email to confirm the new login email address.'
-      )
-    } else if (emailChanged) {
-      Alert.alert(
-        'Email update started',
-        'Check your inbox and confirm the new email address to finish the change.'
-      )
-    } else {
-      Alert.alert('Password updated', 'Your password was updated successfully.')
-    }
-
-    loadUser()
-  }
-
-  async function logout() {
-    await deactivateDevicePushToken()
-    await supabase.auth.signOut()
-    navigation.replace('Login')
-  }
+  const displayName = profile?.display_name || displayNameFromEmail(email)
+  const avatarUrl = profile?.avatar_url || null
+  const coverUrl = profile?.cover_url || null
 
   if (loading) {
     return (
@@ -358,294 +127,95 @@ export default function ProfileScreen({ navigation }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
       <SwipeTabView navigation={navigation} activeTab="profile">
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: '#f7f7f7' }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={80}
-      >
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 140 }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          automaticallyAdjustKeyboardInsets
-        >
-      <View style={{ backgroundColor: '#fff', paddingBottom: 20 }}>
-        <View style={{ height: 118, backgroundColor: '#1877F2' }}>
-          {coverUrl ? (
-            <Image
-              source={{ uri: coverUrl }}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode="cover"
-            />
-          ) : null}
-        </View>
-
-        <View style={{ alignItems: 'center', marginTop: -42 }}>
-        {avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            style={{
-              width: 86,
-              height: 86,
-              borderRadius: 43,
-              backgroundColor: '#ddd',
-              borderWidth: 4,
-              borderColor: '#fff',
-            }}
-          />
-        ) : (
-          <View
-            style={{
-              width: 86,
-              height: 86,
-              borderRadius: 43,
-              backgroundColor: '#dbeafe',
-              borderWidth: 4,
-              borderColor: '#fff',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 140 }}
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={{ fontSize: 30, fontWeight: '900', color: '#1d4ed8' }}>
-              {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
-            </Text>
-          </View>
-        )}
+            <View style={{ backgroundColor: '#fff', paddingBottom: 22 }}>
+              <View style={{ height: 132, backgroundColor: '#1877F2' }}>
+                {coverUrl ? (
+                  <Image
+                    source={{ uri: coverUrl }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
+                ) : null}
+              </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827' }}>
-            {displayName || 'User'}
-          </Text>
-
-          {isVerified ? (
-            <Ionicons
-              name="checkmark-circle"
-              size={21}
-              color="#1877F2"
-              style={{ marginLeft: 6 }}
-            />
-          ) : null}
-        </View>
-
-        <Text style={{ marginTop: 4, color: '#666' }}>
-          {user?.email || ''}
-        </Text>
-        </View>
-      </View>
-
-      <View style={{ padding: 16, gap: 18 }}>
-        <CollapsibleSection
-          title="Profile settings"
-          expanded={profileExpanded}
-          onPress={() => setProfileExpanded((current) => !current)}
-        >
-          <SectionCard>
-            <Field
-              label="Display name"
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Your public name"
-            />
-
-            <Field
-              label="Profile picture URL"
-              value={avatarUrl}
-              onChangeText={setAvatarUrl}
-              placeholder="https://..."
-            />
-
-            <Field
-              label="Cover photo URL"
-              value={coverUrl}
-              onChangeText={setCoverUrl}
-              placeholder="https://..."
-            />
-
-            <Field
-              label="Owner details / Bio"
-              value={bio}
-              onChangeText={setBio}
-              placeholder="Tell renters about you or your properties"
-              multiline
-            />
-
-            <Field
-              label="Phone"
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Contact phone"
-              keyboardType="phone-pad"
-            />
-
-            <Field
-              label="Location"
-              value={location}
-              onChangeText={setLocation}
-              placeholder="City or area"
-            />
-
-            <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 8 }}>
-              Account type
-            </Text>
-
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {USER_TYPES.map((item) => {
-                const isSelected = userType === item.id
-
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => setUserType(item.id)}
+              <View style={{ alignItems: 'center', marginTop: -42, paddingHorizontal: 18 }}>
+                {avatarUrl ? (
+                  <Image
+                    source={{ uri: avatarUrl }}
                     style={{
-                      flex: 1,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: isSelected ? '#1877F2' : '#e2e8f0',
-                      backgroundColor: isSelected ? '#eff6ff' : '#fff',
-                      padding: 12,
+                      width: 88,
+                      height: 88,
+                      borderRadius: 44,
+                      backgroundColor: '#ddd',
+                      borderWidth: 4,
+                      borderColor: '#fff',
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 88,
+                      height: 88,
+                      borderRadius: 44,
+                      backgroundColor: '#dbeafe',
+                      borderWidth: 4,
+                      borderColor: '#fff',
                       alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    <Text
-                      style={{
-                        color: isSelected ? '#1877F2' : '#475569',
-                        fontWeight: '800',
-                        textAlign: 'center',
-                      }}
-                    >
-                      {item.title}
+                    <Text style={{ fontSize: 30, fontWeight: '900', color: '#1d4ed8' }}>
+                      {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
                     </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-          </SectionCard>
-        </CollapsibleSection>
+                  </View>
+                )}
 
-        <CollapsibleSection
-          title="Notification settings"
-          expanded={notificationExpanded}
-          onPress={() => setNotificationExpanded((current) => !current)}
-        >
-          <SectionCard>
-            <SettingRow
-              title="Messages"
-              subtitle="Get notified when someone sends you a new chat message."
-              value={notifyMessages}
-              onValueChange={setNotifyMessages}
-            />
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+                  <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827' }}>
+                    {displayName || 'User'}
+                  </Text>
 
-            <View style={{ height: 1, backgroundColor: '#e2e8f0' }} />
+                  {profile?.is_verified ? (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#1877F2"
+                      style={{ marginLeft: 6 }}
+                    />
+                  ) : null}
+                </View>
 
-            <SettingRow
-              title="Post and comment activity"
-              subtitle="Show alerts for likes, replies, and activity on your posts or comments."
-              value={notifyActivity}
-              onValueChange={setNotifyActivity}
-            />
-          </SectionCard>
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          title="Password and security"
-          expanded={securityExpanded}
-          onPress={() => setSecurityExpanded((current) => !current)}
-        >
-          <SectionCard>
-            <Field
-              label="Login email"
-              value={loginEmail}
-              onChangeText={setLoginEmail}
-              placeholder="you@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-            />
-
-            <Field
-              label="New password"
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="At least 6 characters"
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete="password-new"
-            />
-
-            <Field
-              label="Confirm new password"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Re-enter new password"
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete="password-new"
-            />
-
-            <View
-              style={{
-                backgroundColor: '#f8fafc',
-                borderRadius: 12,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                marginBottom: 14,
-              }}
-            >
-              <Text style={{ color: '#475569', lineHeight: 20 }}>
-                Email changes may need inbox confirmation. Password updates apply after saving here.
-              </Text>
+                <Text style={{ marginTop: 4, color: '#64748b' }}>
+                  {email}
+                </Text>
+              </View>
             </View>
 
-            <TouchableOpacity
-              onPress={saveSecuritySettings}
-              disabled={securitySaving}
-              style={{
-                backgroundColor: securitySaving ? '#8bbcf7' : '#1877F2',
-                borderRadius: 14,
-                paddingVertical: 15,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '900' }}>
-                {securitySaving ? 'Updating...' : 'Update security'}
-              </Text>
-            </TouchableOpacity>
-          </SectionCard>
-        </CollapsibleSection>
+            <View style={{ padding: 16, gap: 16 }}>
+              <ActionCard
+                icon="newspaper-outline"
+                title="Ads Management"
+                subtitle="View, edit, share, and delete your property posts."
+                onPress={() => navigation.navigate('AdsManagement')}
+              />
 
-        <TouchableOpacity
-          onPress={saveProfile}
-          disabled={saving}
-          style={{
-            backgroundColor: saving ? '#8bbcf7' : '#1877F2',
-            borderRadius: 14,
-            paddingVertical: 15,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '900' }}>
-            {saving ? 'Saving...' : 'Save settings'}
-          </Text>
-        </TouchableOpacity>
+              <ActionCard
+                icon="settings-outline"
+                title="Settings"
+                subtitle="Profile, notifications, password, security, and account type."
+                onPress={() => navigation.navigate('Settings')}
+              />
+            </View>
+          </ScrollView>
 
-        <TouchableOpacity
-          onPress={logout}
-          style={{
-            backgroundColor: '#111',
-            paddingVertical: 15,
-            borderRadius: 14,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '800' }}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-        </ScrollView>
-
-        <BottomNavBar navigation={navigation} activeTab="profile" />
-      </KeyboardAvoidingView>
+          <BottomNavBar navigation={navigation} activeTab="profile" />
+        </View>
       </SwipeTabView>
     </SafeAreaView>
   )

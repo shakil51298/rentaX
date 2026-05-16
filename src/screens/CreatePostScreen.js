@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import Avatar from '../components/common/Avatar'
 import { supabase } from '../lib/supabase'
-import { PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
+import { normalizeMediaList, PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 
 function Field({ label, placeholder, multiline, keyboardType, value, onChangeText }) {
@@ -125,7 +125,11 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
   )
 }
 
-export default function CreatePostScreen({ navigation }) {
+function isRemoteUri(uri) {
+  return /^https?:\/\//i.test(uri || '')
+}
+
+export default function CreatePostScreen({ navigation, route }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
@@ -135,10 +139,31 @@ export default function CreatePostScreen({ navigation }) {
   const [previewIndex, setPreviewIndex] = useState(0)
   const [composerUser, setComposerUser] = useState(null)
   const [composerProfile, setComposerProfile] = useState(null)
+  const editingPost = route?.params?.post || null
+  const isEditing = Boolean(editingPost?.id)
 
   useEffect(() => {
     loadComposer()
   }, [])
+
+  useEffect(() => {
+    if (!editingPost) return
+
+    setTitle(editingPost.title || '')
+    setDescription(editingPost.description || '')
+    setPrice(editingPost.price ? String(editingPost.price) : '')
+    setLocation(editingPost.location || '')
+
+    const existingMedia = normalizeMediaList(
+      editingPost.media?.length ? editingPost.media : editingPost.image_url ? [editingPost.image_url] : []
+    ).map((item) => ({
+      ...item,
+      existing: true,
+    }))
+
+    setMedia(existingMedia)
+    setPreviewIndex(0)
+  }, [editingPost])
 
   async function loadComposer() {
     const {
@@ -210,7 +235,7 @@ export default function CreatePostScreen({ navigation }) {
     })
   }
 
-  async function createPost() {
+  async function savePost() {
     if (!title || !price) {
       Alert.alert('Required', 'Please enter title and price')
       return
@@ -233,6 +258,14 @@ export default function CreatePostScreen({ navigation }) {
     try {
       uploadedMedia = await Promise.all(
         media.map(async (item) => {
+          if (isRemoteUri(item.uri)) {
+            return {
+              uri: item.uri,
+              type: item.type,
+              mimeType: item.mimeType || null,
+            }
+          }
+
           const uploadResult = await uploadMediaAsset({
             uri: item.uri,
             type: item.type,
@@ -262,7 +295,8 @@ export default function CreatePostScreen({ navigation }) {
       user.user_metadata?.name ||
       getUserDisplayName(user) ||
       user.email
-    const { error } = await supabase.from('properties').insert({
+
+    const payload = {
       title,
       description,
       price,
@@ -272,7 +306,13 @@ export default function CreatePostScreen({ navigation }) {
       owner_name: ownerName,
       image_url: uploadedMedia[0]?.uri || null,
       media: uploadedMedia,
-    })
+    }
+
+    const query = isEditing
+      ? supabase.from('properties').update(payload).eq('id', editingPost.id).eq('owner_id', user.id)
+      : supabase.from('properties').insert(payload)
+
+    const { error } = await query
 
     setLoading(false)
 
@@ -281,7 +321,7 @@ export default function CreatePostScreen({ navigation }) {
       return
     }
 
-    Alert.alert('Success', 'Property post created')
+    Alert.alert('Success', isEditing ? 'Property post updated' : 'Property post created')
     navigation.goBack()
   }
 
@@ -348,7 +388,7 @@ export default function CreatePostScreen({ navigation }) {
               }}
             >
               <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '800' }}>
-                New post
+                {isEditing ? 'Editing' : 'New post'}
               </Text>
             </View>
           </View>
@@ -534,7 +574,7 @@ export default function CreatePostScreen({ navigation }) {
           </View>
 
           <TouchableOpacity
-            onPress={createPost}
+            onPress={savePost}
             disabled={loading}
             activeOpacity={0.9}
             style={{
@@ -555,7 +595,13 @@ export default function CreatePostScreen({ navigation }) {
                 marginLeft: 8,
               }}
             >
-              {loading ? 'Posting property...' : 'Post Property'}
+              {loading
+                ? isEditing
+                  ? 'Updating property...'
+                  : 'Posting property...'
+                : isEditing
+                  ? 'Update Property'
+                  : 'Post Property'}
             </Text>
           </TouchableOpacity>
         </View>
