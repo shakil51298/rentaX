@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { getUnreadNotificationCount } from '../../lib/notifications'
+import { navigateToMainTab } from './tabNavigation'
 
 function Badge({ count }) {
   if (!count) return null
@@ -184,7 +185,7 @@ export default function BottomNavBar({
         return (
           <TouchableOpacity
             key={tab.key}
-            onPress={() => navigation.navigate(tab.screen)}
+            onPress={() => navigateToMainTab(navigation, tab.screen)}
             style={{ minWidth: 44, alignItems: 'center' }}
           >
             <View>

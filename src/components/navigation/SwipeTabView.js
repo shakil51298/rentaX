@@ -1,15 +1,6 @@
 import { useMemo } from 'react'
 import { PanResponder, View } from 'react-native'
-
-const TAB_ORDER = ['home', 'chat', 'favorite', 'notifications', 'profile']
-
-const TAB_SCREENS = {
-  home: 'Home',
-  chat: 'Chat',
-  favorite: 'Favorite',
-  notifications: 'Notifications',
-  profile: 'Profile',
-}
+import { MAIN_TAB_ORDER, MAIN_TAB_SCREENS, navigateToMainTab } from './tabNavigation'
 
 export default function SwipeTabView({
   navigation,
@@ -31,7 +22,7 @@ export default function SwipeTabView({
         onPanResponderRelease: (_event, gestureState) => {
           if (disabled) return
 
-          const currentIndex = TAB_ORDER.indexOf(activeTab)
+          const currentIndex = MAIN_TAB_ORDER.indexOf(activeTab)
 
           if (currentIndex === -1) return
 
@@ -42,17 +33,17 @@ export default function SwipeTabView({
 
           const nextIndex =
             gestureState.dx < 0
-              ? Math.min(currentIndex + 1, TAB_ORDER.length - 1)
+              ? Math.min(currentIndex + 1, MAIN_TAB_ORDER.length - 1)
               : Math.max(currentIndex - 1, 0)
 
           if (nextIndex === currentIndex) return
 
-          const nextTab = TAB_ORDER[nextIndex]
-          const nextScreen = TAB_SCREENS[nextTab]
+          const nextTab = MAIN_TAB_ORDER[nextIndex]
+          const nextScreen = MAIN_TAB_SCREENS[nextTab]
 
           if (!nextScreen) return
 
-          navigation.navigate(nextScreen)
+          navigateToMainTab(navigation, nextScreen)
         },
       }),
     [activeTab, disabled, navigation]
