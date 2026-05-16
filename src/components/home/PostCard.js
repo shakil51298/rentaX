@@ -22,6 +22,15 @@ function getStatusMeta(status) {
   }
 }
 
+function getShortLocationLabel(location) {
+  if (!location) return ''
+
+  return String(location)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)[0]
+}
+
 export default function PostCard({
   item,
   currentUser,
@@ -55,10 +64,12 @@ export default function PostCard({
     (fav) => fav.user_id === currentUser?.id
   )
   const statusMeta = getStatusMeta(item.status)
+  const locationLabel = getShortLocationLabel(item.location)
+  const rentLabel = item.price ? `৳ ${item.price}` : ''
   const contentText = useMemo(
     () =>
-      `${item.title || ''}\n${item.description || 'No description added'}\n\nRent: ৳ ${item.price}\nLocation: ${item.location || 'Location not added'}`,
-    [item.description, item.location, item.price, item.title]
+      `${item.title || ''}\n${item.description || 'No description added'}`,
+    [item.description, item.title]
   )
   const showMoreToggle = contentText.length > 170
   const handleOpenPost = () => onOpenPost?.(item)
@@ -107,11 +118,56 @@ export default function PostCard({
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                 }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '800', color: statusMeta.textColor }}>
-                  {statusMeta.label}
-                </Text>
-              </View>
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: statusMeta.textColor }}>
+                    {statusMeta.label}
+                  </Text>
+                </View>
+
+              {locationLabel ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                    maxWidth: 132,
+                  }}
+                >
+                  <Ionicons
+                    name="location-outline"
+                    size={11}
+                    color="#64748b"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={{ fontSize: 11, fontWeight: '700', color: '#475569', flexShrink: 1 }}
+                  >
+                    {locationLabel}
+                  </Text>
+                </View>
+              ) : null}
+
+              {rentLabel ? (
+                <View
+                  style={{
+                    backgroundColor: '#fff7ed',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#ea580c' }}>
+                    {rentLabel}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </TouchableOpacity>
