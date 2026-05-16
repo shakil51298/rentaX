@@ -489,6 +489,7 @@ export default function AdsManagementScreen({ navigation }) {
             onOpenMedia={openMedia}
             onOpenOwnerProfile={() => {}}
             onPressMore={openPostActions}
+            onOpenPost={(post) => navigation.navigate('Property', { property: post })}
           />
         ))}
       </ScrollView>

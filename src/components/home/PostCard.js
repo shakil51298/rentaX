@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { Image, Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Avatar from '../common/Avatar'
@@ -31,7 +32,9 @@ export default function PostCard({
   onOpenMedia,
   onOpenOwnerProfile,
   onPressMore,
+  onOpenPost,
 }) {
+  const [expanded, setExpanded] = useState(false)
   const totalReacts = item.property_reactions?.length || 0
   const totalComments = item.property_comments?.length || 0
   const totalFavorites = item.property_favorites?.length || 0
@@ -52,6 +55,13 @@ export default function PostCard({
     (fav) => fav.user_id === currentUser?.id
   )
   const statusMeta = getStatusMeta(item.status)
+  const contentText = useMemo(
+    () =>
+      `${item.title || ''}\n${item.description || 'No description added'}\n\nRent: ৳ ${item.price}\nLocation: ${item.location || 'Location not added'}`,
+    [item.description, item.location, item.price, item.title]
+  )
+  const showMoreToggle = contentText.length > 170
+  const handleOpenPost = () => onOpenPost?.(item)
 
   return (
     <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
@@ -119,20 +129,36 @@ export default function PostCard({
         )}
       </View>
 
-      <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>
-        {item.title}
-        {'\n'}
-        {item.description}
-        {'\n\n'}Rent: ৳ {item.price}
-        {'\n'}Location: {item.location || 'Location not added'}
-      </Text>
+      <TouchableOpacity
+        activeOpacity={onOpenPost ? 0.88 : 1}
+        onPress={handleOpenPost}
+        disabled={!onOpenPost}
+      >
+        <Text
+          style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}
+          numberOfLines={expanded ? undefined : 6}
+        >
+          {contentText}
+        </Text>
+      </TouchableOpacity>
+
+      {showMoreToggle ? (
+        <TouchableOpacity
+          onPress={() => setExpanded((current) => !current)}
+          style={{ paddingHorizontal: 14, marginTop: 6 }}
+        >
+          <Text style={{ color: '#1877F2', fontWeight: '800' }}>
+            {expanded ? 'less' : 'more...'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
 
       {media.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, paddingHorizontal: 8 }}>
           {media.slice(0, 4).map((mediaItem, index) => (
             <TouchableOpacity
               key={`${mediaItem.uri}-${index}`}
-              onPress={() => onOpenMedia(media, index)}
+              onPress={() => (onOpenPost ? handleOpenPost() : onOpenMedia(media, index))}
               activeOpacity={0.9}
               style={{ width: '50%', padding: 3 }}
             >

@@ -937,8 +937,9 @@ export default function HomeScreen({ navigation, route }) {
       onShare={sharePost}
       onOpenMedia={openMediaViewer}
       onOpenOwnerProfile={openOwnerProfile}
+      onOpenPost={(post) => navigation.navigate('Property', { property: post })}
     />
-  ), [currentUser, openMediaViewer, openOwnerProfile, properties])
+  ), [currentUser, navigation, openMediaViewer, openOwnerProfile])
 
   const showInitialLoader = loading && properties.length === 0
   const canCreatePosts = currentUser?.user_metadata?.user_type === 'property_owner'
