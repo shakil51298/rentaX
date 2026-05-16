@@ -41,6 +41,12 @@
           "microphonePermission": "Allow Rental X to record and send voice messages."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Rental X to access your location to show your area on the home page."
+        }
+      ],
       "expo-font",
       "expo-asset"
     ],

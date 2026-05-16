@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
+import * as Location from 'expo-location'
 import { supabase } from '../lib/supabase'
 import {
   createNotification,
@@ -51,6 +52,8 @@ export default function HomeScreen({ navigation, route }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [messageUnreadCount, setMessageUnreadCount] = useState(0)
+  const [locationLabel, setLocationLabel] = useState('Detecting location...')
+  const [locationLoading, setLocationLoading] = useState(false)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -60,6 +63,11 @@ export default function HomeScreen({ navigation, route }) {
   const handledCommentRouteRequest = useRef(null)
   const commentReturnRoute = useRef(null)
 
+  function formatLocationLabel(value) {
+    if (!value) return ''
+    return value.length > 5 ? `${value.slice(0, 5)}..` : value
+  }
+
   useEffect(() => {
     loadUser()
     loadProperties()
@@ -68,6 +76,7 @@ export default function HomeScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       loadUser()
+      loadCurrentLocation()
     }, [])
   )
 
@@ -295,6 +304,44 @@ export default function HomeScreen({ navigation, route }) {
     } = await supabase.auth.getUser()
 
     setCurrentUser(user)
+  }
+
+  async function loadCurrentLocation() {
+    try {
+      setLocationLoading(true)
+
+      const permission = await Location.requestForegroundPermissionsAsync()
+
+      if (!permission.granted) {
+        setLocationLabel(formatLocationLabel('Location off'))
+        setLocationLoading(false)
+        return
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      })
+
+      const places = await Location.reverseGeocodeAsync({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      })
+
+      const place = places?.[0]
+      const label =
+        place?.district ||
+        place?.subregion ||
+        place?.city ||
+        place?.region ||
+        place?.country ||
+        'Current area'
+
+      setLocationLabel(formatLocationLabel(label))
+    } catch (_error) {
+      setLocationLabel(formatLocationLabel('Location unavailable'))
+    } finally {
+      setLocationLoading(false)
+    }
   }
 
   async function refreshNotificationBadge(userId = currentUser?.id) {
@@ -995,14 +1042,39 @@ export default function HomeScreen({ navigation, route }) {
         style={{
           backgroundColor: '#fff',
           paddingHorizontal: 16,
-          paddingVertical: 10,
+          paddingTop: 8,
+          paddingBottom: 10,
           borderBottomWidth: 1,
           borderBottomColor: '#eee',
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'flex-end',
+          justifyContent: 'space-between',
         }}
       >
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
+          <View
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 13,
+              backgroundColor: '#f1f5f9',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 7,
+            }}
+          >
+            <Ionicons name="location-outline" size={14} color="#1877F2" />
+          </View>
+
+          <Text
+            style={{ color: '#334155', fontSize: 12, fontWeight: '700', flexShrink: 1 }}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {locationLoading ? 'Loc...' : locationLabel}
+          </Text>
+        </View>
+
         <TouchableOpacity
           style={{
             width: 38,
