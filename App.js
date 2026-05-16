@@ -9,12 +9,41 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { hasSupabaseConfig, supabaseConfigError } from './src/lib/supabase'
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     ...Ionicons.font,
   })
 
-  if (!fontsLoaded) {
-    return null
+  if (!fontsLoaded && !fontError) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 24,
+          }}
+        >
+          <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827', textAlign: 'center' }}>
+            Rental X is starting
+          </Text>
+          <Text
+            style={{
+              marginTop: 12,
+              color: '#64748b',
+              textAlign: 'center',
+              lineHeight: 22,
+            }}
+          >
+            Loading app resources...
+          </Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (fontError) {
+    console.warn('Icon font failed to load:', fontError)
   }
 
   if (!hasSupabaseConfig) {
