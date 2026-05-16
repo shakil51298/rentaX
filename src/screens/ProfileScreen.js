@@ -29,7 +29,17 @@ function displayNameFromEmail(email) {
   return email.split('@')[0]
 }
 
-function Field({ label, value, onChangeText, placeholder, multiline, keyboardType }) {
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  multiline,
+  keyboardType,
+  secureTextEntry,
+  autoCapitalize,
+  autoComplete,
+}) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 7 }}>
@@ -42,6 +52,9 @@ function Field({ label, value, onChangeText, placeholder, multiline, keyboardTyp
         placeholder={placeholder}
         multiline={multiline}
         keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={autoCapitalize}
+        autoComplete={autoComplete}
         blurOnSubmit={false}
         autoCorrect={false}
         style={{
@@ -150,8 +163,13 @@ export default function ProfileScreen({ navigation }) {
   const [isVerified, setIsVerified] = useState(false)
   const [notifyMessages, setNotifyMessages] = useState(true)
   const [notifyActivity, setNotifyActivity] = useState(true)
-  const [profileExpanded, setProfileExpanded] = useState(true)
-  const [notificationExpanded, setNotificationExpanded] = useState(true)
+  const [profileExpanded, setProfileExpanded] = useState(false)
+  const [notificationExpanded, setNotificationExpanded] = useState(false)
+  const [securityExpanded, setSecurityExpanded] = useState(false)
+  const [securitySaving, setSecuritySaving] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
     loadUser()
@@ -173,6 +191,7 @@ export default function ProfileScreen({ navigation }) {
     setUserType(metadata.user_type || 'renter')
     setNotifyMessages(metadata.notify_messages !== false)
     setNotifyActivity(metadata.notify_activity !== false)
+    setLoginEmail(user?.email || '')
 
     if (user?.id) {
       const { data } = await supabase
@@ -253,6 +272,71 @@ export default function ProfileScreen({ navigation }) {
     }
 
     Alert.alert('Saved', 'Your public profile was updated.')
+    loadUser()
+  }
+
+  async function saveSecuritySettings() {
+    if (!user) return
+
+    const trimmedEmail = loginEmail.trim().toLowerCase()
+    const emailChanged = Boolean(trimmedEmail && trimmedEmail !== (user.email || '').toLowerCase())
+    const passwordChanged = Boolean(newPassword)
+
+    if (!emailChanged && !passwordChanged) {
+      Alert.alert('Nothing to update', 'Change your email or password first.')
+      return
+    }
+
+    if (passwordChanged) {
+      if (newPassword.length < 6) {
+        Alert.alert('Weak password', 'Use at least 6 characters for the new password.')
+        return
+      }
+
+      if (newPassword !== confirmPassword) {
+        Alert.alert('Password mismatch', 'Your password confirmation does not match.')
+        return
+      }
+    }
+
+    setSecuritySaving(true)
+
+    const payload = {}
+
+    if (emailChanged) {
+      payload.email = trimmedEmail
+    }
+
+    if (passwordChanged) {
+      payload.password = newPassword
+    }
+
+    const { error } = await supabase.auth.updateUser(payload)
+
+    setSecuritySaving(false)
+
+    if (error) {
+      Alert.alert('Security update failed', error.message)
+      return
+    }
+
+    setNewPassword('')
+    setConfirmPassword('')
+
+    if (emailChanged && passwordChanged) {
+      Alert.alert(
+        'Security updated',
+        'Your password was updated. Check your email to confirm the new login email address.'
+      )
+    } else if (emailChanged) {
+      Alert.alert(
+        'Email update started',
+        'Check your inbox and confirm the new email address to finish the change.'
+      )
+    } else {
+      Alert.alert('Password updated', 'Your password was updated successfully.')
+    }
+
     loadUser()
   }
 
@@ -458,6 +542,74 @@ export default function ProfileScreen({ navigation }) {
               value={notifyActivity}
               onValueChange={setNotifyActivity}
             />
+          </SectionCard>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Password and security"
+          expanded={securityExpanded}
+          onPress={() => setSecurityExpanded((current) => !current)}
+        >
+          <SectionCard>
+            <Field
+              label="Login email"
+              value={loginEmail}
+              onChangeText={setLoginEmail}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+            />
+
+            <Field
+              label="New password"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="At least 6 characters"
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="password-new"
+            />
+
+            <Field
+              label="Confirm new password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Re-enter new password"
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="password-new"
+            />
+
+            <View
+              style={{
+                backgroundColor: '#f8fafc',
+                borderRadius: 12,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ color: '#475569', lineHeight: 20 }}>
+                Email changes may need inbox confirmation. Password updates apply after saving here.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={saveSecuritySettings}
+              disabled={securitySaving}
+              style={{
+                backgroundColor: securitySaving ? '#8bbcf7' : '#1877F2',
+                borderRadius: 14,
+                paddingVertical: 15,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '900' }}>
+                {securitySaving ? 'Updating...' : 'Update security'}
+              </Text>
+            </TouchableOpacity>
           </SectionCard>
         </CollapsibleSection>
 

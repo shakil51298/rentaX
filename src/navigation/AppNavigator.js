@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import * as Notifications from 'expo-notifications'
+import { ActivityIndicator, View } from 'react-native'
 
 import LoginScreen from '../screens/LoginScreen'
 import HomeScreen from '../screens/HomeScreen'
@@ -17,6 +18,7 @@ import {
   registerDevicePushToken,
   routeFromNotificationData,
 } from '../lib/pushNotifications'
+import { useState } from 'react'
 
 const Stack = createNativeStackNavigator()
 const navigationRef = createNavigationContainerRef()
@@ -83,6 +85,7 @@ function NotificationCoordinator({ onOpenNotification }) {
 
 export default function AppNavigator() {
   const pendingNotificationPayload = useRef(null)
+  const [session, setSession] = useState(undefined)
 
   const handleOpenNotification = useCallback((payload) => {
     if (!payload) return
@@ -94,6 +97,46 @@ export default function AppNavigator() {
 
     pendingNotificationPayload.current = payload
   }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function bootstrapSession() {
+      const { data, error } = await supabase.auth.getSession()
+
+      if (!isMounted) return
+
+      if (error) {
+        setSession(null)
+        return
+      }
+
+      setSession(data.session || null)
+    }
+
+    bootstrapSession()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (isMounted) {
+        setSession(nextSession || null)
+      }
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  if (session === undefined) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f7fb' }}>
+        <ActivityIndicator size="large" color="#1877F2" />
+      </View>
+    )
+  }
 
   return (
     <>
@@ -107,7 +150,7 @@ export default function AppNavigator() {
           }
         }}
       >
-      <Stack.Navigator>
+      <Stack.Navigator initialRouteName={session ? 'Home' : 'Login'}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Property" component={PropertyScreen} />
