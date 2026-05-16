@@ -12,24 +12,16 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import MapView, { Marker } from 'react-native-maps'
 import * as Location from 'expo-location'
+import {
+  getLocationSelectionFromCoords,
+  searchLocationSelection,
+} from '../lib/location'
 
 const DEFAULT_REGION = {
   latitude: 23.8103,
   longitude: 90.4125,
   latitudeDelta: 0.12,
   longitudeDelta: 0.12,
-}
-
-function buildLocationName(place, fallback = 'Pinned location') {
-  return (
-    place?.name ||
-    place?.district ||
-    place?.subregion ||
-    place?.city ||
-    place?.region ||
-    place?.country ||
-    fallback
-  )
 }
 
 export default function LocationScreen({ navigation, route }) {
@@ -40,6 +32,7 @@ export default function LocationScreen({ navigation, route }) {
   const [currentCoords, setCurrentCoords] = useState(null)
   const [selectedCoords, setSelectedCoords] = useState(null)
   const [selectedLabel, setSelectedLabel] = useState('Loading location...')
+  const [selectedDetails, setSelectedDetails] = useState('')
   const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
@@ -63,6 +56,22 @@ export default function LocationScreen({ navigation, route }) {
   async function loadInitialLocation() {
     try {
       setLoading(true)
+      const initialLocation = route?.params?.initialLocation
+
+      if (initialLocation?.latitude && initialLocation?.longitude) {
+        const coords = {
+          latitude: initialLocation.latitude,
+          longitude: initialLocation.longitude,
+        }
+
+        setCurrentCoords(coords)
+        setSelectedCoords(coords)
+        setSelectedLabel(initialLocation.areaLabel || initialLocation.label || 'Pinned location')
+        setSelectedDetails(initialLocation.fullLabel || initialLocation.areaLabel || '')
+        setLoading(false)
+        return
+      }
+
       const permission = await Location.requestForegroundPermissionsAsync()
 
       if (!permission.granted) {
@@ -85,6 +94,7 @@ export default function LocationScreen({ navigation, route }) {
       await updateSelectedLabel(coords, 'Current location')
     } catch (_error) {
       setSelectedLabel('Location unavailable')
+      setSelectedDetails('')
     } finally {
       setLoading(false)
     }
@@ -92,10 +102,12 @@ export default function LocationScreen({ navigation, route }) {
 
   async function updateSelectedLabel(coords, fallbackLabel) {
     try {
-      const places = await Location.reverseGeocodeAsync(coords)
-      setSelectedLabel(buildLocationName(places?.[0], fallbackLabel))
+      const selection = await getLocationSelectionFromCoords(coords, fallbackLabel)
+      setSelectedLabel(selection.areaLabel || fallbackLabel || 'Pinned location')
+      setSelectedDetails(selection.fullLabel || selection.areaLabel || '')
     } catch (_error) {
       setSelectedLabel(fallbackLabel || 'Pinned location')
+      setSelectedDetails('')
     }
   }
 
@@ -107,21 +119,21 @@ export default function LocationScreen({ navigation, route }) {
       setSearching(true)
       Keyboard.dismiss()
 
-      const results = await Location.geocodeAsync(query)
-      const firstMatch = results?.[0]
+      const selection = await searchLocationSelection(query)
 
-      if (!firstMatch) {
+      if (!selection) {
         Alert.alert('Location not found', 'Try a more specific area or place name.')
         return
       }
 
       const coords = {
-        latitude: firstMatch.latitude,
-        longitude: firstMatch.longitude,
+        latitude: selection.latitude,
+        longitude: selection.longitude,
       }
 
       setSelectedCoords(coords)
-      await updateSelectedLabel(coords, query)
+      setSelectedLabel(selection.areaLabel || query)
+      setSelectedDetails(selection.fullLabel || selection.areaLabel || query)
     } catch (_error) {
       Alert.alert('Search failed', 'We could not search that location right now.')
     } finally {
@@ -151,13 +163,18 @@ export default function LocationScreen({ navigation, route }) {
       return
     }
 
-    navigation.navigate('Home', {
+    const returnScreen = route?.params?.returnScreen || 'Home'
+
+    navigation.navigate(returnScreen, {
       selectedLocation: {
         label: selectedLabel,
+        areaLabel: selectedLabel,
+        fullLabel: selectedDetails || selectedLabel,
         latitude: selectedCoords.latitude,
         longitude: selectedCoords.longitude,
       },
       selectedLocationRequestId: String(Date.now()),
+      ...(route?.params?.returnParams || {}),
     })
   }
 
@@ -345,6 +362,11 @@ export default function LocationScreen({ navigation, route }) {
                   <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '900' }}>
                     {selectedLabel}
                   </Text>
+                  {selectedDetails ? (
+                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                      {selectedDetails}
+                    </Text>
+                  ) : null}
                   {selectedCoords ? (
                     <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
                       {selectedCoords.latitude.toFixed(5)}, {selectedCoords.longitude.toFixed(5)}

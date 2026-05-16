@@ -40,6 +40,7 @@ import {
   updateCommentTree,
 } from '../lib/commentUtils'
 import { normalizeMediaList } from '../lib/media'
+import { getLocationSelectionFromCoords } from '../lib/location'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 
@@ -279,9 +280,9 @@ export default function HomeScreen({ navigation, route }) {
 
     manualLocationOverride.current = true
     setLocationLoading(false)
-    const fullLabel = selectedLocation.label || 'Pinned location'
-    setLocationFullLabel(fullLabel)
-    setLocationLabel(formatLocationLabel(fullLabel))
+    const resolvedArea = selectedLocation.areaLabel || selectedLocation.label || 'Pinned location'
+    setLocationFullLabel(resolvedArea)
+    setLocationLabel(formatLocationLabel(resolvedArea))
     navigation.setParams({
       selectedLocation: undefined,
       selectedLocationRequestId: undefined,
@@ -531,23 +532,17 @@ export default function HomeScreen({ navigation, route }) {
         accuracy: Location.Accuracy.Balanced,
       })
 
-      const places = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      })
-
-      const place = places?.[0]
-      const label =
-        place?.district ||
-        place?.subregion ||
-        place?.city ||
-        place?.region ||
-        place?.country ||
+      const selection = await getLocationSelectionFromCoords(
+        {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        },
         'Current area'
+      )
 
-      setLocationFullLabel(label)
-      setLocationLabel(formatLocationLabel(label))
-      return label
+      setLocationFullLabel(selection.areaLabel || 'Current area')
+      setLocationLabel(formatLocationLabel(selection.areaLabel || 'Current area'))
+      return selection.areaLabel || 'Current area'
     } catch (_error) {
       setLocationFullLabel('Location unavailable')
       setLocationLabel(formatLocationLabel('Location unavailable'))

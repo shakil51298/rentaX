@@ -139,6 +139,7 @@ export default function CreatePostScreen({ navigation, route }) {
   const [previewIndex, setPreviewIndex] = useState(0)
   const [composerUser, setComposerUser] = useState(null)
   const [composerProfile, setComposerProfile] = useState(null)
+  const [selectedLocationMeta, setSelectedLocationMeta] = useState(null)
   const editingPost = route?.params?.post || null
   const isEditing = Boolean(editingPost?.id)
 
@@ -153,6 +154,14 @@ export default function CreatePostScreen({ navigation, route }) {
     setDescription(editingPost.description || '')
     setPrice(editingPost.price ? String(editingPost.price) : '')
     setLocation(editingPost.location || '')
+    setSelectedLocationMeta(
+      editingPost.location
+        ? {
+            areaLabel: editingPost.location,
+            fullLabel: editingPost.location,
+          }
+        : null
+    )
 
     const existingMedia = normalizeMediaList(
       editingPost.media?.length ? editingPost.media : editingPost.image_url ? [editingPost.image_url] : []
@@ -164,6 +173,20 @@ export default function CreatePostScreen({ navigation, route }) {
     setMedia(existingMedia)
     setPreviewIndex(0)
   }, [editingPost])
+
+  useEffect(() => {
+    const selectedLocation = route?.params?.selectedLocation
+    const requestId = route?.params?.selectedLocationRequestId
+
+    if (!selectedLocation || !requestId) return
+
+    setLocation(selectedLocation.areaLabel || selectedLocation.label || '')
+    setSelectedLocationMeta(selectedLocation)
+    navigation.setParams({
+      selectedLocation: undefined,
+      selectedLocationRequestId: undefined,
+    })
+  }, [navigation, route?.params?.selectedLocation, route?.params?.selectedLocationRequestId])
 
   async function loadComposer() {
     const {
@@ -336,6 +359,10 @@ export default function CreatePostScreen({ navigation, route }) {
   const composerSubtitle = composerProfile?.user_type === 'property_owner'
     ? 'Posting as property owner'
     : 'Create a rental post'
+  const locationHelperText =
+    selectedLocationMeta?.fullLabel && selectedLocationMeta.fullLabel !== location
+      ? selectedLocationMeta.fullLabel
+      : 'Use area-based location so renters understand the property quickly.'
 
   return (
     <KeyboardAvoidingView
@@ -416,12 +443,85 @@ export default function CreatePostScreen({ navigation, route }) {
             keyboardType="numeric"
           />
 
-          <Field
-            label="Location"
-            placeholder="Dhaka, Bashundhara R/A"
-            value={location}
-            onChangeText={setLocation}
-          />
+          <View style={{ marginBottom: 16 }}>
+            <Text
+              style={{
+                color: '#334155',
+                fontSize: 13,
+                fontWeight: '800',
+                marginBottom: 8,
+              }}
+            >
+              Location
+            </Text>
+
+            <View
+              style={{
+                backgroundColor: '#f8fafc',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                padding: 12,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  placeholder="Dhaka, Bashundhara R/A"
+                  placeholderTextColor="#94a3b8"
+                  value={location}
+                  onChangeText={(value) => {
+                    setLocation(value)
+                    setSelectedLocationMeta((current) =>
+                      current
+                        ? {
+                            ...current,
+                            areaLabel: value,
+                            label: value,
+                          }
+                        : null
+                    )
+                  }}
+                  style={{
+                    flex: 1,
+                    color: '#0f172a',
+                    fontSize: 15,
+                    minHeight: 22,
+                    paddingVertical: 6,
+                  }}
+                />
+
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate('Location', {
+                      returnScreen: 'CreatePost',
+                      initialLabel: selectedLocationMeta?.fullLabel || location,
+                      initialLocation: selectedLocationMeta || null,
+                    })
+                  }
+                  activeOpacity={0.88}
+                  style={{
+                    marginLeft: 10,
+                    height: 38,
+                    paddingHorizontal: 12,
+                    borderRadius: 13,
+                    backgroundColor: '#eff6ff',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="map-outline" size={16} color="#2563eb" />
+                  <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                    Pick map
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: '#64748b', fontSize: 11, marginTop: 8, lineHeight: 16 }}>
+                {locationHelperText}
+              </Text>
+            </View>
+          </View>
 
           <View
             style={{
