@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -55,6 +56,83 @@ function Field({ label, value, onChangeText, placeholder, multiline, keyboardTyp
   )
 }
 
+function SectionTitle({ children }) {
+  return (
+    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 12 }}>
+      {children}
+    </Text>
+  )
+}
+
+function CollapsibleSection({ title, expanded, onPress, children }) {
+  return (
+    <View>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: expanded ? 12 : 0,
+        }}
+      >
+        <SectionTitle>{title}</SectionTitle>
+
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color="#334155"
+          style={{ marginTop: -10 }}
+        />
+      </TouchableOpacity>
+
+      {expanded ? children : null}
+    </View>
+  )
+}
+
+function SectionCard({ children }) {
+  return (
+    <View
+      style={{
+        backgroundColor: '#fff',
+        borderRadius: 18,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+      }}
+    >
+      {children}
+    </View>
+  )
+}
+
+function SettingRow({ title, subtitle, value, onValueChange }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+      }}
+    >
+      <View style={{ flex: 1, paddingRight: 16 }}>
+        <Text style={{ color: '#111827', fontWeight: '800', fontSize: 15 }}>{title}</Text>
+        <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 18 }}>{subtitle}</Text>
+      </View>
+
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: '#cbd5e1', true: '#93c5fd' }}
+        thumbColor={value ? '#1877F2' : '#f8fafc'}
+      />
+    </View>
+  )
+}
+
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -67,6 +145,10 @@ export default function ProfileScreen({ navigation }) {
   const [location, setLocation] = useState('')
   const [userType, setUserType] = useState('renter')
   const [isVerified, setIsVerified] = useState(false)
+  const [notifyMessages, setNotifyMessages] = useState(true)
+  const [notifyActivity, setNotifyActivity] = useState(true)
+  const [profileExpanded, setProfileExpanded] = useState(true)
+  const [notificationExpanded, setNotificationExpanded] = useState(true)
 
   useEffect(() => {
     loadUser()
@@ -86,6 +168,8 @@ export default function ProfileScreen({ navigation }) {
     setAvatarUrl(metadata.avatar_url || metadata.picture || '')
     setCoverUrl(metadata.cover_url || '')
     setUserType(metadata.user_type || 'renter')
+    setNotifyMessages(metadata.notify_messages !== false)
+    setNotifyActivity(metadata.notify_activity !== false)
 
     if (user?.id) {
       const { data } = await supabase
@@ -128,6 +212,8 @@ export default function ProfileScreen({ navigation }) {
         cover_url: coverUrl.trim() || null,
         user_type: userType,
         user_type_label: selectedType?.title,
+        notify_messages: notifyMessages,
+        notify_activity: notifyActivity,
       },
     })
 
@@ -257,104 +343,131 @@ export default function ProfileScreen({ navigation }) {
         </View>
       </View>
 
-      <View style={{ padding: 16 }}>
-        <Text style={{ fontSize: 18, fontWeight: '900', marginBottom: 12 }}>
-          Public profile
-        </Text>
+      <View style={{ padding: 16, gap: 18 }}>
+        <CollapsibleSection
+          title="Profile settings"
+          expanded={profileExpanded}
+          onPress={() => setProfileExpanded((current) => !current)}
+        >
+          <SectionCard>
+            <Field
+              label="Display name"
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholder="Your public name"
+            />
 
-        <Field
-          label="Display name"
-          value={displayName}
-          onChangeText={setDisplayName}
-          placeholder="Your public name"
-        />
+            <Field
+              label="Profile picture URL"
+              value={avatarUrl}
+              onChangeText={setAvatarUrl}
+              placeholder="https://..."
+            />
 
-        <Field
-          label="Profile picture URL"
-          value={avatarUrl}
-          onChangeText={setAvatarUrl}
-          placeholder="https://..."
-        />
+            <Field
+              label="Cover photo URL"
+              value={coverUrl}
+              onChangeText={setCoverUrl}
+              placeholder="https://..."
+            />
 
-        <Field
-          label="Cover photo URL"
-          value={coverUrl}
-          onChangeText={setCoverUrl}
-          placeholder="https://..."
-        />
+            <Field
+              label="Owner details / Bio"
+              value={bio}
+              onChangeText={setBio}
+              placeholder="Tell renters about you or your properties"
+              multiline
+            />
 
-        <Field
-          label="Owner details / Bio"
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Tell renters about you or your properties"
-          multiline
-        />
+            <Field
+              label="Phone"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="Contact phone"
+              keyboardType="phone-pad"
+            />
 
-        <Field
-          label="Phone"
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="Contact phone"
-          keyboardType="phone-pad"
-        />
+            <Field
+              label="Location"
+              value={location}
+              onChangeText={setLocation}
+              placeholder="City or area"
+            />
 
-        <Field
-          label="Location"
-          value={location}
-          onChangeText={setLocation}
-          placeholder="City or area"
-        />
+            <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 8 }}>
+              Account type
+            </Text>
 
-        <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 8 }}>
-          Account type
-        </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {USER_TYPES.map((item) => {
+                const isSelected = userType === item.id
 
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-          {USER_TYPES.map((item) => {
-            const isSelected = userType === item.id
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => setUserType(item.id)}
+                    style={{
+                      flex: 1,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: isSelected ? '#1877F2' : '#e2e8f0',
+                      backgroundColor: isSelected ? '#eff6ff' : '#fff',
+                      padding: 12,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? '#1877F2' : '#475569',
+                        fontWeight: '800',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {item.title}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </SectionCard>
+        </CollapsibleSection>
 
-            return (
-              <TouchableOpacity
-                key={item.id}
-                onPress={() => setUserType(item.id)}
-                style={{
-                  flex: 1,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: isSelected ? '#1877F2' : '#e2e8f0',
-                  backgroundColor: isSelected ? '#eff6ff' : '#fff',
-                  padding: 12,
-                  alignItems: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: isSelected ? '#1877F2' : '#475569',
-                    fontWeight: '800',
-                    textAlign: 'center',
-                  }}
-                >
-                  {item.title}
-                </Text>
-              </TouchableOpacity>
-            )
-          })}
-        </View>
+        <CollapsibleSection
+          title="Notification settings"
+          expanded={notificationExpanded}
+          onPress={() => setNotificationExpanded((current) => !current)}
+        >
+          <SectionCard>
+            <SettingRow
+              title="Messages"
+              subtitle="Get notified when someone sends you a new chat message."
+              value={notifyMessages}
+              onValueChange={setNotifyMessages}
+            />
+
+            <View style={{ height: 1, backgroundColor: '#e2e8f0' }} />
+
+            <SettingRow
+              title="Post and comment activity"
+              subtitle="Show alerts for likes, replies, and activity on your posts or comments."
+              value={notifyActivity}
+              onValueChange={setNotifyActivity}
+            />
+          </SectionCard>
+        </CollapsibleSection>
 
         <TouchableOpacity
           onPress={saveProfile}
           disabled={saving}
           style={{
             backgroundColor: saving ? '#8bbcf7' : '#1877F2',
-            borderRadius: 12,
+            borderRadius: 14,
             paddingVertical: 15,
             alignItems: 'center',
-            marginBottom: 14,
           }}
         >
           <Text style={{ color: '#fff', fontWeight: '900' }}>
-            {saving ? 'Saving...' : 'Save profile'}
+            {saving ? 'Saving...' : 'Save settings'}
           </Text>
         </TouchableOpacity>
 
@@ -363,7 +476,7 @@ export default function ProfileScreen({ navigation }) {
           style={{
             backgroundColor: '#111',
             paddingVertical: 15,
-            borderRadius: 12,
+            borderRadius: 14,
             alignItems: 'center',
           }}
         >
