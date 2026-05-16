@@ -5,6 +5,22 @@ import { normalizeMediaList } from '../../lib/media'
 import { timeAgo } from '../../lib/time'
 import { getProfileName } from '../../lib/userDisplay'
 
+function getStatusMeta(status) {
+  if (status === 'rented') {
+    return {
+      label: 'Rented out',
+      backgroundColor: '#fef2f2',
+      textColor: '#dc2626',
+    }
+  }
+
+  return {
+    label: 'Open for rent',
+    backgroundColor: '#ecfdf5',
+    textColor: '#059669',
+  }
+}
+
 export default function PostCard({
   item,
   currentUser,
@@ -35,6 +51,7 @@ export default function PostCard({
   const isFavorite = item.property_favorites?.some(
     (fav) => fav.user_id === currentUser?.id
   )
+  const statusMeta = getStatusMeta(item.status)
 
   return (
     <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
@@ -68,9 +85,24 @@ export default function PostCard({
               ) : null}
             </View>
 
-            <Text style={{ fontSize: 12, color: '#777' }}>
-              {timeAgo(item.created_at)}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3, flexWrap: 'wrap' }}>
+              <Text style={{ fontSize: 12, color: '#777', marginRight: 8 }}>
+                {timeAgo(item.created_at)}
+              </Text>
+
+              <View
+                style={{
+                  backgroundColor: statusMeta.backgroundColor,
+                  borderRadius: 999,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '800', color: statusMeta.textColor }}>
+                  {statusMeta.label}
+                </Text>
+              </View>
+            </View>
           </View>
         </TouchableOpacity>
 
