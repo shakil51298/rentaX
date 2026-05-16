@@ -39,10 +39,19 @@ export function formatDuration(milliseconds = 0) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+export function formatDurationSeconds(totalSeconds = 0) {
+  const safeSeconds = Math.max(Math.floor(totalSeconds), 0)
+  const minutes = Math.floor(safeSeconds / 60)
+  const seconds = safeSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 export function mediaLabel(type) {
   if (type === 'image') return 'Photo'
   if (type === 'video') return 'Video'
   if (type === 'voice') return 'Voice message'
+  if (type === 'call') return 'Call'
   return 'Message'
 }
 

@@ -4,6 +4,7 @@ import {
   Alert,
   BackHandler,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -170,6 +171,7 @@ function getReplySnippet(message) {
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
+  if (message.message_type === 'call') return message.body || 'Call'
   return message.body || 'Message'
 }
 
@@ -192,6 +194,8 @@ async function fetchProfiles(userIds) {
 export default function ChatScreen({ route, navigation }) {
   const flatListRef = useRef(null)
   const messageInputRef = useRef(null)
+  const highlightTimerRef = useRef(null)
+  const suppressAutoScrollUntilRef = useRef(0)
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
   const recorderState = useAudioRecorderState(audioRecorder)
   const insets = useSafeAreaInsets()
@@ -213,6 +217,7 @@ export default function ChatScreen({ route, navigation }) {
   const [openedFromList, setOpenedFromList] = useState(false)
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [replyTarget, setReplyTarget] = useState(null)
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -231,6 +236,14 @@ export default function ChatScreen({ route, navigation }) {
       }, {}),
     [messages]
   )
+  const messageIndexLookup = useMemo(
+    () =>
+      messages.reduce((itemsById, message, index) => {
+        itemsById[message.id] = index
+        return itemsById
+      }, {}),
+    [messages]
+  )
   const {
     presenceByUserId,
     setPresenceByUserId,
@@ -242,6 +255,20 @@ export default function ChatScreen({ route, navigation }) {
     conversationId: conversation?.id,
     otherUserId: otherUser?.id,
   })
+
+  function shouldSuppressAutoScroll() {
+    return Date.now() < suppressAutoScrollUntilRef.current
+  }
+
+  function scrollToBottom(animated = true) {
+    if (shouldSuppressAutoScroll()) return
+
+    flatListRef.current?.scrollToEnd({ animated })
+  }
+
+  function suppressAutoScroll(durationMs = 1400) {
+    suppressAutoScrollUntilRef.current = Date.now() + durationMs
+  }
 
   const loadMessages = useCallback(async (
     conversationId,
@@ -557,9 +584,17 @@ export default function ChatScreen({ route, navigation }) {
 
   useEffect(() => {
     if (mode === 'chat' && messages.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
+      setTimeout(() => scrollToBottom(true), 80)
     }
   }, [messages.length, mode])
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current)
+      }
+    }
+  }, [])
 
   async function sendMessage({
     body = '',
@@ -755,6 +790,42 @@ export default function ChatScreen({ route, navigation }) {
     }
   }
 
+  function startVoiceCall() {
+    if (!otherUser?.id) return
+
+    navigation.navigate('AudioCall', {
+      participant: otherUser,
+      property: conversationProperty,
+      conversationId: conversation?.id || null,
+    })
+  }
+
+  function jumpToMessage(messageId) {
+    if (!messageId) return
+
+    const index = messageIndexLookup[messageId]
+
+    if (typeof index !== 'number') return
+
+    suppressAutoScrollUntilRef.current = Date.now() + 2500
+
+    flatListRef.current?.scrollToIndex({
+      index,
+      animated: true,
+      viewPosition: 0.35,
+    })
+
+    setHighlightedMessageId(messageId)
+
+    if (highlightTimerRef.current) {
+      clearTimeout(highlightTimerRef.current)
+    }
+
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedMessageId((current) => (current === messageId ? null : current))
+    }, 1800)
+  }
+
   function showComingSoon(type) {
     Alert.alert('Coming soon', `${type} calling will be available soon.`)
   }
@@ -776,6 +847,8 @@ export default function ChatScreen({ route, navigation }) {
     const reactionField = getMessageReactionField(message, currentUser.id)
 
     if (!reactionField) return
+
+    suppressAutoScroll(1600)
 
     const nextReaction = message[reactionField] ? null : 'love'
     const updatedAt = new Date().toISOString()
@@ -1282,7 +1355,7 @@ export default function ChatScreen({ route, navigation }) {
           </Pressable>
 
           <TouchableOpacity
-            onPress={() => showComingSoon('Voice')}
+            onPress={startVoiceCall}
             style={{
               width: 38,
               height: 38,
@@ -1339,14 +1412,26 @@ export default function ChatScreen({ route, navigation }) {
               repliedMessage={item.reply_to_message_id ? messageLookup[item.reply_to_message_id] : null}
               onOpenMedia={openMediaViewer}
               onReply={handleReplyToMessage}
+              onJumpToMessage={jumpToMessage}
+              onPressCallHistory={startVoiceCall}
               onToggleReaction={toggleMessageReaction}
               onLongPressMessage={openMessageActions}
+              highlighted={highlightedMessageId === item.id}
             />
           )}
           contentContainerStyle={{ paddingTop: 10, paddingBottom: 16 }}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={() => scrollToBottom(true)}
+          onScrollToIndexFailed={(info) => {
+            setTimeout(() => {
+              flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+                viewPosition: 0.35,
+              })
+            }, 350)
+          }}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingHorizontal: 32, paddingTop: 80 }}>
               <Ionicons name="chatbubble-ellipses-outline" size={48} color="#94a3b8" />
@@ -1407,17 +1492,78 @@ export default function ChatScreen({ route, navigation }) {
                 alignItems: 'center',
               }}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#1877F2', fontWeight: '900', fontSize: 12 }}>
-                  Replying to {replyTarget.sender_id === currentUser?.id ? 'yourself' : otherUserName}
-                </Text>
-                <Text
-                  style={{ color: '#0f172a', marginTop: 4 }}
-                  numberOfLines={2}
-                >
-                  {getReplySnippet(replyTarget)}
-                </Text>
-              </View>
+              <Pressable
+                onPress={() => jumpToMessage(replyTarget.id)}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+              >
+                {replyTarget.message_type === 'image' && replyTarget.media_url ? (
+                  <Image
+                    source={{ uri: replyTarget.media_url }}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      marginRight: 10,
+                      backgroundColor: '#dbeafe',
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : replyTarget.message_type === 'video' ? (
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      marginRight: 10,
+                      backgroundColor: '#dbeafe',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="videocam" size={18} color="#1877F2" />
+                  </View>
+                ) : replyTarget.message_type === 'voice' ? (
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      marginRight: 10,
+                      backgroundColor: '#dbeafe',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="mic" size={18} color="#1877F2" />
+                  </View>
+                ) : replyTarget.message_type === 'call' ? (
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      marginRight: 10,
+                      backgroundColor: '#dbeafe',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="call" size={17} color="#1877F2" />
+                  </View>
+                ) : null}
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#1877F2', fontWeight: '900', fontSize: 12 }}>
+                    Replying to {replyTarget.sender_id === currentUser?.id ? 'yourself' : otherUserName}
+                  </Text>
+                  <Text
+                    style={{ color: '#0f172a', marginTop: 4 }}
+                    numberOfLines={2}
+                  >
+                    {getReplySnippet(replyTarget)}
+                  </Text>
+                </View>
+              </Pressable>
 
               <TouchableOpacity
                 onPress={() => setReplyTarget(null)}

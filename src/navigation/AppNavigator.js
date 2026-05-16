@@ -15,6 +15,7 @@ import OwnerProfileScreen from '../screens/OwnerProfileScreen'
 import NotificationsScreen from '../screens/NotificationsScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import AdsManagementScreen from '../screens/AdsManagementScreen'
+import AudioCallScreen from '../screens/AudioCallScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -160,6 +161,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Chat"
           component={ChatScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="AudioCall"
+          component={AudioCallScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen name="Profile" component={ProfileScreen} />

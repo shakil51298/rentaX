@@ -41,10 +41,13 @@ create table if not exists public.chat_messages (
   media_mime_type text,
   media_name text,
   audio_duration_ms integer,
+  call_kind text,
+  call_status text,
+  call_duration_seconds integer,
   seen_at timestamptz,
   created_at timestamptz not null default now(),
   check (sender_id <> receiver_id),
-  check (message_type in ('text', 'image', 'video', 'voice'))
+  check (message_type in ('text', 'image', 'video', 'voice', 'call'))
 );
 
 alter table public.chat_messages
@@ -55,7 +58,58 @@ alter table public.chat_messages
   add column if not exists deleted_for_receiver_at timestamptz,
   add column if not exists deleted_for_everyone_at timestamptz,
   add column if not exists deleted_for_everyone_by uuid references auth.users(id) on delete set null,
+  add column if not exists call_kind text,
+  add column if not exists call_status text,
+  add column if not exists call_duration_seconds integer,
   add column if not exists updated_at timestamptz not null default now();
+
+do $$
+begin
+  begin
+    alter table public.chat_messages
+      drop constraint if exists chat_messages_message_type_check;
+  exception
+    when undefined_object then null;
+  end;
+
+  begin
+    alter table public.chat_messages
+      add constraint chat_messages_message_type_check
+      check (message_type in ('text', 'image', 'video', 'voice', 'call'));
+  exception
+    when duplicate_object then null;
+  end;
+
+  begin
+    alter table public.chat_messages
+      drop constraint if exists chat_messages_call_kind_check;
+  exception
+    when undefined_object then null;
+  end;
+
+  begin
+    alter table public.chat_messages
+      add constraint chat_messages_call_kind_check
+      check (call_kind is null or call_kind in ('audio'));
+  exception
+    when duplicate_object then null;
+  end;
+
+  begin
+    alter table public.chat_messages
+      drop constraint if exists chat_messages_call_status_check;
+  exception
+    when undefined_object then null;
+  end;
+
+  begin
+    alter table public.chat_messages
+      add constraint chat_messages_call_status_check
+      check (call_status is null or call_status in ('completed', 'cancelled'));
+  exception
+    when duplicate_object then null;
+  end;
+end $$;
 
 create index if not exists chat_messages_conversation_created_at_idx
   on public.chat_messages(conversation_id, created_at);

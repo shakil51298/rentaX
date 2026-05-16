@@ -17,6 +17,7 @@ export default function ConversationRow({
   const name = getProfileName(profile)
   const isLastMine = item.last_sender_id === currentUserId
   const isOnline = item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online
+  const isLastCall = item.last_message_type === 'call'
 
   return (
     <TouchableOpacity
@@ -73,6 +74,15 @@ export default function ConversationRow({
             <Ionicons
               name="checkmark-done"
               size={15}
+              color="#64748b"
+              style={{ marginRight: 4 }}
+            />
+          ) : null}
+
+          {isLastCall ? (
+            <Ionicons
+              name="call-outline"
+              size={14}
               color="#64748b"
               style={{ marginRight: 4 }}
             />

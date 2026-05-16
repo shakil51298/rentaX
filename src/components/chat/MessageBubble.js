@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react'
 import {
+  Alert,
   Animated,
   Image,
   PanResponder,
@@ -15,6 +16,7 @@ import {
   formatClock,
   formatDayLabel,
   formatDuration,
+  formatDurationSeconds,
   isSameDay,
 } from '../../lib/chatUtils'
 
@@ -135,7 +137,155 @@ function getReplySnippet(message) {
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
+  if (message.message_type === 'call') return message.body || 'Call'
   return message.body || 'Message'
+}
+
+function ReplyPreviewMedia({ message, isMine }) {
+  if (!message || message.deleted_for_everyone_at) return null
+
+  if (message.message_type === 'image' && message.media_url) {
+    return (
+      <Image
+        source={{ uri: message.media_url }}
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+        }}
+        resizeMode="cover"
+      />
+    )
+  }
+
+  if (message.message_type === 'video') {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="videocam"
+          size={18}
+          color={isMine ? '#fff' : '#1877F2'}
+        />
+      </View>
+    )
+  }
+
+  if (message.message_type === 'voice') {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="mic"
+          size={18}
+          color={isMine ? '#fff' : '#1877F2'}
+        />
+      </View>
+    )
+  }
+
+  if (message.message_type === 'call') {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="call"
+          size={17}
+          color={isMine ? '#fff' : '#1877F2'}
+        />
+      </View>
+    )
+  }
+
+  return null
+}
+
+function CallMessage({ message, isMine }) {
+  const isCompleted = message.call_status === 'completed'
+  const iconName = isCompleted ? 'call-outline' : 'close-circle-outline'
+  const iconColor = isCompleted ? '#16a34a' : '#dc2626'
+  const title = message.body || (isCompleted ? 'Audio call' : 'Call cancelled')
+  const detail = isCompleted
+    ? `Duration ${formatDurationSeconds(message.call_duration_seconds || 0)}`
+    : isMine
+      ? 'You ended this call before it connected'
+      : 'Call ended before connection'
+
+  return (
+    <View
+      style={{
+        width: 220,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 10,
+        }}
+      >
+        <Ionicons name={iconName} size={18} color={isMine && isCompleted ? '#fff' : iconColor} />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            color: isMine ? '#fff' : '#0f172a',
+            fontSize: 14,
+            fontWeight: '800',
+          }}
+        >
+          {title}
+        </Text>
+        <Text
+          style={{
+            color: isMine ? 'rgba(255,255,255,0.8)' : '#64748b',
+            fontSize: 12,
+            marginTop: 2,
+          }}
+        >
+          {detail}
+        </Text>
+      </View>
+    </View>
+  )
 }
 
 function renderMessageContent(item, isMine, onOpenMedia) {
@@ -176,6 +326,10 @@ function renderMessageContent(item, isMine, onOpenMedia) {
     return <VoiceMessage message={item} isMine={isMine} />
   }
 
+  if (item.message_type === 'call') {
+    return <CallMessage message={item} isMine={isMine} />
+  }
+
   return (
     <Text
       style={{
@@ -196,8 +350,11 @@ export default function MessageBubble({
   repliedMessage,
   onOpenMedia,
   onReply,
+  onJumpToMessage,
+  onPressCallHistory,
   onToggleReaction,
   onLongPressMessage,
+  highlighted = false,
 }) {
   const shouldShowDay = !isSameDay(item.created_at, previousMessage?.created_at)
   const isMine = item.sender_id === currentUserId
@@ -205,6 +362,7 @@ export default function MessageBubble({
   const tapTimeoutRef = useRef(null)
   const lastTapTimeRef = useRef(0)
   const reactionCount = [item.sender_reaction, item.receiver_reaction].filter(Boolean).length
+  const isCallMessage = item.message_type === 'call'
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -240,6 +398,11 @@ export default function MessageBubble({
   )
 
   function handleTap() {
+    if (item.message_type === 'call') {
+      onPressCallHistory?.(item)
+      return
+    }
+
     const now = Date.now()
 
     if (lastTapTimeRef.current && now - lastTapTimeRef.current < 260) {
@@ -314,8 +477,8 @@ export default function MessageBubble({
               borderBottomRightRadius: isMine ? 5 : 18,
               borderBottomLeftRadius: isMine ? 18 : 5,
               padding: item.message_type === 'text' ? 11 : 5,
-              borderWidth: isMine ? 0 : 1,
-              borderColor: '#e5e7eb',
+              borderWidth: highlighted ? 2 : (isMine ? 0 : 1),
+              borderColor: highlighted ? '#f59e0b' : '#e5e7eb',
               shadowColor: '#0f172a',
               shadowOpacity: 0.05,
               shadowRadius: 4,
@@ -324,34 +487,41 @@ export default function MessageBubble({
             }}
           >
             {repliedMessage ? (
-              <View
+              <Pressable
+                onPress={() => onJumpToMessage?.(repliedMessage.id)}
                 style={{
                   marginBottom: 8,
                   borderRadius: 12,
                   paddingHorizontal: 10,
                   paddingVertical: 8,
                   backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+                  flexDirection: 'row',
+                  alignItems: 'center',
                 }}
               >
-                <Text
-                  style={{
-                    color: isMine ? '#fff' : '#1877F2',
-                    fontWeight: '900',
-                    fontSize: 12,
-                  }}
-                >
-                  {repliedMessage.sender_id === currentUserId ? 'You' : 'Reply'}
-                </Text>
-                <Text
-                  style={{
-                    color: isMine ? 'rgba(255,255,255,0.9)' : '#334155',
-                    marginTop: 3,
-                  }}
-                  numberOfLines={2}
-                >
-                  {getReplySnippet(repliedMessage)}
-                </Text>
-              </View>
+                <ReplyPreviewMedia message={repliedMessage} isMine={isMine} />
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: isMine ? '#fff' : '#1877F2',
+                      fontWeight: '900',
+                      fontSize: 12,
+                    }}
+                  >
+                    {repliedMessage.sender_id === currentUserId ? 'You' : 'Reply'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: isMine ? 'rgba(255,255,255,0.9)' : '#334155',
+                      marginTop: 3,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {getReplySnippet(repliedMessage)}
+                  </Text>
+                </View>
+              </Pressable>
             ) : null}
 
             {renderMessageContent(item, isMine, onOpenMedia)}
@@ -390,7 +560,7 @@ export default function MessageBubble({
             </View>
           </Pressable>
 
-          {reactionCount > 0 ? (
+          {reactionCount > 0 && !isCallMessage ? (
             <View
               style={{
                 alignSelf: isMine ? 'flex-end' : 'flex-start',
