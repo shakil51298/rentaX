@@ -50,6 +50,176 @@ function formatCurrency(value) {
   return `৳ ${Number(value || 0).toLocaleString()}`
 }
 
+const BANGLA_TO_ENGLISH_DIGITS = {
+  '০': '0',
+  '১': '1',
+  '২': '2',
+  '৩': '3',
+  '৪': '4',
+  '৫': '5',
+  '৬': '6',
+  '৭': '7',
+  '৮': '8',
+  '৯': '9',
+}
+
+const ENGLISH_TO_BANGLA_DIGITS = {
+  '0': '০',
+  '1': '১',
+  '2': '২',
+  '3': '৩',
+  '4': '৪',
+  '5': '৫',
+  '6': '৬',
+  '7': '৭',
+  '8': '৮',
+  '9': '৯',
+}
+
+const BANGLA_TO_LATIN_MAP = {
+  'অ': 'o',
+  'আ': 'a',
+  'ই': 'i',
+  'ঈ': 'i',
+  'উ': 'u',
+  'ঊ': 'u',
+  'ঋ': 'ri',
+  'এ': 'e',
+  'ঐ': 'oi',
+  'ও': 'o',
+  'ঔ': 'ou',
+  'ং': 'n',
+  'ঃ': 'h',
+  'ঁ': 'n',
+  'ক': 'k',
+  'খ': 'kh',
+  'গ': 'g',
+  'ঘ': 'gh',
+  'ঙ': 'ng',
+  'চ': 'ch',
+  'ছ': 'ch',
+  'জ': 'j',
+  'ঝ': 'jh',
+  'ঞ': 'n',
+  'ট': 't',
+  'ঠ': 'th',
+  'ড': 'd',
+  'ঢ': 'dh',
+  'ণ': 'n',
+  'ত': 't',
+  'থ': 'th',
+  'দ': 'd',
+  'ধ': 'dh',
+  'ন': 'n',
+  'প': 'p',
+  'ফ': 'f',
+  'ব': 'b',
+  'ভ': 'bh',
+  'ম': 'm',
+  'য': 'y',
+  'য়': 'y',
+  'র': 'r',
+  'ল': 'l',
+  'শ': 'sh',
+  'ষ': 'sh',
+  'স': 's',
+  'হ': 'h',
+  'া': 'a',
+  'ি': 'i',
+  'ী': 'i',
+  'ু': 'u',
+  'ূ': 'u',
+  'ৃ': 'ri',
+  'ে': 'e',
+  'ৈ': 'oi',
+  'ো': 'o',
+  'ৌ': 'ou',
+  '্': '',
+}
+
+function toEnglishDigits(value) {
+  return String(value || '').replace(/[০-৯]/g, (digit) => BANGLA_TO_ENGLISH_DIGITS[digit] || digit)
+}
+
+function toBanglaDigits(value) {
+  return String(value || '').replace(/[0-9]/g, (digit) => ENGLISH_TO_BANGLA_DIGITS[digit] || digit)
+}
+
+function normalizeSearchText(value) {
+  return toEnglishDigits(String(value || '').toLowerCase())
+    .replace(/৳/g, ' ')
+    .replace(/,/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function transliterateBanglaToLatin(value) {
+  return String(value || '')
+    .split('')
+    .map((char) => BANGLA_TO_LATIN_MAP[char] ?? char)
+    .join('')
+}
+
+function buildPhoneticToken(token) {
+  const normalizedToken = transliterateBanglaToLatin(normalizeSearchText(token))
+    .replace(/ph/g, 'f')
+    .replace(/bh/g, 'b')
+    .replace(/gh/g, 'g')
+    .replace(/kh/g, 'k')
+    .replace(/chh/g, 'c')
+    .replace(/ch/g, 'c')
+    .replace(/jh/g, 'j')
+    .replace(/sh/g, 's')
+    .replace(/th/g, 't')
+    .replace(/dh/g, 'd')
+    .replace(/aa/g, 'a')
+    .replace(/ee/g, 'i')
+    .replace(/oo/g, 'u')
+    .replace(/ou/g, 'u')
+    .replace(/oi/g, 'o')
+    .replace(/ng/g, 'n')
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/(.)\1+/g, '$1')
+
+  if (!normalizedToken) return ''
+  if (normalizedToken.length === 1) return normalizedToken
+
+  return `${normalizedToken[0]}${normalizedToken.slice(1).replace(/[aeiou]/g, '')}`
+}
+
+function getPhoneticSearchKey(value) {
+  return normalizeSearchText(value)
+    .split(/\s+/)
+    .map(buildPhoneticToken)
+    .filter(Boolean)
+    .join(' ')
+}
+
+function getPriceSearchTokens(price) {
+  const numericPrice = Number(toEnglishDigits(price))
+
+  if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+    return []
+  }
+
+  const raw = String(Math.round(numericPrice))
+  const withCommas = numericPrice.toLocaleString('en-US')
+  const banglaRaw = toBanglaDigits(raw)
+  const banglaWithCommas = toBanglaDigits(withCommas)
+
+  return [
+    raw,
+    withCommas,
+    `৳ ${raw}`,
+    `৳ ${withCommas}`,
+    banglaRaw,
+    banglaWithCommas,
+    `৳ ${banglaRaw}`,
+    `৳ ${banglaWithCommas}`,
+  ]
+}
+
 function getPropertyPrice(post) {
   const price = Number(post?.price || 0)
   return Number.isFinite(price) ? price : 0
@@ -178,12 +348,34 @@ function getSearchTextForPost(post) {
     post.description,
     post.location,
     ownerName,
-    post.price ? String(post.price) : '',
+    ...getPriceSearchTokens(post.price),
     post.status === 'rented' ? 'rented rented out unavailable' : 'open for rent available',
   ]
     .filter(Boolean)
     .join(' ')
-    .toLowerCase()
+}
+
+function getSearchTermsForPost(post) {
+  const ownerProfile = post.owner_profile || {}
+  const ownerName = getProfileName(
+    {
+      ...ownerProfile,
+      display_name: ownerProfile.display_name || post.owner_name,
+      email: ownerProfile.email || post.owner_email,
+    },
+    'Property Owner'
+  )
+
+  const locationParts = String(post.location || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  return [...new Set([
+    post.title,
+    ownerName,
+    ...locationParts,
+  ].filter(Boolean))]
 }
 
 function SearchResultRow({ item, onPress }) {
@@ -391,19 +583,39 @@ export default function HomeScreen({ navigation, route }) {
   }, [appliedFilters, priceCeiling, properties])
 
   const searchResults = useMemo(() => {
-    const query = (draftSearchQuery || '').trim().toLowerCase()
+    const query = normalizeSearchText(draftSearchQuery)
+    const phoneticQuery = getPhoneticSearchKey(draftSearchQuery)
 
-    if (!query) return []
+    if (!query && !phoneticQuery) return []
 
-    return filteredProperties.filter((post) => getSearchTextForPost(post).includes(query))
+    return filteredProperties.filter((post) => {
+      const postSearchText = getSearchTextForPost(post)
+      const normalizedPost = normalizeSearchText(postSearchText)
+      const phoneticPost = getPhoneticSearchKey(postSearchText)
+
+      return (
+        (query && normalizedPost.includes(query))
+        || (phoneticQuery && phoneticPost.includes(phoneticQuery))
+      )
+    })
   }, [draftSearchQuery, filteredProperties])
 
   const visibleProperties = useMemo(() => {
-    const query = (appliedSearchQuery || '').trim().toLowerCase()
+    const query = normalizeSearchText(appliedSearchQuery)
+    const phoneticQuery = getPhoneticSearchKey(appliedSearchQuery)
 
-    if (!query) return filteredProperties
+    if (!query && !phoneticQuery) return filteredProperties
 
-    return filteredProperties.filter((post) => getSearchTextForPost(post).includes(query))
+    return filteredProperties.filter((post) => {
+      const postSearchText = getSearchTextForPost(post)
+      const normalizedPost = normalizeSearchText(postSearchText)
+      const phoneticPost = getPhoneticSearchKey(postSearchText)
+
+      return (
+        (query && normalizedPost.includes(query))
+        || (phoneticQuery && phoneticPost.includes(phoneticQuery))
+      )
+    })
   }, [appliedSearchQuery, filteredProperties])
 
   const suggestionChips = useMemo(() => {
@@ -425,6 +637,29 @@ export default function HomeScreen({ navigation, route }) {
 
     return [...new Set([...locations, ...owners])].slice(0, 8)
   }, [filteredProperties])
+
+  const relatedSearchTerms = useMemo(() => {
+    const query = normalizeSearchText(draftSearchQuery)
+    const phoneticQuery = getPhoneticSearchKey(draftSearchQuery)
+
+    if (!query && !phoneticQuery) return []
+
+    return [...new Set(
+      searchResults
+        .flatMap((post) => getSearchTermsForPost(post))
+        .filter((term) => {
+          const normalizedTerm = normalizeSearchText(term)
+          const phoneticTerm = getPhoneticSearchKey(term)
+
+          return (
+            (query && normalizedTerm.includes(query))
+            || (phoneticQuery && phoneticTerm.includes(phoneticQuery))
+          )
+        })
+    )]
+      .filter((term) => normalizeSearchText(term) !== query)
+      .slice(0, 8)
+  }, [draftSearchQuery, searchResults])
 
   useEffect(() => {
     loadUser()
@@ -1795,6 +2030,25 @@ export default function HomeScreen({ navigation, route }) {
                 </>
               ) : searchResults.length > 0 ? (
                 <>
+                  {relatedSearchTerms.length > 0 ? (
+                    <FilterSection
+                      title="Similar Bangla / English words"
+                      subtitle="Tap a similar spelling if that is the word you meant."
+                    >
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {relatedSearchTerms.map((term) => (
+                          <FilterChip
+                            key={term}
+                            label={term}
+                            icon="swap-horizontal-outline"
+                            active={false}
+                            onPress={() => setDraftSearchQuery(term)}
+                          />
+                        ))}
+                      </View>
+                    </FilterSection>
+                  ) : null}
+
                   <FilterSection title="Live results" subtitle="Open a post directly or apply this search to the feed.">
                     <View style={{ gap: 10 }}>
                       {searchResults.slice(0, 6).map((item) => (
