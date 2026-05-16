@@ -14,6 +14,8 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import BottomNavBar from '../components/navigation/BottomNavBar'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
 
 const USER_TYPES = [
@@ -269,18 +271,19 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#f7f7f7' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={80}
-    >
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 140 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="none"
-        automaticallyAdjustKeyboardInsets
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: '#f7f7f7' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={80}
       >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 140 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          automaticallyAdjustKeyboardInsets
+        >
       <View style={{ backgroundColor: '#fff', paddingBottom: 20 }}>
         <View style={{ height: 118, backgroundColor: '#1877F2' }}>
           {coverUrl ? (
@@ -485,7 +488,10 @@ export default function ProfileScreen({ navigation }) {
           <Text style={{ color: '#fff', fontWeight: '800' }}>Logout</Text>
         </TouchableOpacity>
       </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+
+        <BottomNavBar navigation={navigation} activeTab="profile" />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }

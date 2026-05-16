@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { getUnreadNotificationCount } from '../lib/notifications'
+import BottomNavBar from '../components/navigation/BottomNavBar'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -350,57 +351,61 @@ export default function NotificationsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
-      <View
-        style={{
-          backgroundColor: '#fff',
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: '#e5e7eb',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827' }}>
-          Notifications
-        </Text>
-
-        <TouchableOpacity
-          onPress={markAllRead}
-          disabled={unreadCount === 0}
+      <View style={{ flex: 1 }}>
+        <View
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            borderRadius: 18,
-            backgroundColor: unreadCount > 0 ? '#1877F2' : '#e5e7eb',
+            backgroundColor: '#fff',
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: '#e5e7eb',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          <Text
+          <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827' }}>
+            Notifications
+          </Text>
+
+          <TouchableOpacity
+            onPress={markAllRead}
+            disabled={unreadCount === 0}
             style={{
-              color: unreadCount > 0 ? '#fff' : '#6b7280',
-              fontWeight: '800',
-              fontSize: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 18,
+              backgroundColor: unreadCount > 0 ? '#1877F2' : '#e5e7eb',
             }}
           >
-            Mark read
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={{
+                color: unreadCount > 0 ? '#fff' : '#6b7280',
+                fontWeight: '800',
+                fontSize: 12,
+              }}
+            >
+              Mark read
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item.id}
+          renderItem={renderNotification}
+          refreshing={loading}
+          onRefresh={loadNotifications}
+          contentContainerStyle={{ padding: 14, paddingBottom: 28 }}
+          ListEmptyComponent={
+            <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>
+              No notifications yet
+            </Text>
+          }
+        />
       </View>
 
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        renderItem={renderNotification}
-        refreshing={loading}
-        onRefresh={loadNotifications}
-        contentContainerStyle={{ padding: 14, paddingBottom: 28 }}
-        ListEmptyComponent={
-          <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>
-            No notifications yet
-          </Text>
-        }
-      />
+      <BottomNavBar navigation={navigation} activeTab="notifications" />
     </SafeAreaView>
   )
 }

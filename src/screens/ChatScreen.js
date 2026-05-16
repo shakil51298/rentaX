@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import {
@@ -27,6 +27,7 @@ import Avatar from '../components/common/Avatar'
 import MediaViewer from '../components/common/MediaViewer'
 import ConversationRow from '../components/chat/ConversationRow'
 import MessageBubble from '../components/chat/MessageBubble'
+import BottomNavBar from '../components/navigation/BottomNavBar'
 import useChatPresence from '../hooks/useChatPresence'
 import { CHAT_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { sendPushToUser } from '../lib/pushNotifications'
@@ -126,6 +127,51 @@ function collapseConversationRows(conversations, currentUserId) {
   return [...groupedRows.values()]
 }
 
+function getMessageDeletionField(message, userId) {
+  if (!message || !userId) return null
+
+  if (message.sender_id === userId) {
+    return 'deleted_for_sender_at'
+  }
+
+  if (message.receiver_id === userId) {
+    return 'deleted_for_receiver_at'
+  }
+
+  return null
+}
+
+function isMessageVisibleForUser(message, userId) {
+  const deletionField = getMessageDeletionField(message, userId)
+
+  if (!deletionField) return true
+
+  return !message?.[deletionField]
+}
+
+function getMessageReactionField(message, userId) {
+  if (!message || !userId) return null
+
+  if (message.sender_id === userId) {
+    return 'sender_reaction'
+  }
+
+  if (message.receiver_id === userId) {
+    return 'receiver_reaction'
+  }
+
+  return null
+}
+
+function getReplySnippet(message) {
+  if (!message) return ''
+  if (message.deleted_for_everyone_at) return 'This message was deleted'
+  if (message.message_type === 'image') return 'Photo'
+  if (message.message_type === 'video') return 'Video'
+  if (message.message_type === 'voice') return 'Voice message'
+  return message.body || 'Message'
+}
+
 async function fetchProfiles(userIds) {
   const uniqueIds = [...new Set(userIds.filter(Boolean))]
 
@@ -144,8 +190,10 @@ async function fetchProfiles(userIds) {
 
 export default function ChatScreen({ route, navigation }) {
   const flatListRef = useRef(null)
+  const messageInputRef = useRef(null)
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
   const recorderState = useAudioRecorderState(audioRecorder)
+  const insets = useSafeAreaInsets()
   const routeParams = route.params || EMPTY_ROUTE_PARAMS
   const directTarget = useMemo(() => getDirectTarget(routeParams), [routeParams])
   const directProperty = routeParams?.property || null
@@ -163,6 +211,7 @@ export default function ChatScreen({ route, navigation }) {
   const [uploading, setUploading] = useState(false)
   const [openedFromList, setOpenedFromList] = useState(false)
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
+  const [replyTarget, setReplyTarget] = useState(null)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -173,6 +222,14 @@ export default function ChatScreen({ route, navigation }) {
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const currentUserName = getUserDisplayName(currentUser) || 'Rental X member'
   const canSend = Boolean(currentUser?.id && otherUser?.id && conversation?.id)
+  const messageLookup = useMemo(
+    () =>
+      messages.reduce((itemsById, message) => {
+        itemsById[message.id] = message
+        return itemsById
+      }, {}),
+    [messages]
+  )
   const {
     presenceByUserId,
     setPresenceByUserId,
@@ -213,11 +270,12 @@ export default function ChatScreen({ route, navigation }) {
     }
 
     const deletedAt = getConversationDeletedAt(activeConversation, currentUserId)
-    const visibleMessages = deletedAt
+    const visibleMessages = (deletedAt
       ? (data || []).filter(
         (item) => new Date(item.created_at).getTime() > new Date(deletedAt).getTime()
       )
       : (data || [])
+    ).filter((item) => isMessageVisibleForUser(item, currentUserId))
 
     setMessages(visibleMessages)
 
@@ -369,6 +427,7 @@ export default function ChatScreen({ route, navigation }) {
     setConversation(item)
     setOtherUser(profile)
     setConversationProperty(null)
+    setReplyTarget(null)
     await loadMessages(item.id, currentUser?.id, true, item)
   }, [currentUser?.id, loadMessages])
 
@@ -417,6 +476,7 @@ export default function ChatScreen({ route, navigation }) {
       setOtherUser(hydratedTarget)
       setConversationProperty(directProperty)
       setConversation(nextConversation)
+      setReplyTarget(null)
       await loadMessages(nextConversation.id, user.id, true, nextConversation)
     } catch (error) {
       Alert.alert('Chat unavailable', error.message)
@@ -528,7 +588,9 @@ export default function ChatScreen({ route, navigation }) {
       media_url: mediaUrl,
       media_mime_type: mediaMimeType,
       audio_duration_ms: audioDurationMs,
+      reply_to_message_id: replyTarget?.id || null,
       created_at: createdAt,
+      updated_at: createdAt,
     })
 
     if (error) {
@@ -577,6 +639,7 @@ export default function ChatScreen({ route, navigation }) {
 
     await updateMyPresence({ online: true, typing: false })
     setMessageText('')
+    setReplyTarget(null)
     setSending(false)
   }
 
@@ -695,11 +758,169 @@ export default function ChatScreen({ route, navigation }) {
     Alert.alert('Coming soon', `${type} calling will be available soon.`)
   }
 
+  function focusMessageInput() {
+    requestAnimationFrame(() => {
+      messageInputRef.current?.focus()
+    })
+  }
+
+  function handleReplyToMessage(message) {
+    setReplyTarget(message)
+    focusMessageInput()
+  }
+
+  async function toggleMessageReaction(message) {
+    if (!currentUser?.id || !message?.id || message.deleted_for_everyone_at) return
+
+    const reactionField = getMessageReactionField(message, currentUser.id)
+
+    if (!reactionField) return
+
+    const nextReaction = message[reactionField] ? null : 'love'
+    const updatedAt = new Date().toISOString()
+
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === message.id
+          ? {
+            ...item,
+            [reactionField]: nextReaction,
+            updated_at: updatedAt,
+          }
+          : item
+      )
+    )
+
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({
+        [reactionField]: nextReaction,
+        updated_at: updatedAt,
+      })
+      .eq('id', message.id)
+
+    if (error) {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id
+            ? {
+              ...item,
+              [reactionField]: message[reactionField] || null,
+            }
+            : item
+        )
+      )
+      Alert.alert('Reaction failed', error.message)
+    }
+  }
+
+  async function deleteMessageForMe(message) {
+    if (!currentUser?.id || !message?.id) return
+
+    const deletionField = getMessageDeletionField(message, currentUser.id)
+
+    if (!deletionField) return
+
+    const deletedAt = new Date().toISOString()
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({
+        [deletionField]: deletedAt,
+        updated_at: deletedAt,
+      })
+      .eq('id', message.id)
+
+    if (error) {
+      Alert.alert('Delete failed', error.message)
+      return
+    }
+
+    setMessages((current) => current.filter((item) => item.id !== message.id))
+
+    if (replyTarget?.id === message.id) {
+      setReplyTarget(null)
+    }
+  }
+
+  async function deleteMessageForEveryone(message) {
+    if (!currentUser?.id || !message?.id) return
+
+    const deletedAt = new Date().toISOString()
+    const payload = {
+      body: null,
+      media_url: null,
+      media_mime_type: null,
+      audio_duration_ms: null,
+      reply_to_message_id: null,
+      sender_reaction: null,
+      receiver_reaction: null,
+      deleted_for_everyone_at: deletedAt,
+      deleted_for_everyone_by: currentUser.id,
+      updated_at: deletedAt,
+    }
+
+    const { error } = await supabase
+      .from('chat_messages')
+      .update(payload)
+      .eq('id', message.id)
+
+    if (error) {
+      Alert.alert('Delete failed', error.message)
+      return
+    }
+
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === message.id
+          ? {
+            ...item,
+            ...payload,
+          }
+          : item
+      )
+    )
+
+    if (replyTarget?.id === message.id) {
+      setReplyTarget(null)
+    }
+  }
+
+  function openMessageActions(message) {
+    const buttons = [
+      {
+        text: 'Reply',
+        onPress: () => handleReplyToMessage(message),
+      },
+      {
+        text: message[getMessageReactionField(message, currentUser?.id)] ? 'Remove love' : 'Love',
+        onPress: () => toggleMessageReaction(message),
+      },
+      {
+        text: 'Delete for me',
+        style: 'destructive',
+        onPress: () => deleteMessageForMe(message),
+      },
+    ]
+
+    if (message.sender_id === currentUser?.id && !message.deleted_for_everyone_at) {
+      buttons.push({
+        text: 'Delete for everyone',
+        style: 'destructive',
+        onPress: () => deleteMessageForEveryone(message),
+      })
+    }
+
+    buttons.push({ text: 'Cancel', style: 'cancel' })
+
+    Alert.alert('Message options', getReplySnippet(message), buttons)
+  }
+
   const goBackFromChat = useCallback(() => {
     if (openedFromList) {
       setMode('list')
       setConversation(null)
       setMessages([])
+      setReplyTarget(null)
       loadConversationList(currentUser)
       return
     }
@@ -873,105 +1094,109 @@ export default function ChatScreen({ route, navigation }) {
   if (mode === 'list') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
-        <View
-          style={{
-            backgroundColor: '#fff',
-            paddingHorizontal: 16,
-            paddingVertical: 14,
-            borderBottomWidth: 1,
-            borderBottomColor: '#e5e7eb',
-          }}
-        >
-          {selectionMode ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity
-                onPress={clearConversationSelection}
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 19,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 10,
-                }}
-              >
-                <Ionicons name="close" size={24} color="#111827" />
-              </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: '#e5e7eb',
+            }}
+          >
+            {selectionMode ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={clearConversationSelection}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 10,
+                  }}
+                >
+                  <Ionicons name="close" size={24} color="#111827" />
+                </TouchableOpacity>
 
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#111827', fontSize: 24, fontWeight: '900' }}>
-                  {selectedConversationIds.length} selected
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#111827', fontSize: 24, fontWeight: '900' }}>
+                    {selectedConversationIds.length} selected
+                  </Text>
+                  <Text style={{ color: '#64748b', marginTop: 3 }}>
+                    Choose chats to remove from your list
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={deleteSelectedConversations}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fee2e2',
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={22} color="#dc2626" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={{ color: '#111827', fontSize: 26, fontWeight: '900' }}>
+                  Messages
                 </Text>
                 <Text style={{ color: '#64748b', marginTop: 3 }}>
-                  Choose chats to remove from your list
+                  Chat with property owners and renters
+                </Text>
+              </>
+            )}
+          </View>
+
+          <FlatList
+            data={conversationRows}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <ConversationRow
+                item={item}
+                currentUserId={currentUser?.id}
+                presenceByUserId={presenceByUserId}
+                selected={selectedConversationIds.includes(item.id)}
+                selectionMode={selectionMode}
+                onPress={() => {
+                  if (selectionMode) {
+                    toggleConversationSelection(item.id)
+                    return
+                  }
+
+                  openConversation({
+                    item,
+                    profile: item.other_profile,
+                    fromList: true,
+                  })
+                }}
+                onLongPress={() => toggleConversationSelection(item.id)}
+              />
+            )}
+            refreshing={loading}
+            onRefresh={() => loadConversationList(currentUser)}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', padding: 34 }}>
+                <Ionicons name="chatbubbles-outline" size={48} color="#94a3b8" />
+                <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+                  No messages yet
+                </Text>
+                <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
+                  Open a property or owner profile and tap Message to start.
                 </Text>
               </View>
-
-              <TouchableOpacity
-                onPress={deleteSelectedConversations}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#fee2e2',
-                }}
-              >
-                <Ionicons name="trash-outline" size={22} color="#dc2626" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <Text style={{ color: '#111827', fontSize: 26, fontWeight: '900' }}>
-                Messages
-              </Text>
-              <Text style={{ color: '#64748b', marginTop: 3 }}>
-                Chat with property owners and renters
-              </Text>
-            </>
-          )}
+            }
+          />
         </View>
 
-        <FlatList
-          data={conversationRows}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <ConversationRow
-              item={item}
-              currentUserId={currentUser?.id}
-              presenceByUserId={presenceByUserId}
-              selected={selectedConversationIds.includes(item.id)}
-              selectionMode={selectionMode}
-              onPress={() => {
-                if (selectionMode) {
-                  toggleConversationSelection(item.id)
-                  return
-                }
-
-                openConversation({
-                  item,
-                  profile: item.other_profile,
-                  fromList: true,
-                })
-              }}
-              onLongPress={() => toggleConversationSelection(item.id)}
-            />
-          )}
-          refreshing={loading}
-          onRefresh={() => loadConversationList(currentUser)}
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center', padding: 34 }}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#94a3b8" />
-              <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
-                No messages yet
-              </Text>
-              <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
-                Open a property or owner profile and tap Message to start.
-              </Text>
-            </View>
-          }
-        />
+        <BottomNavBar navigation={navigation} activeTab="chat" />
       </SafeAreaView>
     )
   }
@@ -979,7 +1204,8 @@ export default function ChatScreen({ route, navigation }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#e9eef5' }}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         style={{ flex: 1 }}
       >
         <View
@@ -1107,10 +1333,16 @@ export default function ChatScreen({ route, navigation }) {
               item={item}
               previousMessage={messages[index - 1]}
               currentUserId={currentUser?.id}
+              repliedMessage={item.reply_to_message_id ? messageLookup[item.reply_to_message_id] : null}
               onOpenMedia={openMediaViewer}
+              onReply={handleReplyToMessage}
+              onToggleReaction={toggleMessageReaction}
+              onLongPressMessage={openMessageActions}
             />
           )}
-          contentContainerStyle={{ paddingTop: 10, paddingBottom: 8 }}
+          contentContainerStyle={{ paddingTop: 10, paddingBottom: 16 }}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingHorizontal: 32, paddingTop: 80 }}>
@@ -1153,13 +1385,59 @@ export default function ChatScreen({ route, navigation }) {
             backgroundColor: '#fff',
             paddingHorizontal: 10,
             paddingTop: 8,
-            paddingBottom: 10,
+            paddingBottom: Math.max(insets.bottom, 10),
             borderTopWidth: 1,
             borderTopColor: '#e5e7eb',
-            flexDirection: 'row',
-            alignItems: 'flex-end',
           }}
         >
+          {replyTarget ? (
+            <View
+              style={{
+                marginBottom: 8,
+                borderRadius: 14,
+                backgroundColor: '#eff6ff',
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#1877F2', fontWeight: '900', fontSize: 12 }}>
+                  Replying to {replyTarget.sender_id === currentUser?.id ? 'yourself' : otherUserName}
+                </Text>
+                <Text
+                  style={{ color: '#0f172a', marginTop: 4 }}
+                  numberOfLines={2}
+                >
+                  {getReplySnippet(replyTarget)}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setReplyTarget(null)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginLeft: 8,
+                }}
+              >
+                <Ionicons name="close" size={20} color="#475569" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-end',
+            }}
+          >
           <TouchableOpacity
             onPress={pickMedia}
             disabled={uploading || sending}
@@ -1178,6 +1456,7 @@ export default function ChatScreen({ route, navigation }) {
           </TouchableOpacity>
 
           <TextInput
+            ref={messageInputRef}
             value={messageText}
             onChangeText={(text) => {
               setMessageText(text)
@@ -1206,6 +1485,7 @@ export default function ChatScreen({ route, navigation }) {
               paddingHorizontal: 15,
               paddingTop: 10,
               paddingBottom: 10,
+              textAlignVertical: 'top',
               color: '#111827',
               fontSize: 15,
             }}
@@ -1258,6 +1538,7 @@ export default function ChatScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
           )}
+          </View>
         </View>
       </KeyboardAvoidingView>
 
@@ -1267,6 +1548,8 @@ export default function ChatScreen({ route, navigation }) {
         initialIndex={mediaViewer.index}
         onClose={closeMediaViewer}
       />
+
+      <BottomNavBar navigation={navigation} activeTab="chat" />
     </SafeAreaView>
   )
 }

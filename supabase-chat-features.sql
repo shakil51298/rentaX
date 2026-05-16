@@ -47,6 +47,16 @@ create table if not exists public.chat_messages (
   check (message_type in ('text', 'image', 'video', 'voice'))
 );
 
+alter table public.chat_messages
+  add column if not exists reply_to_message_id uuid references public.chat_messages(id) on delete set null,
+  add column if not exists sender_reaction text,
+  add column if not exists receiver_reaction text,
+  add column if not exists deleted_for_sender_at timestamptz,
+  add column if not exists deleted_for_receiver_at timestamptz,
+  add column if not exists deleted_for_everyone_at timestamptz,
+  add column if not exists deleted_for_everyone_by uuid references auth.users(id) on delete set null,
+  add column if not exists updated_at timestamptz not null default now();
+
 create index if not exists chat_messages_conversation_created_at_idx
   on public.chat_messages(conversation_id, created_at);
 
@@ -157,13 +167,13 @@ begin
     select 1 from pg_policies
     where schemaname = 'public'
       and tablename = 'chat_messages'
-      and policyname = 'Receivers can mark messages seen'
+      and policyname = 'Message members can update message metadata'
   ) then
-    create policy "Receivers can mark messages seen"
+    create policy "Message members can update message metadata"
       on public.chat_messages
       for update
-      using (auth.uid() = receiver_id)
-      with check (auth.uid() = receiver_id);
+      using (auth.uid() in (sender_id, receiver_id))
+      with check (auth.uid() in (sender_id, receiver_id));
   end if;
 
   if not exists (

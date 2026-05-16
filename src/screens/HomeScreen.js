@@ -24,6 +24,7 @@ import { playNotificationSound } from '../lib/sounds'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import CommentItem from '../components/home/CommentItem'
+import BottomNavBar from '../components/navigation/BottomNavBar'
 import {
   appendCommentToTree,
   buildCommentThread,
@@ -1173,100 +1174,12 @@ export default function HomeScreen({ navigation, route }) {
         onClose={closeMediaViewer}
       />
 
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-around',
-          paddingVertical: 10,
-          backgroundColor: '#fff',
-          borderTopWidth: 1,
-          borderTopColor: '#eee',
-        }}
-      >
-        <TouchableOpacity onPress={() => navigation.navigate('Home')}>
-          <Ionicons name="home" size={25} color="#1877F2" />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate('Chat')}>
-          <View>
-            <Ionicons name="chatbubble-outline" size={25} color="#111" />
-
-            {messageUnreadCount > 0 ? (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: -7,
-                  right: -10,
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  backgroundColor: '#ef4444',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingHorizontal: 4,
-                  borderWidth: 1,
-                  borderColor: '#fff',
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#fff',
-                    fontSize: 10,
-                    fontWeight: '900',
-                    fontVariant: ['tabular-nums'],
-                  }}
-                >
-                  {messageUnreadCount > 99 ? '99+' : messageUnreadCount}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate('Favorite')}>
-          <Ionicons name="heart-outline" size={25} color="#111" />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
-          <View>
-            <Ionicons name="notifications-outline" size={25} color="#111" />
-
-            {notificationUnreadCount > 0 ? (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: -7,
-                  right: -10,
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  backgroundColor: '#ef4444',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingHorizontal: 4,
-                  borderWidth: 1,
-                  borderColor: '#fff',
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#fff',
-                    fontSize: 10,
-                    fontWeight: '900',
-                    fontVariant: ['tabular-nums'],
-                  }}
-                >
-                  {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-          <Ionicons name="person-outline" size={25} color="#111" />
-        </TouchableOpacity>
-      </View>
+      <BottomNavBar
+        navigation={navigation}
+        activeTab="home"
+        messageUnreadCount={messageUnreadCount}
+        notificationUnreadCount={notificationUnreadCount}
+      />
     </SafeAreaView>
   )
 }

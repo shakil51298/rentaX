@@ -1,4 +1,13 @@
-import { Alert, Image, Text, TouchableOpacity, View } from 'react-native'
+import { useMemo, useRef } from 'react'
+import {
+  Animated,
+  Image,
+  PanResponder,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
@@ -120,21 +129,42 @@ function VoiceMessage({ message, isMine }) {
   )
 }
 
+function getReplySnippet(message) {
+  if (!message) return ''
+  if (message.deleted_for_everyone_at) return 'This message was deleted'
+  if (message.message_type === 'image') return 'Photo'
+  if (message.message_type === 'video') return 'Video'
+  if (message.message_type === 'voice') return 'Voice message'
+  return message.body || 'Message'
+}
+
 function renderMessageContent(item, isMine, onOpenMedia) {
+  if (item.deleted_for_everyone_at) {
+    return (
+      <Text
+        style={{
+          color: isMine ? 'rgba(255,255,255,0.9)' : '#64748b',
+          fontSize: 14,
+          fontStyle: 'italic',
+        }}
+      >
+        This message was deleted
+      </Text>
+    )
+  }
+
   if (item.message_type === 'image' && item.media_url) {
     return (
-      <TouchableOpacity onPress={() => onOpenMedia([{ uri: item.media_url, type: 'image' }], 0)}>
-        <Image
-          source={{ uri: item.media_url }}
-          style={{
-            width: 232,
-            height: 188,
-            borderRadius: 14,
-            backgroundColor: isMine ? '#0f5fbf' : '#e5e7eb',
-          }}
-          resizeMode="cover"
-        />
-      </TouchableOpacity>
+      <Image
+        source={{ uri: item.media_url }}
+        style={{
+          width: 232,
+          height: 188,
+          borderRadius: 14,
+          backgroundColor: isMine ? '#0f5fbf' : '#e5e7eb',
+        }}
+        resizeMode="cover"
+      />
     )
   }
 
@@ -163,10 +193,72 @@ export default function MessageBubble({
   item,
   previousMessage,
   currentUserId,
+  repliedMessage,
   onOpenMedia,
+  onReply,
+  onToggleReaction,
+  onLongPressMessage,
 }) {
   const shouldShowDay = !isSameDay(item.created_at, previousMessage?.created_at)
   const isMine = item.sender_id === currentUserId
+  const translateX = useRef(new Animated.Value(0)).current
+  const tapTimeoutRef = useRef(null)
+  const lastTapTimeRef = useRef(0)
+  const reactionCount = [item.sender_reaction, item.receiver_reaction].filter(Boolean).length
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+        onPanResponderMove: (_event, gestureState) => {
+          translateX.setValue(Math.max(Math.min(gestureState.dx, 72), -72))
+        },
+        onPanResponderRelease: (_event, gestureState) => {
+          const shouldReply = Math.abs(gestureState.dx) > 54
+
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 120,
+            friction: 12,
+          }).start()
+
+          if (shouldReply) {
+            onReply?.(item)
+          }
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 120,
+            friction: 12,
+          }).start()
+        },
+      }),
+    [item, onReply, translateX]
+  )
+
+  function handleTap() {
+    const now = Date.now()
+
+    if (lastTapTimeRef.current && now - lastTapTimeRef.current < 260) {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current)
+      }
+
+      lastTapTimeRef.current = 0
+      onToggleReaction?.(item)
+      return
+    }
+
+    lastTapTimeRef.current = now
+    tapTimeoutRef.current = setTimeout(() => {
+      if (item.message_type === 'image' && item.media_url) {
+        onOpenMedia([{ uri: item.media_url, type: 'image' }], 0)
+      }
+    }, 250)
+  }
 
   return (
     <>
@@ -194,58 +286,134 @@ export default function MessageBubble({
           marginBottom: 8,
         }}
       >
-        <View
+        <Animated.View
+          {...panResponder.panHandlers}
           style={{
+            transform: [{ translateX }],
             maxWidth: '82%',
-            backgroundColor: isMine ? '#1877F2' : '#fff',
-            borderRadius: 18,
-            borderBottomRightRadius: isMine ? 5 : 18,
-            borderBottomLeftRadius: isMine ? 18 : 5,
-            padding: item.message_type === 'text' ? 11 : 5,
-            borderWidth: isMine ? 0 : 1,
-            borderColor: '#e5e7eb',
-            shadowColor: '#0f172a',
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            shadowOffset: { width: 0, height: 2 },
-            elevation: 1,
           }}
         >
-          {renderMessageContent(item, isMine, onOpenMedia)}
-
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              marginTop: item.message_type === 'text' ? 4 : 6,
-              paddingHorizontal: item.message_type === 'text' ? 0 : 5,
+              position: 'absolute',
+              top: '45%',
+              [isMine ? 'left' : 'right']: -30,
+              opacity: 0.6,
             }}
           >
-            <Text
-              style={{
-                color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
-                fontSize: 10,
-                fontWeight: '700',
-              }}
-            >
-              {formatClock(item.created_at)}
-            </Text>
+            <Ionicons name="return-down-forward-outline" size={18} color="#64748b" />
+          </View>
 
-            {isMine ? (
-              <Text
+          <Pressable
+            onPress={handleTap}
+            onLongPress={() => onLongPressMessage?.(item)}
+            delayLongPress={220}
+            style={{
+              backgroundColor: isMine ? '#1877F2' : '#fff',
+              borderRadius: 18,
+              borderBottomRightRadius: isMine ? 5 : 18,
+              borderBottomLeftRadius: isMine ? 18 : 5,
+              padding: item.message_type === 'text' ? 11 : 5,
+              borderWidth: isMine ? 0 : 1,
+              borderColor: '#e5e7eb',
+              shadowColor: '#0f172a',
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 1,
+            }}
+          >
+            {repliedMessage ? (
+              <View
                 style={{
-                  color: item.seen_at ? '#9be7ff' : 'rgba(255,255,255,0.78)',
-                  marginLeft: 4,
-                  fontSize: 12,
-                  fontWeight: '900',
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
                 }}
               >
-                {item.seen_at ? '✓✓' : '✓'}
-              </Text>
+                <Text
+                  style={{
+                    color: isMine ? '#fff' : '#1877F2',
+                    fontWeight: '900',
+                    fontSize: 12,
+                  }}
+                >
+                  {repliedMessage.sender_id === currentUserId ? 'You' : 'Reply'}
+                </Text>
+                <Text
+                  style={{
+                    color: isMine ? 'rgba(255,255,255,0.9)' : '#334155',
+                    marginTop: 3,
+                  }}
+                  numberOfLines={2}
+                >
+                  {getReplySnippet(repliedMessage)}
+                </Text>
+              </View>
             ) : null}
-          </View>
-        </View>
+
+            {renderMessageContent(item, isMine, onOpenMedia)}
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                marginTop: item.message_type === 'text' ? 4 : 6,
+                paddingHorizontal: item.message_type === 'text' ? 0 : 5,
+              }}
+            >
+              <Text
+                style={{
+                  color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
+                  fontSize: 10,
+                  fontWeight: '700',
+                }}
+              >
+                {formatClock(item.created_at)}
+              </Text>
+
+              {isMine ? (
+                <Text
+                  style={{
+                    color: item.seen_at ? '#9be7ff' : 'rgba(255,255,255,0.78)',
+                    marginLeft: 4,
+                    fontSize: 12,
+                    fontWeight: '900',
+                  }}
+                >
+                  {item.seen_at ? '✓✓' : '✓'}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
+
+          {reactionCount > 0 ? (
+            <View
+              style={{
+                alignSelf: isMine ? 'flex-end' : 'flex-start',
+                marginTop: 4,
+                backgroundColor: '#fff',
+                borderRadius: 12,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 12 }}>❤️</Text>
+              {reactionCount > 1 ? (
+                <Text style={{ color: '#475569', marginLeft: 4, fontSize: 12, fontWeight: '800' }}>
+                  {reactionCount}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+        </Animated.View>
       </View>
     </>
   )

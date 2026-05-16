@@ -3,12 +3,12 @@ import {
   FlatList,
   Image,
   Modal,
+  Pressable,
   Text,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { normalizeMediaList } from '../../lib/media'
@@ -127,6 +127,7 @@ function PlayableVideo({ uri, width, height, isActive }) {
 
 export default function MediaViewer({ visible, media, initialIndex, onClose }) {
   const { width, height } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const items = normalizeMediaList(media)
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const safeInitialIndex = Math.min(initialIndex, Math.max(items.length - 1, 0))
@@ -161,6 +162,8 @@ export default function MediaViewer({ visible, media, initialIndex, onClose }) {
       visible={visible}
       animationType="fade"
       transparent={false}
+      presentationStyle="fullScreen"
+      statusBarTranslucent
       onRequestClose={onClose}
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
@@ -170,21 +173,25 @@ export default function MediaViewer({ visible, media, initialIndex, onClose }) {
             top: 0,
             left: 0,
             right: 0,
-            zIndex: 2,
+            zIndex: 20,
+            elevation: 20,
             paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingTop: insets.top + 6,
+            paddingBottom: 10,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             backgroundColor: 'rgba(0,0,0,0.35)',
+            pointerEvents: 'box-none',
           }}
         >
           <Text style={{ color: '#fff', fontWeight: '800' }}>
             {items.length ? `${currentIndex + 1} / ${items.length}` : ''}
           </Text>
 
-          <TouchableOpacity
+          <Pressable
             onPress={onClose}
+            hitSlop={12}
             style={{
               width: 38,
               height: 38,
@@ -195,7 +202,7 @@ export default function MediaViewer({ visible, media, initialIndex, onClose }) {
             }}
           >
             <Ionicons name="close" size={26} color="#fff" />
-          </TouchableOpacity>
+          </Pressable>
         </View>
 
         {items.length > 0 ? (
