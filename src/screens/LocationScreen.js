@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import MapView, { Marker } from 'react-native-maps'
 import * as Location from 'expo-location'
+import { CommonActions } from '@react-navigation/native'
 import {
   getLocationSelectionFromCoords,
   searchLocationSelection,
@@ -164,8 +165,8 @@ export default function LocationScreen({ navigation, route }) {
     }
 
     const returnScreen = route?.params?.returnScreen || 'Home'
-
-    navigation.navigate(returnScreen, {
+    const returnKey = route?.params?.returnKey
+    const params = {
       selectedLocation: {
         label: selectedLabel,
         areaLabel: selectedLabel,
@@ -175,7 +176,21 @@ export default function LocationScreen({ navigation, route }) {
       },
       selectedLocationRequestId: String(Date.now()),
       ...(route?.params?.returnParams || {}),
-    })
+    }
+
+    if (returnKey) {
+      navigation.dispatch(
+        CommonActions.navigate({
+          key: returnKey,
+          name: returnScreen,
+          params,
+          merge: true,
+        })
+      )
+      return
+    }
+
+    navigation.navigate(returnScreen, params)
   }
 
   const initialRegion = {

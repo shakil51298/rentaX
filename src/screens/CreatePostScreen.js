@@ -345,6 +345,12 @@ export default function CreatePostScreen({ navigation, route }) {
     }
 
     Alert.alert('Success', isEditing ? 'Property post updated' : 'Property post created')
+
+    if (isEditing) {
+      navigation.navigate('AdsManagement')
+      return
+    }
+
     navigation.goBack()
   }
 
@@ -494,6 +500,8 @@ export default function CreatePostScreen({ navigation, route }) {
                   onPress={() =>
                     navigation.navigate('Location', {
                       returnScreen: 'CreatePost',
+                      returnKey: route?.key,
+                      returnParams: isEditing && editingPost ? { post: editingPost } : {},
                       initialLabel: selectedLocationMeta?.fullLabel || location,
                       initialLocation: selectedLocationMeta || null,
                     })
