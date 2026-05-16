@@ -53,6 +53,7 @@ export default function HomeScreen({ navigation, route }) {
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [messageUnreadCount, setMessageUnreadCount] = useState(0)
   const [locationLabel, setLocationLabel] = useState('Detecting location...')
+  const [locationFullLabel, setLocationFullLabel] = useState('Detecting location...')
   const [locationLoading, setLocationLoading] = useState(false)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
@@ -62,6 +63,7 @@ export default function HomeScreen({ navigation, route }) {
   const reopenCommentsOnFocus = useRef(false)
   const handledCommentRouteRequest = useRef(null)
   const commentReturnRoute = useRef(null)
+  const manualLocationOverride = useRef(false)
 
   function formatLocationLabel(value) {
     if (!value) return ''
@@ -76,9 +78,29 @@ export default function HomeScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       loadUser()
-      loadCurrentLocation()
-    }, [])
+
+      if (!manualLocationOverride.current && !route?.params?.selectedLocation) {
+        loadCurrentLocation()
+      }
+    }, [route?.params?.selectedLocation])
   )
+
+  useEffect(() => {
+    const selectedLocation = route?.params?.selectedLocation
+    const requestId = route?.params?.selectedLocationRequestId
+
+    if (!selectedLocation || !requestId) return
+
+    manualLocationOverride.current = true
+    setLocationLoading(false)
+    const fullLabel = selectedLocation.label || 'Pinned location'
+    setLocationFullLabel(fullLabel)
+    setLocationLabel(formatLocationLabel(fullLabel))
+    navigation.setParams({
+      selectedLocation: undefined,
+      selectedLocationRequestId: undefined,
+    })
+  }, [navigation, route?.params?.selectedLocation, route?.params?.selectedLocationRequestId])
 
   useFocusEffect(
     useCallback(() => {
@@ -313,6 +335,7 @@ export default function HomeScreen({ navigation, route }) {
       const permission = await Location.requestForegroundPermissionsAsync()
 
       if (!permission.granted) {
+        setLocationFullLabel('Location off')
         setLocationLabel(formatLocationLabel('Location off'))
         setLocationLoading(false)
         return
@@ -336,8 +359,10 @@ export default function HomeScreen({ navigation, route }) {
         place?.country ||
         'Current area'
 
+      setLocationFullLabel(label)
       setLocationLabel(formatLocationLabel(label))
     } catch (_error) {
+      setLocationFullLabel('Location unavailable')
       setLocationLabel(formatLocationLabel('Location unavailable'))
     } finally {
       setLocationLoading(false)
@@ -1051,7 +1076,15 @@ export default function HomeScreen({ navigation, route }) {
           justifyContent: 'space-between',
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate('Location', {
+              initialLabel: locationLoading ? '' : locationFullLabel,
+            })
+          }
+          activeOpacity={0.82}
+          style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}
+        >
           <View
             style={{
               width: 26,
@@ -1073,7 +1106,7 @@ export default function HomeScreen({ navigation, route }) {
           >
             {locationLoading ? 'Loc...' : locationLabel}
           </Text>
-        </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={{
