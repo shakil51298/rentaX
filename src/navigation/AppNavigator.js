@@ -20,6 +20,7 @@ import LocationScreen from '../screens/LocationScreen'
 import ConnectionsScreen from '../screens/ConnectionsScreen'
 import BlockListScreen from '../screens/BlockListScreen'
 import VerificationCenterScreen from '../screens/VerificationCenterScreen'
+import AdminPanelScreen from '../screens/AdminPanelScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -193,6 +194,11 @@ export default function AppNavigator() {
           name="VerificationCenter"
           component={VerificationCenterScreen}
           options={{ title: 'Verification center' }}
+        />
+        <Stack.Screen
+          name="AdminPanel"
+          component={AdminPanelScreen}
+          options={{ title: 'Admin panel' }}
         />
         <Stack.Screen
           name="Connections"

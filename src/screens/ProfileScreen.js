@@ -15,6 +15,7 @@ import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus } from '../lib/verification'
+import { isPrimaryAdmin } from '../lib/admin'
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -135,6 +136,7 @@ export default function ProfileScreen({ navigation }) {
   const avatarUrl = profile?.avatar_url || null
   const coverUrl = profile?.cover_url || null
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
+  const showAdminPanel = isPrimaryAdmin(email)
 
   function openConnections(kind) {
     if (!currentUserId) return
@@ -301,6 +303,15 @@ export default function ProfileScreen({ navigation }) {
                 subtitle="View, edit, share, and delete your property posts."
                 onPress={() => navigation.navigate('AdsManagement')}
               />
+
+              {showAdminPanel ? (
+                <ActionCard
+                  icon="shield-checkmark-outline"
+                  title="Admin panel"
+                  subtitle="Review owner and property verification requests."
+                  onPress={() => navigation.navigate('AdminPanel')}
+                />
+              ) : null}
 
               <ActionCard
                 icon="settings-outline"
