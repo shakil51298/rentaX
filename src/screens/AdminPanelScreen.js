@@ -415,6 +415,22 @@ export default function AdminPanelScreen({ navigation }) {
           screen: 'VerificationCenter',
         },
       })
+    } else if (nextStatus === 'verified') {
+      const {
+        data: { user: adminUser },
+      } = await supabase.auth.getUser()
+
+      await createNotification({
+        recipientId: item.user_id,
+        actorId: adminUser?.id,
+        type: 'owner_verification_approved',
+        title: 'Owner verification approved',
+        body: 'Your owner profile is now verified.',
+        eventKey: `owner_verification_approved:${item.user_id}:${item.owner_verification_requested_at || Date.now()}`,
+        pushData: {
+          screen: 'VerificationCenter',
+        },
+      })
     }
 
     setOwners((current) => current.filter((row) => row.user_id !== item.user_id))
@@ -482,6 +498,23 @@ export default function AdminPanelScreen({ navigation }) {
         title: 'Property verification rejected',
         body: rejectionReason,
         eventKey: `property_verification_rejected:${item.id}:${item.verification_requested_at || Date.now()}`,
+        pushData: {
+          propertyId: String(item.id),
+        },
+      })
+    } else if (nextStatus === 'verified') {
+      const {
+        data: { user: adminUser },
+      } = await supabase.auth.getUser()
+
+      await createNotification({
+        recipientId: item.owner_id,
+        actorId: adminUser?.id,
+        type: 'property_verification_approved',
+        propertyId: item.id,
+        title: 'Property verification approved',
+        body: 'Your property now has a verified badge.',
+        eventKey: `property_verification_approved:${item.id}:${item.verification_requested_at || Date.now()}`,
         pushData: {
           propertyId: String(item.id),
         },

@@ -78,7 +78,8 @@ export default function BottomNavBar({
     }
 
     let isMounted = true
-    let userId = null
+    let notificationChannel = null
+    let messageChannel = null
 
     async function refreshCounts() {
       const {
@@ -95,7 +96,6 @@ export default function BottomNavBar({
         return
       }
 
-      userId = user.id
       const [{ count: messageCount, error: messageError }, notificationCount] = await Promise.all([
         supabase
           .from('chat_messages')
@@ -113,39 +113,56 @@ export default function BottomNavBar({
       })
     }
 
-    refreshCounts()
+    async function bootstrap() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-    const notificationChannel = supabase
-      .channel(`bottom-nav-notifications-${Date.now()}-${Math.random()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: userId ? `recipient_id=eq.${userId}` : undefined,
-        },
-        refreshCounts
-      )
-      .subscribe()
+      if (!isMounted) return
 
-    const messageChannel = supabase
-      .channel(`bottom-nav-messages-${Date.now()}-${Math.random()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chat_messages',
-        },
-        refreshCounts
-      )
-      .subscribe()
+      await refreshCounts()
+
+      if (!user?.id) return
+
+      notificationChannel = supabase
+        .channel(`bottom-nav-notifications-${user.id}-${Date.now()}-${Math.random()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `recipient_id=eq.${user.id}`,
+          },
+          refreshCounts
+        )
+        .subscribe()
+
+      messageChannel = supabase
+        .channel(`bottom-nav-messages-${user.id}-${Date.now()}-${Math.random()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'chat_messages',
+            filter: `receiver_id=eq.${user.id}`,
+          },
+          refreshCounts
+        )
+        .subscribe()
+    }
+
+    bootstrap()
 
     return () => {
       isMounted = false
-      supabase.removeChannel(notificationChannel)
-      supabase.removeChannel(messageChannel)
+      if (notificationChannel) {
+        supabase.removeChannel(notificationChannel)
+      }
+      if (messageChannel) {
+        supabase.removeChannel(messageChannel)
+      }
     }
   }, [messageUnreadCount, notificationUnreadCount])
 

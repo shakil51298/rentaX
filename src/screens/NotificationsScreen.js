@@ -40,12 +40,24 @@ function getNotificationIcon(type) {
   if (type === 'property_like') return 'thumbs-up'
   if (type === 'property_favorite') return 'heart'
   if (type === 'user_follow') return 'person-add'
+  if (type === 'owner_verification_approved' || type === 'property_verification_approved') {
+    return 'checkmark-circle'
+  }
+  if (type === 'owner_verification_rejected' || type === 'property_verification_rejected') {
+    return 'alert-circle'
+  }
   return 'notifications'
 }
 
 function getNotificationColor(type) {
   if (type === 'property_favorite') return '#ef4444'
   if (type === 'user_follow') return '#16a34a'
+  if (type === 'owner_verification_approved' || type === 'property_verification_approved') {
+    return '#16a34a'
+  }
+  if (type === 'owner_verification_rejected' || type === 'property_verification_rejected') {
+    return '#dc2626'
+  }
   return '#1877F2'
 }
 
@@ -247,7 +259,22 @@ export default function NotificationsScreen({ navigation }) {
       return
     }
 
+    if (notification.type === 'owner_verification_approved') {
+      navigation.navigate('VerificationCenter')
+      return
+    }
+
     if (notification.type === 'property_verification_rejected') {
+      if (notification.property) {
+        navigation.navigate('Property', { property: notification.property })
+        return
+      }
+
+      navigation.navigate('VerificationCenter')
+      return
+    }
+
+    if (notification.type === 'property_verification_approved') {
       if (notification.property) {
         navigation.navigate('Property', { property: notification.property })
         return
