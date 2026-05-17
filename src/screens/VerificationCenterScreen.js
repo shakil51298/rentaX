@@ -1054,6 +1054,15 @@ export default function VerificationCenterScreen() {
         throw error
       }
 
+      await supabase.from('owner_verification_history').insert({
+        user_id: String(user.id),
+        action_type: ownerVerificationChanged && ownerStatus === 'verified' ? 'resubmitted' : 'submitted',
+        phone: phone.trim(),
+        id_type: idType,
+        id_last4: idLast4.trim(),
+        note: verificationNote.trim() || null,
+      })
+
       const adminIds = await getPrimaryAdminUserIds()
       const requestedAt = payload.owner_verification_requested_at
 
@@ -1126,6 +1135,15 @@ export default function VerificationCenterScreen() {
       )
       return
     }
+
+    await supabase.from('property_verification_history').insert({
+      property_id: String(post.id),
+      owner_id: String(user.id),
+      action_type: 'submitted',
+      title: post.title || null,
+      location: post.location || null,
+      price: post.price ? String(post.price) : null,
+    })
 
     const adminIds = await getPrimaryAdminUserIds()
     await Promise.all(

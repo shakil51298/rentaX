@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  findNodeHandle,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -186,17 +189,165 @@ function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen }) {
   )
 }
 
+function SummaryTile({ title, count, icon, tint }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        padding: 14,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: tint,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name={icon} size={18} color="#fff" />
+      </View>
+
+      <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '900', marginTop: 12 }}>
+        {count}
+      </Text>
+      <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12, fontWeight: '800' }}>
+        {title}
+      </Text>
+    </View>
+  )
+}
+
+function CollapsibleSection({ title, subtitle, expanded, onToggle, children, count }) {
+  return (
+    <SectionCard>
+      <TouchableOpacity
+        onPress={onToggle}
+        activeOpacity={0.86}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>{title}</Text>
+            <View
+              style={{
+                marginLeft: 8,
+                minWidth: 22,
+                height: 22,
+                borderRadius: 11,
+                paddingHorizontal: 6,
+                backgroundColor: '#eff6ff',
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+                {count}
+              </Text>
+            </View>
+          </View>
+          {subtitle ? (
+            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color="#475569" />
+      </TouchableOpacity>
+
+      {expanded ? <View style={{ marginTop: 14 }}>{children}</View> : null}
+    </SectionCard>
+  )
+}
+
+function HistoryEntryRow({ entry, kind }) {
+  const isRejected = entry.action_type === 'rejected'
+  const isApproved = entry.action_type === 'approved'
+  const isSubmitted = entry.action_type === 'submitted' || entry.action_type === 'resubmitted'
+  const color = isRejected ? '#dc2626' : isApproved ? '#16a34a' : '#2563eb'
+  const icon = isRejected ? 'close-circle' : isApproved ? 'checkmark-circle' : 'time'
+  const labelMap = {
+    submitted: 'Submitted',
+    resubmitted: 'Updated request',
+    approved: 'Approved',
+    rejected: 'Rejected',
+  }
+
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        backgroundColor: '#f8fafc',
+        padding: 12,
+        marginBottom: 10,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Ionicons name={icon} size={16} color={color} />
+          <Text style={{ color, fontWeight: '900', marginLeft: 8 }}>
+            {labelMap[entry.action_type] || entry.action_type}
+          </Text>
+        </View>
+        <Text style={{ color: '#64748b', fontSize: 12 }}>{formatDate(entry.created_at)}</Text>
+      </View>
+
+      {kind === 'owner' ? (
+        <>
+          <InfoLine label="Phone" value={entry.phone} />
+          <InfoLine
+            label="ID"
+            value={entry.id_type && entry.id_last4 ? `${entry.id_type} •••• ${entry.id_last4}` : ''}
+          />
+          <InfoLine label="Note" value={entry.note} />
+        </>
+      ) : (
+        <>
+          <InfoLine label="Property" value={entry.title} />
+          <InfoLine label="Location" value={entry.location} />
+          <InfoLine label="Rent" value={entry.price ? `৳ ${entry.price}` : ''} />
+        </>
+      )}
+
+      <InfoLine label="Reviewed by" value={entry.reviewed_by_email} />
+      <InfoLine label="Reason" value={entry.rejection_reason} />
+    </View>
+  )
+}
+
 export default function AdminPanelScreen({ navigation }) {
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
   const [owners, setOwners] = useState([])
   const [properties, setProperties] = useState([])
+  const [verifiedOwners, setVerifiedOwners] = useState([])
+  const [verifiedProperties, setVerifiedProperties] = useState([])
   const [propertyOwnersById, setPropertyOwnersById] = useState({})
+  const [ownerHistoriesByUserId, setOwnerHistoriesByUserId] = useState({})
+  const [propertyHistoriesById, setPropertyHistoriesById] = useState({})
   const [activeTab, setActiveTab] = useState('owners')
   const [busyKey, setBusyKey] = useState('')
   const [ownerRejectReasons, setOwnerRejectReasons] = useState({})
   const [propertyRejectReasons, setPropertyRejectReasons] = useState({})
   const [previewAsset, setPreviewAsset] = useState(null)
+  const [expandedOwnerHistory, setExpandedOwnerHistory] = useState({})
+  const [expandedPropertyHistory, setExpandedPropertyHistory] = useState({})
+  const [verifiedOwnersExpanded, setVerifiedOwnersExpanded] = useState(false)
+  const [verifiedPropertiesExpanded, setVerifiedPropertiesExpanded] = useState(false)
+  const scrollViewRef = useRef(null)
+  const ownerRejectInputRefs = useRef({})
+  const propertyRejectInputRefs = useRef({})
 
   const loadReviewData = useCallback(async () => {
     setLoading(true)
@@ -211,12 +362,23 @@ export default function AdminPanelScreen({ navigation }) {
     if (!allowed) {
       setOwners([])
       setProperties([])
+      setVerifiedOwners([])
+      setVerifiedProperties([])
       setPropertyOwnersById({})
+      setOwnerHistoriesByUserId({})
+      setPropertyHistoriesById({})
       setLoading(false)
       return
     }
 
-    const [{ data: ownerRows }, { data: propertyRows }] = await Promise.all([
+    const [
+      { data: ownerRows },
+      { data: propertyRows },
+      { data: verifiedOwnerRows },
+      { data: verifiedPropertyRows },
+      ownerHistoryResponse,
+      propertyHistoryResponse,
+    ] = await Promise.all([
       supabase
         .from('user_profiles')
         .select(`
@@ -257,9 +419,49 @@ export default function AdminPanelScreen({ navigation }) {
         `)
         .eq('verification_status', 'pending')
         .order('verification_requested_at', { ascending: true }),
+      supabase
+        .from('user_profiles')
+        .select(`
+          user_id,
+          email,
+          display_name,
+          avatar_url,
+          location,
+          owner_verification_reviewed_at
+        `)
+        .eq('owner_verification_status', 'verified')
+        .order('owner_verification_reviewed_at', { ascending: false }),
+      supabase
+        .from('properties')
+        .select(`
+          id,
+          owner_id,
+          title,
+          location,
+          price,
+          verification_reviewed_at
+        `)
+        .eq('verification_status', 'verified')
+        .order('verification_reviewed_at', { ascending: false }),
+      supabase
+        .from('owner_verification_history')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('property_verification_history')
+        .select('*')
+        .order('created_at', { ascending: false }),
     ])
 
-    const ownerIds = [...new Set((propertyRows || []).map((item) => item.owner_id).filter(Boolean))]
+    const ownerHistoryRows = ownerHistoryResponse?.data || []
+    const propertyHistoryRows = propertyHistoryResponse?.data || []
+    const ownerIds = [
+      ...new Set(
+        [...(propertyRows || []), ...(verifiedPropertyRows || [])]
+          .map((item) => item.owner_id)
+          .filter(Boolean)
+      ),
+    ]
     let ownersById = {}
 
     if (ownerIds.length) {
@@ -299,7 +501,25 @@ export default function AdminPanelScreen({ navigation }) {
 
     setOwners(ownersWithPreviewUrls || [])
     setProperties(propertyRows || [])
+    setVerifiedOwners(verifiedOwnerRows || [])
+    setVerifiedProperties(verifiedPropertyRows || [])
     setPropertyOwnersById(ownersById)
+    setOwnerHistoriesByUserId(
+      ownerHistoryRows.reduce((accumulator, item) => {
+        const key = String(item.user_id)
+        if (!accumulator[key]) accumulator[key] = []
+        accumulator[key].push(item)
+        return accumulator
+      }, {})
+    )
+    setPropertyHistoriesById(
+      propertyHistoryRows.reduce((accumulator, item) => {
+        const key = String(item.property_id)
+        if (!accumulator[key]) accumulator[key] = []
+        accumulator[key].push(item)
+        return accumulator
+      }, {})
+    )
     setLoading(false)
   }, [])
 
@@ -350,9 +570,27 @@ export default function AdminPanelScreen({ navigation }) {
 
   const ownerCount = owners.length
   const propertyCount = properties.length
+  const verifiedOwnerCount = verifiedOwners.length
+  const verifiedPropertyCount = verifiedProperties.length
 
   const visibleOwners = useMemo(() => owners, [owners])
   const visibleProperties = useMemo(() => properties, [properties])
+
+  function scrollRejectInputIntoView(kind, id) {
+    const inputRef =
+      kind === 'owner' ? ownerRejectInputRefs.current[id] : propertyRejectInputRefs.current[id]
+
+    const inputHandle = findNodeHandle(inputRef)
+    const scrollNode = scrollViewRef.current
+
+    if (!inputHandle || !scrollNode?.scrollResponderScrollNativeHandleToKeyboard) {
+      return
+    }
+
+    setTimeout(() => {
+      scrollNode.scrollResponderScrollNativeHandleToKeyboard(inputHandle, 140, true)
+    }, 120)
+  }
 
   async function reviewOwner(item, nextStatus) {
     const key = `owner-${item.user_id}-${nextStatus}`
@@ -399,11 +637,23 @@ export default function AdminPanelScreen({ navigation }) {
       return
     }
 
-    if (nextStatus === 'rejected') {
-      const {
-        data: { user: adminUser },
-      } = await supabase.auth.getUser()
+    const {
+      data: { user: adminUser },
+    } = await supabase.auth.getUser()
 
+    await supabase.from('owner_verification_history').insert({
+      user_id: String(item.user_id),
+      action_type: nextStatus,
+      phone: item.owner_verification_phone || item.phone || null,
+      id_type: item.owner_verification_id_type || null,
+      id_last4: item.owner_verification_id_last4 || null,
+      note: item.owner_verification_note || null,
+      rejection_reason: rejectionReason,
+      reviewed_by_user_id: adminUser?.id ? String(adminUser.id) : null,
+      reviewed_by_email: adminUser?.email || null,
+    })
+
+    if (nextStatus === 'rejected') {
       await createNotification({
         recipientId: item.user_id,
         actorId: adminUser?.id,
@@ -416,10 +666,6 @@ export default function AdminPanelScreen({ navigation }) {
         },
       })
     } else if (nextStatus === 'verified') {
-      const {
-        data: { user: adminUser },
-      } = await supabase.auth.getUser()
-
       await createNotification({
         recipientId: item.user_id,
         actorId: adminUser?.id,
@@ -485,11 +731,23 @@ export default function AdminPanelScreen({ navigation }) {
       return
     }
 
-    if (nextStatus === 'rejected') {
-      const {
-        data: { user: adminUser },
-      } = await supabase.auth.getUser()
+    const {
+      data: { user: adminUser },
+    } = await supabase.auth.getUser()
 
+    await supabase.from('property_verification_history').insert({
+      property_id: String(item.id),
+      owner_id: String(item.owner_id),
+      action_type: nextStatus,
+      title: item.title || null,
+      location: item.location || null,
+      price: item.price ? String(item.price) : null,
+      rejection_reason: rejectionReason,
+      reviewed_by_user_id: adminUser?.id ? String(adminUser.id) : null,
+      reviewed_by_email: adminUser?.email || null,
+    })
+
+    if (nextStatus === 'rejected') {
       await createNotification({
         recipientId: item.owner_id,
         actorId: adminUser?.id,
@@ -503,10 +761,6 @@ export default function AdminPanelScreen({ navigation }) {
         },
       })
     } else if (nextStatus === 'verified') {
-      const {
-        data: { user: adminUser },
-      } = await supabase.auth.getUser()
-
       await createNotification({
         recipientId: item.owner_id,
         actorId: adminUser?.id,
@@ -568,17 +822,23 @@ export default function AdminPanelScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
-      <ScrollView
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 30 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+      <ScrollView
+        ref={(ref) => {
+          scrollViewRef.current = ref
+        }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 38 }}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <SectionCard>
-          <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '900' }}>
-            Admin panel
-          </Text>
-          <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 20 }}>
+        <View style={{ marginBottom: 14 }}>
+          <Text style={{ color: '#64748b', lineHeight: 20 }}>
             Review verification requests from one place and keep trust badges clean.
           </Text>
 
@@ -596,7 +856,107 @@ export default function AdminPanelScreen({ navigation }) {
               onPress={() => setActiveTab('properties')}
             />
           </View>
-        </SectionCard>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
+          <SummaryTile
+            title="Verified owners"
+            count={verifiedOwnerCount}
+            icon="shield-checkmark"
+            tint="#2563eb"
+          />
+          <SummaryTile
+            title="Verified properties"
+            count={verifiedPropertyCount}
+            icon="home"
+            tint="#16a34a"
+          />
+        </View>
+
+        <CollapsibleSection
+          title="Verified users"
+          subtitle="Owners who currently have an approved blue badge."
+          count={verifiedOwnerCount}
+          expanded={verifiedOwnersExpanded}
+          onToggle={() => setVerifiedOwnersExpanded((current) => !current)}
+        >
+          {verifiedOwners.length ? (
+            verifiedOwners.map((item) => (
+              <View
+                key={item.user_id}
+                style={{
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                      {item.display_name || item.email || 'Property owner'}
+                    </Text>
+                    <Text style={{ color: '#64748b', marginTop: 4 }}>
+                      {item.email || 'No email'}
+                    </Text>
+                  </View>
+                  <StatusChip meta={getVerificationMeta('verified', { verifiedLabel: 'Verified owner' })} />
+                </View>
+                <InfoLine label="Location" value={item.location} />
+                <InfoLine label="Approved" value={formatDate(item.owner_verification_reviewed_at)} />
+              </View>
+            ))
+          ) : (
+            <Text style={{ color: '#64748b' }}>No verified owners yet.</Text>
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Verified properties"
+          subtitle="Listings that already carry the verified trust badge."
+          count={verifiedPropertyCount}
+          expanded={verifiedPropertiesExpanded}
+          onToggle={() => setVerifiedPropertiesExpanded((current) => !current)}
+        >
+          {verifiedProperties.length ? (
+            verifiedProperties.map((item) => {
+              const ownerProfile = propertyOwnersById[item.owner_id] || null
+
+              return (
+                <View
+                  key={item.id}
+                  style={{
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                        {item.title || 'Untitled property'}
+                      </Text>
+                      <Text style={{ color: '#64748b', marginTop: 4 }}>
+                        {ownerProfile?.display_name || ownerProfile?.email || 'Unknown owner'}
+                      </Text>
+                    </View>
+                    <StatusChip meta={getVerificationMeta('verified', { verifiedLabel: 'Verified property' })} />
+                  </View>
+                  <InfoLine label="Location" value={item.location} />
+                  <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} />
+                  <InfoLine label="Approved" value={formatDate(item.verification_reviewed_at)} />
+                </View>
+              )
+            })
+          ) : (
+            <Text style={{ color: '#64748b' }}>No verified properties yet.</Text>
+          )}
+        </CollapsibleSection>
 
         {activeTab === 'owners' ? (
           visibleOwners.length ? (
@@ -641,7 +1001,64 @@ export default function AdminPanelScreen({ navigation }) {
                     selfieUrl={item.owner_verification_selfie_url}
                     onOpen={setPreviewAsset}
                   />
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      setExpandedOwnerHistory((current) => ({
+                        ...current,
+                        [item.user_id]: !current[item.user_id],
+                      }))
+                    }
+                    activeOpacity={0.84}
+                    style={{
+                      marginTop: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                    }}
+                  >
+                    <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                      Verification history
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '800', marginRight: 8 }}>
+                        {(ownerHistoriesByUserId[String(item.user_id)] || []).length}
+                      </Text>
+                      <Ionicons
+                        name={expandedOwnerHistory[item.user_id] ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color="#475569"
+                      />
+                    </View>
+                  </TouchableOpacity>
+
+                  {expandedOwnerHistory[item.user_id] ? (
+                    <View style={{ marginTop: 12 }}>
+                      {(ownerHistoriesByUserId[String(item.user_id)] || []).length ? (
+                        ownerHistoriesByUserId[String(item.user_id)].map((entry) => (
+                          <HistoryEntryRow
+                            key={`owner-history-${entry.id}`}
+                            entry={entry}
+                            kind="owner"
+                          />
+                        ))
+                      ) : (
+                        <Text style={{ color: '#64748b' }}>No history recorded yet.</Text>
+                      )}
+                    </View>
+                  ) : null}
+
                   <TextInput
+                    ref={(ref) => {
+                      ownerRejectInputRefs[item.user_id] = ref
+                      ownerRejectInputRefs.current[item.user_id] = ref
+                    }}
                     value={ownerRejectReasons[item.user_id] || ''}
                     onChangeText={(value) =>
                       setOwnerRejectReasons((current) => ({
@@ -649,6 +1066,7 @@ export default function AdminPanelScreen({ navigation }) {
                         [item.user_id]: value,
                       }))
                     }
+                    onFocus={() => scrollRejectInputIntoView('owner', item.user_id)}
                     placeholder="Reject note for the user"
                     placeholderTextColor="#94a3b8"
                     multiline
@@ -715,17 +1133,75 @@ export default function AdminPanelScreen({ navigation }) {
                 <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} />
                 <InfoLine label="Contact" value={item.verification_contact_phone || ownerProfile?.phone} />
                 <InfoLine label="Owner email" value={ownerProfile?.email} />
-                <TextInput
-                  value={propertyRejectReasons[item.id] || ''}
-                  onChangeText={(value) =>
-                    setPropertyRejectReasons((current) => ({
+
+                <TouchableOpacity
+                  onPress={() =>
+                    setExpandedPropertyHistory((current) => ({
                       ...current,
-                      [item.id]: value,
+                      [item.id]: !current[item.id],
                     }))
                   }
-                  placeholder="Reject note for this property"
-                  placeholderTextColor="#94a3b8"
-                  multiline
+                  activeOpacity={0.84}
+                  style={{
+                    marginTop: 14,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                    Verification history
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '800', marginRight: 8 }}>
+                      {(propertyHistoriesById[String(item.id)] || []).length}
+                    </Text>
+                    <Ionicons
+                      name={expandedPropertyHistory[item.id] ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color="#475569"
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                {expandedPropertyHistory[item.id] ? (
+                  <View style={{ marginTop: 12 }}>
+                    {(propertyHistoriesById[String(item.id)] || []).length ? (
+                      propertyHistoriesById[String(item.id)].map((entry) => (
+                        <HistoryEntryRow
+                          key={`property-history-${entry.id}`}
+                          entry={entry}
+                          kind="property"
+                        />
+                      ))
+                    ) : (
+                      <Text style={{ color: '#64748b' }}>No history recorded yet.</Text>
+                    )}
+                  </View>
+                ) : null}
+
+                  <TextInput
+                    ref={(ref) => {
+                      propertyRejectInputRefs[item.id] = ref
+                      propertyRejectInputRefs.current[item.id] = ref
+                    }}
+                    value={propertyRejectReasons[item.id] || ''}
+                    onChangeText={(value) =>
+                      setPropertyRejectReasons((current) => ({
+                        ...current,
+                        [item.id]: value,
+                      }))
+                    }
+                    onFocus={() => scrollRejectInputIntoView('property', item.id)}
+                    placeholder="Reject note for this property"
+                    placeholderTextColor="#94a3b8"
+                    multiline
                   style={{
                     marginTop: 14,
                     backgroundColor: '#f8fafc',
@@ -760,6 +1236,7 @@ export default function AdminPanelScreen({ navigation }) {
           </SectionCard>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={Boolean(previewAsset)}
