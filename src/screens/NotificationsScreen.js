@@ -242,6 +242,21 @@ export default function NotificationsScreen({ navigation }) {
   async function openNotification(notification) {
     await markNotificationRead(notification)
 
+    if (notification.type === 'owner_verification_rejected') {
+      navigation.navigate('VerificationCenter')
+      return
+    }
+
+    if (notification.type === 'property_verification_rejected') {
+      if (notification.property) {
+        navigation.navigate('Property', { property: notification.property })
+        return
+      }
+
+      navigation.navigate('VerificationCenter')
+      return
+    }
+
     if (shouldOpenCommentSheet(notification.type) && notification.property_id) {
       navigation.navigate('Home', {
         openCommentsForPostId: String(notification.property_id),

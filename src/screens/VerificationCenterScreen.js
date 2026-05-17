@@ -1,7 +1,11 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Image,
+  Modal,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -11,13 +15,36 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
+import * as ImagePicker from 'expo-image-picker'
+import { CameraView, useCameraPermissions } from 'expo-camera'
 import { supabase } from '../lib/supabase'
+import {
+  createSignedMediaUrl,
+  getPrivateMediaPath,
+  uploadPrivateMediaAsset,
+  VERIFICATION_MEDIA_BUCKET,
+} from '../lib/media'
 import { getPropertyVerificationStatus, getVerificationMeta } from '../lib/verification'
 
 const ID_TYPES = [
   { id: 'national_id', label: 'National ID' },
   { id: 'passport', label: 'Passport' },
   { id: 'driving_license', label: 'Driving License' },
+]
+
+const SELFIE_STEPS = [
+  {
+    title: 'Center your face',
+    subtitle: 'Keep your full face inside the frame.',
+  },
+  {
+    title: 'Give a light smile',
+    subtitle: 'A natural smile helps manual review.',
+  },
+  {
+    title: 'Nod your head slowly',
+    subtitle: 'Move a little so the guided selfie feels live.',
+  },
 ]
 
 function Field({
@@ -113,6 +140,188 @@ function RequirementRow({ icon, title, done, subtitle }) {
   )
 }
 
+function DocumentUploadCard({
+  title,
+  subtitle,
+  asset,
+  onChooseGallery,
+  onTakePhoto,
+  onRemove,
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        backgroundColor: '#fff',
+        padding: 14,
+        marginBottom: 12,
+      }}
+    >
+      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>{title}</Text>
+      <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 18 }}>{subtitle}</Text>
+
+      <View
+        style={{
+          marginTop: 12,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: '#dbe4ee',
+          backgroundColor: '#f8fafc',
+          overflow: 'hidden',
+          minHeight: 160,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {asset?.uri ? (
+          <Image
+            source={{ uri: asset.uri }}
+            style={{ width: '100%', height: 180, backgroundColor: '#e2e8f0' }}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={{ alignItems: 'center', paddingHorizontal: 18, paddingVertical: 26 }}>
+            <Ionicons name="image-outline" size={30} color="#94a3b8" />
+            <Text style={{ color: '#64748b', marginTop: 8, textAlign: 'center' }}>
+              Upload a clear photo. Keep all corners visible.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={{ flexDirection: 'row', marginTop: 12, gap: 10 }}>
+        <TouchableOpacity
+          onPress={onTakePhoto}
+          style={{
+            flex: 1,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            backgroundColor: '#eff6ff',
+            paddingVertical: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#2563eb', fontWeight: '900' }}>Take photo</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onChooseGallery}
+          style={{
+            flex: 1,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            backgroundColor: '#fff',
+            paddingVertical: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#334155', fontWeight: '900' }}>Upload photo</Text>
+        </TouchableOpacity>
+      </View>
+
+      {asset?.uri ? (
+        <TouchableOpacity
+          onPress={onRemove}
+          style={{
+            marginTop: 10,
+            alignSelf: 'flex-start',
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+        >
+          <Ionicons name="trash-outline" size={14} color="#dc2626" />
+          <Text style={{ color: '#dc2626', fontWeight: '800', marginLeft: 6 }}>Remove</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  )
+}
+
+function SelfieCard({ asset, onOpenCamera, onRemove }) {
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        backgroundColor: '#fff',
+        padding: 14,
+        marginBottom: 12,
+      }}
+    >
+      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+        Guided selfie capture
+      </Text>
+      <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 18 }}>
+        Open the front camera, follow the scan guide, smile, then nod slightly before capture.
+      </Text>
+
+      <View
+        style={{
+          marginTop: 12,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: '#dbe4ee',
+          backgroundColor: '#0f172a',
+          overflow: 'hidden',
+          minHeight: 200,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {asset?.uri ? (
+          <Image
+            source={{ uri: asset.uri }}
+            style={{ width: '100%', height: 220 }}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={{ alignItems: 'center', paddingHorizontal: 18, paddingVertical: 26 }}>
+            <Ionicons name="scan-outline" size={34} color="#cbd5e1" />
+            <Text style={{ color: '#cbd5e1', marginTop: 10, textAlign: 'center' }}>
+              No guided selfie captured yet.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <TouchableOpacity
+        onPress={onOpenCamera}
+        style={{
+          marginTop: 12,
+          borderRadius: 12,
+          backgroundColor: '#1877F2',
+          paddingVertical: 12,
+          alignItems: 'center',
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '900' }}>
+          {asset?.uri ? 'Retake guided selfie' : 'Start guided selfie'}
+        </Text>
+      </TouchableOpacity>
+
+      {asset?.uri ? (
+        <TouchableOpacity
+          onPress={onRemove}
+          style={{
+            marginTop: 10,
+            alignSelf: 'flex-start',
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+        >
+          <Ionicons name="trash-outline" size={14} color="#dc2626" />
+          <Text style={{ color: '#dc2626', fontWeight: '800', marginLeft: 6 }}>Remove</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  )
+}
+
 function ListingRow({ item, onRequest, busy }) {
   const verificationMeta = getVerificationMeta(getPropertyVerificationStatus(item), {
     verifiedLabel: 'Verified property',
@@ -179,6 +388,90 @@ function ListingRow({ item, onRequest, busy }) {
   )
 }
 
+function makeAssetFromSignedUrl(signedUrl, storagePath) {
+  if (!signedUrl || !storagePath) return null
+
+  return {
+    uri: signedUrl,
+    storagePath,
+    type: 'image',
+    mimeType: 'image/jpeg',
+    existing: true,
+  }
+}
+
+async function pickPhotoFromSource(source) {
+  if (source === 'camera') {
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow camera access to capture the document photo.')
+      return null
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    })
+
+    if (result.canceled || !result.assets?.length) return null
+
+    const asset = result.assets[0]
+
+    return {
+      uri: asset.uri,
+      type: 'image',
+      mimeType: asset.mimeType,
+      fileName: asset.fileName,
+    }
+  }
+
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+
+  if (!permission.granted) {
+    Alert.alert('Permission needed', 'Allow gallery access to upload a document photo.')
+    return null
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    allowsEditing: true,
+    quality: 0.8,
+  })
+
+  if (result.canceled || !result.assets?.length) return null
+
+  const asset = result.assets[0]
+
+  return {
+    uri: asset.uri,
+    type: 'image',
+    mimeType: asset.mimeType,
+    fileName: asset.fileName,
+  }
+}
+
+async function ensurePrivateUpload(asset, userId) {
+  if (!asset?.uri) return null
+
+  const existingPath = getPrivateMediaPath(asset)
+
+  if (existingPath) {
+    return existingPath
+  }
+
+  const { storagePath } = await uploadPrivateMediaAsset({
+    uri: asset.uri,
+    type: 'image',
+    mimeType: asset.mimeType,
+    userId,
+    bucket: VERIFICATION_MEDIA_BUCKET,
+  })
+
+  return storagePath
+}
+
 export default function VerificationCenterScreen() {
   const [loading, setLoading] = useState(true)
   const [savingOwner, setSavingOwner] = useState(false)
@@ -190,6 +483,17 @@ export default function VerificationCenterScreen() {
   const [idType, setIdType] = useState('national_id')
   const [idLast4, setIdLast4] = useState('')
   const [verificationNote, setVerificationNote] = useState('')
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [documentFront, setDocumentFront] = useState(null)
+  const [documentBack, setDocumentBack] = useState(null)
+  const [selfieAsset, setSelfieAsset] = useState(null)
+  const [selfieModalVisible, setSelfieModalVisible] = useState(false)
+  const [scanStepIndex, setScanStepIndex] = useState(0)
+  const [captureEnabled, setCaptureEnabled] = useState(false)
+  const [capturingSelfie, setCapturingSelfie] = useState(false)
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions()
+  const cameraRef = useRef(null)
+  const scanLine = useRef(new Animated.Value(0)).current
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -203,6 +507,9 @@ export default function VerificationCenterScreen() {
     if (!nextUser?.id) {
       setProfile(null)
       setPosts([])
+      setDocumentFront(null)
+      setDocumentBack(null)
+      setSelfieAsset(null)
       setLoading(false)
       return
     }
@@ -218,9 +525,15 @@ export default function VerificationCenterScreen() {
           owner_verification_status,
           owner_verification_requested_at,
           owner_verification_note,
+          owner_verification_rejection_reason,
           owner_verification_phone,
           owner_verification_id_type,
-          owner_verification_id_last4
+          owner_verification_id_last4,
+          owner_verification_document_front_path,
+          owner_verification_document_back_path,
+          owner_verification_selfie_path,
+          owner_verification_attempt_count,
+          owner_verification_attempt_day
         `)
         .eq('user_id', nextUser.id)
         .maybeSingle(),
@@ -237,6 +550,36 @@ export default function VerificationCenterScreen() {
     setIdType(nextProfile?.owner_verification_id_type || 'national_id')
     setIdLast4(nextProfile?.owner_verification_id_last4 || '')
     setVerificationNote(nextProfile?.owner_verification_note || '')
+    setRejectionReason(nextProfile?.owner_verification_rejection_reason || '')
+
+    try {
+      const [frontUrl, backUrl, selfieUrl] = await Promise.all([
+        nextProfile?.owner_verification_document_front_path
+          ? createSignedMediaUrl(VERIFICATION_MEDIA_BUCKET, nextProfile.owner_verification_document_front_path)
+          : Promise.resolve(null),
+        nextProfile?.owner_verification_document_back_path
+          ? createSignedMediaUrl(VERIFICATION_MEDIA_BUCKET, nextProfile.owner_verification_document_back_path)
+          : Promise.resolve(null),
+        nextProfile?.owner_verification_selfie_path
+          ? createSignedMediaUrl(VERIFICATION_MEDIA_BUCKET, nextProfile.owner_verification_selfie_path)
+          : Promise.resolve(null),
+      ])
+
+      setDocumentFront(
+        makeAssetFromSignedUrl(frontUrl, nextProfile?.owner_verification_document_front_path)
+      )
+      setDocumentBack(
+        makeAssetFromSignedUrl(backUrl, nextProfile?.owner_verification_document_back_path)
+      )
+      setSelfieAsset(
+        makeAssetFromSignedUrl(selfieUrl, nextProfile?.owner_verification_selfie_path)
+      )
+    } catch (_error) {
+      setDocumentFront(null)
+      setDocumentBack(null)
+      setSelfieAsset(null)
+    }
+
     setLoading(false)
   }, [])
 
@@ -245,6 +588,90 @@ export default function VerificationCenterScreen() {
       loadData()
     }, [loadData])
   )
+
+  useEffect(() => {
+    if (!user?.id) return undefined
+
+    const profileChannel = supabase
+      .channel(`verification-profile-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'user_profiles',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadData()
+        }
+      )
+      .subscribe()
+
+    const propertyChannel = supabase
+      .channel(`verification-properties-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'properties',
+          filter: `owner_id=eq.${user.id}`,
+        },
+        () => {
+          loadData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(profileChannel)
+      supabase.removeChannel(propertyChannel)
+    }
+  }, [loadData, user?.id])
+
+  useEffect(() => {
+    if (!selfieModalVisible) return undefined
+
+    setScanStepIndex(0)
+    setCaptureEnabled(false)
+
+    const stepTimer = setInterval(() => {
+      setScanStepIndex((current) => {
+        if (current >= SELFIE_STEPS.length - 1) {
+          clearInterval(stepTimer)
+          setCaptureEnabled(true)
+          return current
+        }
+
+        return current + 1
+      })
+    }, 1700)
+
+    scanLine.setValue(0)
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLine, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLine, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    )
+
+    animation.start()
+
+    return () => {
+      clearInterval(stepTimer)
+      animation.stop()
+      scanLine.stopAnimation()
+    }
+  }, [scanLine, selfieModalVisible])
 
   const isOwner = profile?.user_type === 'property_owner' || user?.user_metadata?.user_type === 'property_owner'
   const ownerStatus = profile?.owner_verification_status || (profile?.is_verified ? 'verified' : 'unverified')
@@ -256,7 +683,71 @@ export default function VerificationCenterScreen() {
   })
   const emailConfirmed = Boolean(user?.email_confirmed_at)
   const hasPhone = Boolean(phone.trim())
-  const hasId = Boolean(idLast4.trim() && idType)
+  const hasIdDigits = Boolean(idLast4.trim() && idType)
+  const hasFrontDoc = Boolean(documentFront?.uri)
+  const hasBackDoc = Boolean(documentBack?.uri)
+  const hasSelfie = Boolean(selfieAsset?.uri)
+  const attemptCountToday = profile?.owner_verification_attempt_day === new Date().toISOString().slice(0, 10)
+    ? Number(profile?.owner_verification_attempt_count || 0)
+    : 0
+  const attemptsRemaining = Math.max(3 - attemptCountToday, 0)
+  const currentSelfieStep = SELFIE_STEPS[scanStepIndex] || SELFIE_STEPS[0]
+  const scanLineStyle = useMemo(
+    () => ({
+      transform: [
+        {
+          translateY: scanLine.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-80, 80],
+          }),
+        },
+      ],
+    }),
+    [scanLine]
+  )
+
+  async function updateDocumentSide(setter, source) {
+    const asset = await pickPhotoFromSource(source)
+    if (asset) {
+      setter(asset)
+    }
+  }
+
+  async function openSelfieCapture() {
+    if (!cameraPermission?.granted) {
+      const permissionResponse = await requestCameraPermission()
+
+      if (!permissionResponse?.granted) {
+        Alert.alert('Permission needed', 'Allow camera access to capture your guided selfie.')
+        return
+      }
+    }
+
+    setSelfieModalVisible(true)
+  }
+
+  async function captureGuidedSelfie() {
+    if (!cameraRef.current || !captureEnabled) return
+
+    setCapturingSelfie(true)
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.75,
+      })
+
+      setSelfieAsset({
+        uri: photo.uri,
+        type: 'image',
+        mimeType: 'image/jpeg',
+      })
+      setSelfieModalVisible(false)
+    } catch (error) {
+      Alert.alert('Capture failed', error.message)
+    }
+
+    setCapturingSelfie(false)
+  }
 
   async function submitOwnerVerification() {
     if (!user?.id) return
@@ -276,42 +767,83 @@ export default function VerificationCenterScreen() {
       Alert.alert('ID details needed', 'Add the last 4 digits of your ID to continue.')
       return
     }
-
-    setSavingOwner(true)
-
-    const payload = {
-      user_id: user.id,
-      email: user.email,
-      phone: phone.trim(),
-      owner_verification_status: 'pending',
-      owner_verification_requested_at: new Date().toISOString(),
-      owner_verification_phone: phone.trim(),
-      owner_verification_id_type: idType,
-      owner_verification_id_last4: idLast4.trim(),
-      owner_verification_note: verificationNote.trim() || null,
-      updated_at: new Date().toISOString(),
+    if (!hasFrontDoc || !hasBackDoc) {
+      Alert.alert('Document photos needed', 'Upload both the front and back photo of your ID.')
+      return
     }
-
-    const { error } = await supabase.from('user_profiles').upsert(payload, { onConflict: 'user_id' })
-
-    setSavingOwner(false)
-
-    if (error) {
-      Alert.alert(
-        'Verification setup needed',
-        'Run supabase-verification-features.sql in Supabase, then try again.'
-      )
+    if (!hasSelfie) {
+      Alert.alert('Guided selfie needed', 'Complete the guided selfie capture before submitting.')
+      return
+    }
+    if (attemptCountToday >= 3) {
+      Alert.alert('Daily retry limit reached', 'You can submit verification up to 3 times in one day. Please try again tomorrow.')
       return
     }
 
-    Alert.alert('Request sent', 'Your owner verification request is now pending review.')
-    loadData()
+    setSavingOwner(true)
+
+    try {
+      const [frontPath, backPath, selfiePath] = await Promise.all([
+        ensurePrivateUpload(documentFront, user.id),
+        ensurePrivateUpload(documentBack, user.id),
+        ensurePrivateUpload(selfieAsset, user.id),
+      ])
+
+      const today = new Date().toISOString().slice(0, 10)
+      const nextAttemptCount =
+        profile?.owner_verification_attempt_day === today
+          ? Number(profile?.owner_verification_attempt_count || 0) + 1
+          : 1
+
+      const payload = {
+        user_id: user.id,
+        email: user.email,
+        phone: phone.trim(),
+        owner_verification_status: 'pending',
+        owner_verification_requested_at: new Date().toISOString(),
+        owner_verification_reviewed_at: null,
+        owner_verification_rejection_reason: null,
+        owner_verification_phone: phone.trim(),
+        owner_verification_id_type: idType,
+        owner_verification_id_last4: idLast4.trim(),
+        owner_verification_note: verificationNote.trim() || null,
+        owner_verification_document_front_path: frontPath,
+        owner_verification_document_back_path: backPath,
+        owner_verification_selfie_path: selfiePath,
+        owner_verification_attempt_day: today,
+        owner_verification_attempt_count: nextAttemptCount,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabase.from('user_profiles').upsert(payload, { onConflict: 'user_id' })
+
+      if (error) {
+        throw error
+      }
+
+      Alert.alert('Request sent', 'Your owner verification request is now pending review.')
+      await loadData()
+    } catch (error) {
+      Alert.alert(
+        'Verification setup needed',
+        error?.message || 'Run supabase-verification-features.sql in Supabase, then try again.'
+      )
+    }
+
+    setSavingOwner(false)
   }
 
   async function requestPropertyVerification(post) {
     if (!user?.id || !post?.id) return
     if (!phone.trim()) {
       Alert.alert('Phone needed', 'Add your verification phone first so renters and reviewers have a trusted contact.')
+      return
+    }
+    if (ownerStatus === 'unverified') {
+      Alert.alert(
+        'Complete owner verification first',
+        'Upload your document photos and guided selfie, then send your owner verification before requesting property verification.'
+      )
       return
     }
 
@@ -401,7 +933,7 @@ export default function VerificationCenterScreen() {
             Owner verification
           </Text>
           <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 20 }}>
-            Email confirmation, a reachable phone number, and ID details make your owner badge easier to approve.
+            Add a reachable phone number, ID details, front and back document photos, and a guided selfie.
           </Text>
 
           <View style={{ marginTop: 10 }}>
@@ -420,8 +952,20 @@ export default function VerificationCenterScreen() {
             <RequirementRow
               icon="card-outline"
               title="ID details"
-              done={hasId}
-              subtitle={hasId ? 'Your ID type and last 4 digits are attached.' : 'Add an ID type and last 4 digits.'}
+              done={hasIdDigits}
+              subtitle={hasIdDigits ? 'Your ID type and last 4 digits are attached.' : 'Add an ID type and last 4 digits.'}
+            />
+            <RequirementRow
+              icon="document-text-outline"
+              title="Front and back document photos"
+              done={hasFrontDoc && hasBackDoc}
+              subtitle={hasFrontDoc && hasBackDoc ? 'Both sides are ready.' : 'Upload both sides clearly and fully.'}
+            />
+            <RequirementRow
+              icon="scan-outline"
+              title="Guided selfie"
+              done={hasSelfie}
+              subtitle={hasSelfie ? 'Selfie captured with guide prompts.' : 'Smile and nod slightly during guided capture.'}
             />
           </View>
 
@@ -471,6 +1015,30 @@ export default function VerificationCenterScreen() {
               maxLength={4}
             />
 
+            <DocumentUploadCard
+              title="Document front photo"
+              subtitle="Capture or upload the front side of your National ID, passport, or driving licence."
+              asset={documentFront}
+              onTakePhoto={() => updateDocumentSide(setDocumentFront, 'camera')}
+              onChooseGallery={() => updateDocumentSide(setDocumentFront, 'gallery')}
+              onRemove={() => setDocumentFront(null)}
+            />
+
+            <DocumentUploadCard
+              title="Document back photo"
+              subtitle="Capture or upload the back side clearly. Keep all important text visible."
+              asset={documentBack}
+              onTakePhoto={() => updateDocumentSide(setDocumentBack, 'camera')}
+              onChooseGallery={() => updateDocumentSide(setDocumentBack, 'gallery')}
+              onRemove={() => setDocumentBack(null)}
+            />
+
+            <SelfieCard
+              asset={selfieAsset}
+              onOpenCamera={openSelfieCapture}
+              onRemove={() => setSelfieAsset(null)}
+            />
+
             <Field
               label="Note for review (optional)"
               value={verificationNote}
@@ -478,6 +1046,45 @@ export default function VerificationCenterScreen() {
               placeholder="Anything helpful about your property ownership or contact process"
               multiline
             />
+
+            <View
+              style={{
+                backgroundColor: '#f8fafc',
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                padding: 12,
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ color: '#475569', lineHeight: 19 }}>
+                Your document photos and guided selfie are uploaded privately for admin review. This is a guided capture flow with manual approval, not automatic biometric verification.
+              </Text>
+            </View>
+
+            {ownerStatus === 'rejected' && rejectionReason ? (
+              <View
+                style={{
+                  backgroundColor: '#fef2f2',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#fecaca',
+                  padding: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <Text style={{ color: '#b91c1c', fontWeight: '900', marginBottom: 4 }}>
+                  Rejected notice
+                </Text>
+                <Text style={{ color: '#7f1d1d', lineHeight: 19 }}>
+                  {rejectionReason}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 14 }}>
+              Daily retry limit: {attemptCountToday}/3 used today. {attemptsRemaining} attempt{attemptsRemaining === 1 ? '' : 's'} left.
+            </Text>
 
             <TouchableOpacity
               onPress={submitOwnerVerification}
@@ -542,6 +1149,169 @@ export default function VerificationCenterScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={selfieModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelfieModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#020617' }}>
+          {!cameraPermission?.granted ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+              <Ionicons name="camera-outline" size={34} color="#cbd5e1" />
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+                Camera access needed
+              </Text>
+              <Text style={{ color: '#cbd5e1', marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                Allow camera access so we can open the guided selfie flow.
+              </Text>
+              <TouchableOpacity
+                onPress={requestCameraPermission}
+                style={{
+                  marginTop: 18,
+                  borderRadius: 14,
+                  backgroundColor: '#1877F2',
+                  paddingHorizontal: 18,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '900' }}>Grant permission</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <CameraView
+                ref={cameraRef}
+                style={{ flex: 1 }}
+                facing="front"
+                mirror
+                active={selfieModalVisible}
+              />
+
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: 24,
+                  right: 24,
+                  top: 110,
+                  bottom: 180,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <View
+                  style={{
+                    width: '78%',
+                    maxWidth: 290,
+                    aspectRatio: 0.78,
+                    borderRadius: 28,
+                    borderWidth: 2,
+                    borderColor: '#93c5fd',
+                    overflow: 'hidden',
+                    backgroundColor: 'rgba(15, 23, 42, 0.18)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Animated.View
+                    style={[
+                      {
+                        position: 'absolute',
+                        left: 18,
+                        right: 18,
+                        height: 3,
+                        borderRadius: 999,
+                        backgroundColor: '#60a5fa',
+                        shadowColor: '#60a5fa',
+                        shadowOpacity: 0.6,
+                        shadowRadius: 8,
+                      },
+                      scanLineStyle,
+                    ]}
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => setSelfieModalVisible(false)}
+                style={{
+                  position: 'absolute',
+                  top: 58,
+                  right: 18,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: 'rgba(15, 23, 42, 0.55)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={22} color="#fff" />
+              </Pressable>
+
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 18,
+                  right: 18,
+                  bottom: 24,
+                  backgroundColor: 'rgba(15, 23, 42, 0.78)',
+                  borderRadius: 24,
+                  padding: 18,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900' }}>
+                  {currentSelfieStep.title}
+                </Text>
+                <Text style={{ color: '#cbd5e1', marginTop: 6, lineHeight: 20 }}>
+                  {currentSelfieStep.subtitle}
+                </Text>
+
+                <View style={{ flexDirection: 'row', marginTop: 14 }}>
+                  {SELFIE_STEPS.map((step, index) => (
+                    <View
+                      key={step.title}
+                      style={{
+                        flex: 1,
+                        height: 4,
+                        borderRadius: 999,
+                        backgroundColor: index <= scanStepIndex ? '#60a5fa' : 'rgba(148, 163, 184, 0.35)',
+                        marginRight: index === SELFIE_STEPS.length - 1 ? 0 : 6,
+                      }}
+                    />
+                  ))}
+                </View>
+
+                <Text style={{ color: '#94a3b8', marginTop: 12, fontSize: 12, lineHeight: 18 }}>
+                  Guided motion only. A real person still reviews this before approval.
+                </Text>
+
+                <TouchableOpacity
+                  onPress={captureGuidedSelfie}
+                  disabled={!captureEnabled || capturingSelfie}
+                  style={{
+                    marginTop: 16,
+                    borderRadius: 16,
+                    backgroundColor: !captureEnabled || capturingSelfie ? '#60a5fa' : '#1877F2',
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>
+                    {capturingSelfie
+                      ? 'Capturing...'
+                      : captureEnabled
+                        ? 'Capture selfie'
+                        : 'Follow the guide first'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

@@ -2,8 +2,10 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -12,7 +14,9 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
+import { createNotification } from '../lib/notifications'
 import { getPropertyVerificationStatus, getVerificationMeta } from '../lib/verification'
+import { createSignedMediaUrl, VERIFICATION_MEDIA_BUCKET } from '../lib/media'
 
 function formatDate(date) {
   if (!date) return 'Unknown time'
@@ -134,6 +138,50 @@ function ReviewButtons({ approving, rejecting, onApprove, onReject }) {
   )
 }
 
+function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl }) {
+  const previews = [
+    { key: 'front', title: 'Front', uri: frontUrl },
+    { key: 'back', title: 'Back', uri: backUrl },
+    { key: 'selfie', title: 'Selfie', uri: selfieUrl },
+  ].filter((item) => item.uri)
+
+  if (!previews.length) return null
+
+  return (
+    <View style={{ marginTop: 14 }}>
+      <Text style={{ color: '#334155', fontWeight: '800', fontSize: 13, marginBottom: 10 }}>
+        Uploaded proofs
+      </Text>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {previews.map((item, index) => (
+          <View
+            key={item.key}
+            style={{
+              width: 114,
+              marginRight: index === previews.length - 1 ? 0 : 10,
+            }}
+          >
+            <Image
+              source={{ uri: item.uri }}
+              style={{
+                width: 114,
+                height: 114,
+                borderRadius: 14,
+                backgroundColor: '#e2e8f0',
+              }}
+              resizeMode="cover"
+            />
+            <Text style={{ color: '#475569', fontSize: 12, fontWeight: '800', marginTop: 6 }}>
+              {item.title}
+            </Text>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  )
+}
+
 export default function AdminPanelScreen({ navigation }) {
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
@@ -142,6 +190,8 @@ export default function AdminPanelScreen({ navigation }) {
   const [propertyOwnersById, setPropertyOwnersById] = useState({})
   const [activeTab, setActiveTab] = useState('owners')
   const [busyKey, setBusyKey] = useState('')
+  const [ownerRejectReasons, setOwnerRejectReasons] = useState({})
+  const [propertyRejectReasons, setPropertyRejectReasons] = useState({})
 
   const loadReviewData = useCallback(async () => {
     setLoading(true)
@@ -174,10 +224,14 @@ export default function AdminPanelScreen({ navigation }) {
           user_type,
           owner_verification_status,
           owner_verification_requested_at,
+          owner_verification_rejection_reason,
           owner_verification_phone,
           owner_verification_id_type,
           owner_verification_id_last4,
-          owner_verification_note
+          owner_verification_note,
+          owner_verification_document_front_path,
+          owner_verification_document_back_path,
+          owner_verification_selfie_path
         `)
         .eq('owner_verification_status', 'pending')
         .order('owner_verification_requested_at', { ascending: true }),
@@ -193,7 +247,8 @@ export default function AdminPanelScreen({ navigation }) {
           verification_status,
           verification_requested_at,
           verification_contact_phone,
-          verification_note
+          verification_note,
+          verification_rejection_reason
         `)
         .eq('verification_status', 'pending')
         .order('verification_requested_at', { ascending: true }),
@@ -214,7 +269,30 @@ export default function AdminPanelScreen({ navigation }) {
       }, {})
     }
 
-    setOwners(ownerRows || [])
+    const ownersWithPreviewUrls = await Promise.all(
+      (ownerRows || []).map(async (item) => {
+        const [frontUrl, backUrl, selfieUrl] = await Promise.all([
+          item.owner_verification_document_front_path
+            ? createSignedMediaUrl(VERIFICATION_MEDIA_BUCKET, item.owner_verification_document_front_path)
+            : Promise.resolve(null),
+          item.owner_verification_document_back_path
+            ? createSignedMediaUrl(VERIFICATION_MEDIA_BUCKET, item.owner_verification_document_back_path)
+            : Promise.resolve(null),
+          item.owner_verification_selfie_path
+            ? createSignedMediaUrl(VERIFICATION_MEDIA_BUCKET, item.owner_verification_selfie_path)
+            : Promise.resolve(null),
+        ])
+
+        return {
+          ...item,
+          owner_verification_document_front_url: frontUrl,
+          owner_verification_document_back_url: backUrl,
+          owner_verification_selfie_url: selfieUrl,
+        }
+      })
+    )
+
+    setOwners(ownersWithPreviewUrls || [])
     setProperties(propertyRows || [])
     setPropertyOwnersById(ownersById)
     setLoading(false)
@@ -236,9 +314,21 @@ export default function AdminPanelScreen({ navigation }) {
     const key = `owner-${item.user_id}-${nextStatus}`
     setBusyKey(key)
 
+    const rejectionReason =
+      nextStatus === 'rejected'
+        ? (ownerRejectReasons[item.user_id] || '').trim()
+        : null
+
+    if (nextStatus === 'rejected' && !rejectionReason) {
+      setBusyKey('')
+      Alert.alert('Rejection note needed', 'Add a short reason before rejecting this verification.')
+      return
+    }
+
     const payload = {
       owner_verification_status: nextStatus,
       owner_verification_reviewed_at: new Date().toISOString(),
+      owner_verification_rejection_reason: rejectionReason,
       is_verified: nextStatus === 'verified',
       updated_at: new Date().toISOString(),
     }
@@ -255,16 +345,51 @@ export default function AdminPanelScreen({ navigation }) {
       return
     }
 
+    if (nextStatus === 'rejected') {
+      const {
+        data: { user: adminUser },
+      } = await supabase.auth.getUser()
+
+      await createNotification({
+        recipientId: item.user_id,
+        actorId: adminUser?.id,
+        type: 'owner_verification_rejected',
+        title: 'Owner verification rejected',
+        body: rejectionReason,
+        eventKey: `owner_verification_rejected:${item.user_id}:${item.owner_verification_requested_at || Date.now()}`,
+        pushData: {
+          screen: 'VerificationCenter',
+        },
+      })
+    }
+
     setOwners((current) => current.filter((row) => row.user_id !== item.user_id))
+    setOwnerRejectReasons((current) => {
+      const next = { ...current }
+      delete next[item.user_id]
+      return next
+    })
   }
 
   async function reviewProperty(item, nextStatus) {
     const key = `property-${item.id}-${nextStatus}`
     setBusyKey(key)
 
+    const rejectionReason =
+      nextStatus === 'rejected'
+        ? (propertyRejectReasons[item.id] || '').trim()
+        : null
+
+    if (nextStatus === 'rejected' && !rejectionReason) {
+      setBusyKey('')
+      Alert.alert('Rejection note needed', 'Add a short reason before rejecting this property verification.')
+      return
+    }
+
     const payload = {
       verification_status: nextStatus,
       verification_reviewed_at: new Date().toISOString(),
+      verification_rejection_reason: rejectionReason,
     }
 
     const { error } = await supabase
@@ -279,7 +404,31 @@ export default function AdminPanelScreen({ navigation }) {
       return
     }
 
+    if (nextStatus === 'rejected') {
+      const {
+        data: { user: adminUser },
+      } = await supabase.auth.getUser()
+
+      await createNotification({
+        recipientId: item.owner_id,
+        actorId: adminUser?.id,
+        type: 'property_verification_rejected',
+        propertyId: item.id,
+        title: 'Property verification rejected',
+        body: rejectionReason,
+        eventKey: `property_verification_rejected:${item.id}:${item.verification_requested_at || Date.now()}`,
+        pushData: {
+          propertyId: String(item.id),
+        },
+      })
+    }
+
     setProperties((current) => current.filter((row) => row.id !== item.id))
+    setPropertyRejectReasons((current) => {
+      const next = { ...current }
+      delete next[item.id]
+      return next
+    })
   }
 
   if (loading) {
@@ -387,6 +536,35 @@ export default function AdminPanelScreen({ navigation }) {
                     }
                   />
                   <InfoLine label="Note" value={item.owner_verification_note} />
+                  <DocumentPreviewStrip
+                    frontUrl={item.owner_verification_document_front_url}
+                    backUrl={item.owner_verification_document_back_url}
+                    selfieUrl={item.owner_verification_selfie_url}
+                  />
+                  <TextInput
+                    value={ownerRejectReasons[item.user_id] || ''}
+                    onChangeText={(value) =>
+                      setOwnerRejectReasons((current) => ({
+                        ...current,
+                        [item.user_id]: value,
+                      }))
+                    }
+                    placeholder="Reject note for the user"
+                    placeholderTextColor="#94a3b8"
+                    multiline
+                    style={{
+                      marginTop: 14,
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      minHeight: 78,
+                      textAlignVertical: 'top',
+                      color: '#0f172a',
+                    }}
+                  />
 
                   <ReviewButtons
                     approving={busyKey === `owner-${item.user_id}-verified`}
@@ -437,6 +615,30 @@ export default function AdminPanelScreen({ navigation }) {
                 <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} />
                 <InfoLine label="Contact" value={item.verification_contact_phone || ownerProfile?.phone} />
                 <InfoLine label="Owner email" value={ownerProfile?.email} />
+                <TextInput
+                  value={propertyRejectReasons[item.id] || ''}
+                  onChangeText={(value) =>
+                    setPropertyRejectReasons((current) => ({
+                      ...current,
+                      [item.id]: value,
+                    }))
+                  }
+                  placeholder="Reject note for this property"
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  style={{
+                    marginTop: 14,
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    minHeight: 78,
+                    textAlignVertical: 'top',
+                    color: '#0f172a',
+                  }}
+                />
 
                 <ReviewButtons
                   approving={busyKey === `property-${item.id}-verified`}

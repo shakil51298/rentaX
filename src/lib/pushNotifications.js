@@ -211,6 +211,21 @@ export function routeFromNotificationData(navigation, payload = {}) {
     return
   }
 
+  if (type === 'owner_verification_rejected') {
+    navigation.navigate('VerificationCenter')
+    return
+  }
+
+  if (type === 'property_verification_rejected') {
+    if (property?.id) {
+      navigation.navigate('Property', { property })
+      return
+    }
+
+    navigation.navigate('VerificationCenter')
+    return
+  }
+
   if (property?.id) {
     navigation.navigate('Property', { property })
     return

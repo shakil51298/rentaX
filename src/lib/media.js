@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 
 export const CHAT_MEDIA_BUCKET = 'chat-media'
 export const PROPERTY_MEDIA_BUCKET = 'property-media'
+export const VERIFICATION_MEDIA_BUCKET = 'verification-documents'
 
 export function normalizeMediaItem(item) {
   if (typeof item === 'string') {
@@ -81,4 +82,49 @@ export async function uploadMediaAsset({
     mediaUrl: publicUrlData.publicUrl,
     mediaMimeType: contentType,
   }
+}
+
+export async function uploadPrivateMediaAsset({
+  uri,
+  type,
+  mimeType,
+  userId,
+  bucket,
+}) {
+  const extension = getFileExtension(uri, mimeType, type)
+  const contentType = mimeType || fallbackMimeType(type, extension)
+  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
+  const path = `${userId}/${safeName}`
+  const response = await fetch(uri)
+  const arrayBuffer = await response.arrayBuffer()
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(path, arrayBuffer, {
+      contentType,
+      upsert: false,
+    })
+
+  if (error) throw error
+
+  return {
+    storagePath: data.path,
+    mediaMimeType: contentType,
+  }
+}
+
+export async function createSignedMediaUrl(bucket, path, expiresIn = 3600) {
+  if (!path) return null
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, expiresIn)
+
+  if (error) throw error
+
+  return data?.signedUrl || null
+}
+
+export function getPrivateMediaPath(asset) {
+  return asset?.storagePath || asset?.path || null
 }
