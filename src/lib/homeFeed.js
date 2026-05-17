@@ -105,12 +105,13 @@ export function rankHomePosts(posts, {
   const groups = new Map()
 
   for (const post of posts || []) {
+    const isOwnPost = Boolean(userId && String(post.owner_id) === String(userId))
     const isSeen = seenIds.has(String(post.id))
     const matchesArea = effectiveArea
       ? isPostRelevantToArea(post.location, effectiveArea)
       : false
     const recencyBucket = getRecencyBucket(post.created_at)
-    const groupKey = `${isSeen ? 1 : 0}-${matchesArea ? 1 : 0}-${recencyBucket}`
+    const groupKey = `${isOwnPost ? 0 : 1}-${isSeen ? 1 : 0}-${matchesArea ? 1 : 0}-${recencyBucket}`
     const currentGroup = groups.get(groupKey) || []
 
     currentGroup.push(post)
@@ -118,8 +119,10 @@ export function rankHomePosts(posts, {
   }
 
   const orderedGroupKeys = [...groups.keys()].sort((leftKey, rightKey) => {
-    const [leftSeen, leftAreaMatch, leftRecency] = leftKey.split('-').map(Number)
-    const [rightSeen, rightAreaMatch, rightRecency] = rightKey.split('-').map(Number)
+    const [leftOwnPost, leftSeen, leftAreaMatch, leftRecency] = leftKey.split('-').map(Number)
+    const [rightOwnPost, rightSeen, rightAreaMatch, rightRecency] = rightKey.split('-').map(Number)
+
+    if (leftOwnPost !== rightOwnPost) return leftOwnPost - rightOwnPost
 
     if (leftSeen !== rightSeen) return leftSeen - rightSeen
     if (leftAreaMatch !== rightAreaMatch) return rightAreaMatch - leftAreaMatch

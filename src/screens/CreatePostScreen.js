@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker'
 import Avatar from '../components/common/Avatar'
 import { supabase } from '../lib/supabase'
 import { normalizeMediaList, PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
+import { ensureUserProfileRecord } from '../lib/profileSync'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { isPrimaryAdmin } from '../lib/admin'
 
@@ -202,13 +203,18 @@ export default function CreatePostScreen({ navigation, route }) {
       return
     }
 
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('user_id, email, display_name, avatar_url, is_verified, user_type')
-      .eq('user_id', user.id)
-      .maybeSingle()
+    try {
+      const syncedProfile = await ensureUserProfileRecord(user)
+      setComposerProfile(syncedProfile || null)
+    } catch (_error) {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('user_id, email, display_name, avatar_url, is_verified, user_type')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
-    setComposerProfile(data || null)
+      setComposerProfile(data || null)
+    }
   }
 
   async function pickMedia() {
@@ -276,6 +282,12 @@ export default function CreatePostScreen({ navigation, route }) {
       setLoading(false)
       Alert.alert('Login required', 'Please log in again before posting.')
       return
+    }
+
+    try {
+      await ensureUserProfileRecord(user)
+    } catch (_error) {
+      // Posting can still continue if profile sync is temporarily unavailable.
     }
 
     let uploadedMedia = []
@@ -367,7 +379,9 @@ export default function CreatePostScreen({ navigation, route }) {
       return
     }
 
-    navigation.goBack()
+    navigation.navigate('Home', {
+      refreshFeedAt: Date.now(),
+    })
   }
 
   const previewItem = media[previewIndex] || null

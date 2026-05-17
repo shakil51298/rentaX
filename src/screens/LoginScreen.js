@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import appConfig from '../../app.json'
 import { supabase } from '../lib/supabase'
+import { ensureUserProfileRecord } from '../lib/profileSync'
 
 const USER_TYPES = [
   {
@@ -89,6 +90,18 @@ export default function LoginScreen({ navigation }) {
       return
     }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user?.id) {
+      try {
+        await ensureUserProfileRecord(user)
+      } catch (_error) {
+        // Let login continue; profile sync will retry from the app screens.
+      }
+    }
+
     navigation.replace('Home')
   }
 
@@ -120,6 +133,11 @@ export default function LoginScreen({ navigation }) {
     }
 
     if (data.session) {
+      try {
+        await ensureUserProfileRecord(data.session.user)
+      } catch (_error) {
+        // Let registration continue; profile sync will retry from the app screens.
+      }
       navigation.replace('Home')
       return
     }

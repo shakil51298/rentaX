@@ -50,6 +50,7 @@ import {
 } from '../lib/homeFeed'
 import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
+import { ensureUserProfileRecord } from '../lib/profileSync'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { getOwnerVerificationStatus } from '../lib/verification'
@@ -742,12 +743,43 @@ export default function HomeScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       loadUser()
+      loadProperties({ silent: true })
 
       if (!manualLocationOverride.current && !route?.params?.selectedLocation) {
         loadCurrentLocation()
       }
     }, [route?.params?.selectedLocation])
   )
+
+  useEffect(() => {
+    if (!route?.params?.refreshFeedAt) return
+
+    loadProperties({ silent: true })
+    navigation.setParams({
+      refreshFeedAt: undefined,
+    })
+  }, [loadProperties, navigation, route?.params?.refreshFeedAt])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`home-properties-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'properties',
+        },
+        () => {
+          loadProperties({ silent: true })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadProperties])
 
   useEffect(() => {
     const selectedLocation = route?.params?.selectedLocation
@@ -989,6 +1021,14 @@ export default function HomeScreen({ navigation, route }) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    if (user?.id) {
+      try {
+        await ensureUserProfileRecord(user)
+      } catch (_error) {
+        // Feed can continue even if profile sync retries later.
+      }
+    }
+
     setCurrentUser(user)
   }
 
@@ -1033,7 +1073,7 @@ export default function HomeScreen({ navigation, route }) {
     setNotificationUnreadCount(await getUnreadNotificationCount(userId))
   }
 
-  async function loadProperties(options = {}) {
+  const loadProperties = useCallback(async (options = {}) => {
     if (!options.silent) {
       setLoading(true)
     }
@@ -1047,7 +1087,7 @@ export default function HomeScreen({ navigation, route }) {
     if (!options.silent) {
       setLoading(false)
     }
-  }
+  }, [])
 
   async function markPostsAsSeen(postIds) {
     if (!currentUser?.id || !postIds?.length) return
