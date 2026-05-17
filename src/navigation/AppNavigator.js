@@ -23,6 +23,7 @@ import VerificationCenterScreen from '../screens/VerificationCenterScreen'
 import AdminPanelScreen from '../screens/AdminPanelScreen'
 import ReviewVerifyScreen from '../screens/ReviewVerifyScreen'
 import AdminUsersScreen from '../screens/AdminUsersScreen'
+import AdminUserDetailScreen from '../screens/AdminUserDetailScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -211,6 +212,11 @@ export default function AppNavigator() {
           name="AdminUsers"
           component={AdminUsersScreen}
           options={{ title: 'Total Users' }}
+        />
+        <Stack.Screen
+          name="AdminUserDetail"
+          component={AdminUserDetailScreen}
+          options={{ title: 'User Detail' }}
         />
         <Stack.Screen
           name="Connections"

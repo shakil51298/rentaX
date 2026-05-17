@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Image, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
@@ -52,7 +52,7 @@ function StatusPill({ label, tint, bg }) {
   )
 }
 
-export default function AdminUsersScreen() {
+export default function AdminUsersScreen({ navigation }) {
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
   const [users, setUsers] = useState([])
@@ -205,8 +205,15 @@ export default function AdminUsersScreen() {
             item.user_type === 'property_owner' ? 'Property owner' : 'Finding property'
 
           return (
-            <View
+            <TouchableOpacity
               key={item.user_id}
+              onPress={() =>
+                navigation.navigate('AdminUserDetail', {
+                  userId: item.user_id,
+                  fallbackUser: item,
+                })
+              }
+              activeOpacity={0.86}
               style={{
                 backgroundColor: '#fff',
                 borderRadius: 16,
@@ -251,8 +258,10 @@ export default function AdminUsersScreen() {
                     </Text>
                   ) : null}
                 </View>
+
+                <Ionicons name="chevron-forward" size={18} color="#94a3b8" style={{ marginLeft: 8, marginTop: 2 }} />
               </View>
-            </View>
+            </TouchableOpacity>
           )
         })}
 
