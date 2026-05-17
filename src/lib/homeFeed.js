@@ -56,33 +56,95 @@ export function isPostRelevantToArea(postLocation, userArea) {
   return userTokens.some((token) => postTokens.includes(token))
 }
 
-export function rankHomePosts(posts, { userArea = '', seenPostIds = [] } = {}) {
+function getStableHash(value) {
+  const text = String(value || '')
+  let hash = 0
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0
+  }
+
+  return hash
+}
+
+function getRecencyBucket(createdAt) {
+  const timestamp = new Date(createdAt || 0).getTime()
+  const ageHours = Math.max(0, (Date.now() - timestamp) / (1000 * 60 * 60))
+
+  if (ageHours <= 6) return 0
+  if (ageHours <= 24) return 1
+  if (ageHours <= 72) return 2
+
+  return 3
+}
+
+function rotateTopCandidates(items, offset) {
+  if (items.length <= 1) return items
+
+  const headSize = Math.min(items.length, 12)
+  const head = items.slice(0, headSize)
+  const tail = items.slice(headSize)
+  const safeOffset = offset % head.length
+
+  return [
+    ...head.slice(safeOffset),
+    ...head.slice(0, safeOffset),
+    ...tail,
+  ]
+}
+
+export function rankHomePosts(posts, {
+  userArea = '',
+  seenPostIds = [],
+  userId = '',
+  refreshTick = 0,
+} = {}) {
   const seenIds = new Set((seenPostIds || []).map((id) => String(id)))
   const effectiveArea = getHomeLocationArea(userArea)
+  const baseSeed = getStableHash(`${userId}:${refreshTick}`)
+  const groups = new Map()
 
-  return [...(posts || [])].sort((leftPost, rightPost) => {
-    const leftSeen = seenIds.has(String(leftPost.id))
-    const rightSeen = seenIds.has(String(rightPost.id))
-
-    if (leftSeen !== rightSeen) {
-      return leftSeen ? 1 : -1
-    }
-
-    const leftMatchesArea = effectiveArea
-      ? isPostRelevantToArea(leftPost.location, effectiveArea)
+  for (const post of posts || []) {
+    const isSeen = seenIds.has(String(post.id))
+    const matchesArea = effectiveArea
+      ? isPostRelevantToArea(post.location, effectiveArea)
       : false
-    const rightMatchesArea = effectiveArea
-      ? isPostRelevantToArea(rightPost.location, effectiveArea)
-      : false
+    const recencyBucket = getRecencyBucket(post.created_at)
+    const groupKey = `${isSeen ? 1 : 0}-${matchesArea ? 1 : 0}-${recencyBucket}`
+    const currentGroup = groups.get(groupKey) || []
 
-    if (leftMatchesArea !== rightMatchesArea) {
-      return leftMatchesArea ? -1 : 1
-    }
+    currentGroup.push(post)
+    groups.set(groupKey, currentGroup)
+  }
 
-    const leftDate = new Date(leftPost.created_at || 0).getTime()
-    const rightDate = new Date(rightPost.created_at || 0).getTime()
+  const orderedGroupKeys = [...groups.keys()].sort((leftKey, rightKey) => {
+    const [leftSeen, leftAreaMatch, leftRecency] = leftKey.split('-').map(Number)
+    const [rightSeen, rightAreaMatch, rightRecency] = rightKey.split('-').map(Number)
 
-    return rightDate - leftDate
+    if (leftSeen !== rightSeen) return leftSeen - rightSeen
+    if (leftAreaMatch !== rightAreaMatch) return rightAreaMatch - leftAreaMatch
+
+    return leftRecency - rightRecency
+  })
+
+  return orderedGroupKeys.flatMap((groupKey) => {
+    const postsInGroup = [...(groups.get(groupKey) || [])].sort((leftPost, rightPost) => {
+      const leftDate = new Date(leftPost.created_at || 0).getTime()
+      const rightDate = new Date(rightPost.created_at || 0).getTime()
+
+      if (leftDate !== rightDate) {
+        return rightDate - leftDate
+      }
+
+      const leftPersonal = getStableHash(`${userId}:${leftPost.id}`)
+      const rightPersonal = getStableHash(`${userId}:${rightPost.id}`)
+
+      return leftPersonal - rightPersonal
+    })
+
+    const rotationOffset = getStableHash(`${baseSeed}:${groupKey}`) % Math.max(postsInGroup.length, 1)
+
+    return rotateTopCandidates(postsInGroup, rotationOffset)
   })
 }
 

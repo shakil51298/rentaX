@@ -505,6 +505,7 @@ export default function HomeScreen({ navigation, route }) {
   const [draftSearchQuery, setDraftSearchQuery] = useState('')
   const [recentSearches, setRecentSearches] = useState([])
   const [seenPostIds, setSeenPostIds] = useState([])
+  const [feedRefreshTick, setFeedRefreshTick] = useState(0)
   const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
   const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
   const [mediaViewer, setMediaViewer] = useState({
@@ -547,8 +548,14 @@ export default function HomeScreen({ navigation, route }) {
     [locationFullLabel]
   )
   const rankedProperties = useMemo(
-    () => rankHomePosts(properties, { userArea: defaultLocationArea, seenPostIds }),
-    [defaultLocationArea, properties, seenPostIds]
+    () =>
+      rankHomePosts(properties, {
+        userArea: defaultLocationArea,
+        seenPostIds,
+        userId: currentUser?.id || currentUser?.email || 'guest',
+        refreshTick: feedRefreshTick,
+      }),
+    [currentUser?.email, currentUser?.id, defaultLocationArea, feedRefreshTick, properties, seenPostIds]
   )
 
   const filteredProperties = useMemo(() => {
@@ -1057,6 +1064,7 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   async function refreshHomeFeed({ scrollToTop = false } = {}) {
+    setFeedRefreshTick((current) => current + 1)
     await loadProperties()
 
     if (scrollToTop) {
@@ -2040,7 +2048,7 @@ export default function HomeScreen({ navigation, route }) {
         contentContainerStyle={{ paddingBottom: 80 }}
         contentInsetAdjustmentBehavior="automatic"
         refreshing={loading && properties.length > 0}
-        onRefresh={loadProperties}
+        onRefresh={() => refreshHomeFeed()}
         removeClippedSubviews
         initialNumToRender={4}
         maxToRenderPerBatch={4}
