@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -388,6 +389,93 @@ function ListingRow({ item, onRequest, busy }) {
   )
 }
 
+function MiniStepBadge({ item, width }) {
+  return (
+    <View
+      style={{
+        width,
+        minHeight: 76,
+        backgroundColor: '#fff',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: item.done ? '#bfdbfe' : '#e2e8f0',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginRight: 10,
+        justifyContent: 'center',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: item.done ? '#dbeafe' : '#f1f5f9',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 8,
+          }}
+        >
+          <Ionicons
+            name={item.done ? 'checkmark' : item.icon}
+            size={12}
+            color={item.done ? '#2563eb' : '#64748b'}
+          />
+        </View>
+        <Text
+          numberOfLines={1}
+          style={{ flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '900' }}
+        >
+          {item.title}
+        </Text>
+      </View>
+
+      <Text
+        numberOfLines={2}
+        style={{
+          color: item.done ? '#2563eb' : '#64748b',
+          fontSize: 11,
+          fontWeight: '700',
+          marginTop: 8,
+          lineHeight: 15,
+        }}
+      >
+        {item.caption}
+      </Text>
+    </View>
+  )
+}
+
+function CollapsibleHeader({ title, subtitle, expanded, onPress }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.84}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>
+          {title}
+        </Text>
+        <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 20 }}>
+          {subtitle}
+        </Text>
+      </View>
+
+      <Ionicons
+        name={expanded ? 'chevron-up' : 'chevron-down'}
+        size={20}
+        color="#334155"
+      />
+    </TouchableOpacity>
+  )
+}
+
 function makeAssetFromSignedUrl(signedUrl, storagePath) {
   if (!signedUrl || !storagePath) return null
 
@@ -473,6 +561,7 @@ async function ensurePrivateUpload(asset, userId) {
 }
 
 export default function VerificationCenterScreen() {
+  const { width: windowWidth } = useWindowDimensions()
   const [loading, setLoading] = useState(true)
   const [savingOwner, setSavingOwner] = useState(false)
   const [busyPropertyId, setBusyPropertyId] = useState(null)
@@ -491,9 +580,13 @@ export default function VerificationCenterScreen() {
   const [scanStepIndex, setScanStepIndex] = useState(0)
   const [captureEnabled, setCaptureEnabled] = useState(false)
   const [capturingSelfie, setCapturingSelfie] = useState(false)
+  const [verifiedPropertiesExpanded, setVerifiedPropertiesExpanded] = useState(false)
+  const [ownerVerificationExpanded, setOwnerVerificationExpanded] = useState(false)
   const [cameraPermission, requestCameraPermission] = useCameraPermissions()
   const cameraRef = useRef(null)
   const scanLine = useRef(new Animated.Value(0)).current
+  const stepsScrollRef = useRef(null)
+  const currentStepIndexRef = useRef(0)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -687,6 +780,9 @@ export default function VerificationCenterScreen() {
   const hasFrontDoc = Boolean(documentFront?.uri)
   const hasBackDoc = Boolean(documentBack?.uri)
   const hasSelfie = Boolean(selfieAsset?.uri)
+  const miniCardWidth = Math.min(Math.max(windowWidth * 0.44, 150), 190)
+  const activePropertyRequests = posts.filter((item) => getPropertyVerificationStatus(item) !== 'verified')
+  const verifiedProperties = posts.filter((item) => getPropertyVerificationStatus(item) === 'verified')
   const attemptCountToday = profile?.owner_verification_attempt_day === new Date().toISOString().slice(0, 10)
     ? Number(profile?.owner_verification_attempt_count || 0)
     : 0
@@ -705,6 +801,77 @@ export default function VerificationCenterScreen() {
     }),
     [scanLine]
   )
+  const checkpointItems = useMemo(
+    () => [
+      {
+        key: 'owner',
+        icon: 'shield-outline',
+        title: 'Owner verification',
+        done: ownerStatus === 'verified',
+        caption: ownerStatusMeta.label,
+      },
+      {
+        key: 'email',
+        icon: 'mail-outline',
+        title: 'Email confirmed',
+        done: emailConfirmed,
+        caption: emailConfirmed ? 'Ready' : 'Confirm first',
+      },
+      {
+        key: 'phone',
+        icon: 'call-outline',
+        title: 'Phone on file',
+        done: hasPhone,
+        caption: hasPhone ? 'Added' : 'Add phone',
+      },
+      {
+        key: 'id',
+        icon: 'card-outline',
+        title: 'ID details',
+        done: hasIdDigits,
+        caption: hasIdDigits ? 'Attached' : 'Add digits',
+      },
+      {
+        key: 'docs',
+        icon: 'document-text-outline',
+        title: 'Front & back photos',
+        done: hasFrontDoc && hasBackDoc,
+        caption: hasFrontDoc && hasBackDoc ? 'Uploaded' : 'Upload both',
+      },
+      {
+        key: 'selfie',
+        icon: 'scan-outline',
+        title: 'Guided selfie',
+        done: hasSelfie,
+        caption: hasSelfie ? 'Captured' : 'Capture now',
+      },
+    ],
+    [
+      emailConfirmed,
+      hasBackDoc,
+      hasFrontDoc,
+      hasIdDigits,
+      hasPhone,
+      hasSelfie,
+      ownerStatus,
+      ownerStatusMeta.label,
+    ]
+  )
+
+  useEffect(() => {
+    if (!checkpointItems.length) return undefined
+
+    const timer = setInterval(() => {
+      const nextIndex = (currentStepIndexRef.current + 1) % checkpointItems.length
+      currentStepIndexRef.current = nextIndex
+      stepsScrollRef.current?.scrollTo({
+        x: nextIndex * (miniCardWidth + 10),
+        animated: true,
+      })
+    }, 2200)
+
+    return () => clearInterval(timer)
+  }, [checkpointItems.length, miniCardWidth])
 
   async function updateDocumentSide(setter, source) {
     const asset = await pickPhotoFromSource(source)
@@ -891,34 +1058,39 @@ export default function VerificationCenterScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: '#e2e8f0',
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '900' }}>
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ color: '#0f172a', fontSize: 24, fontWeight: '900' }}>
             Verification center
           </Text>
-          <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 20 }}>
-            Help renters trust your profile and your listings before they message you.
+          <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 20 }}>
+            Help renters trust your profile and listings before they message you.
           </Text>
-
-          <View style={{ marginTop: 14 }}>
+          <View style={{ marginTop: 10 }}>
             <StatusChip meta={ownerStatusMeta} />
           </View>
         </View>
 
+        <ScrollView
+          ref={stepsScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={miniCardWidth + 10}
+          snapToAlignment="start"
+          disableIntervalMomentum
+          contentContainerStyle={{ paddingRight: 4, marginBottom: 16 }}
+        >
+          {checkpointItems.map((item) => (
+            <MiniStepBadge key={item.key} item={item} width={miniCardWidth} />
+          ))}
+        </ScrollView>
+
         <View
           style={{
             backgroundColor: '#fff',
@@ -929,47 +1101,40 @@ export default function VerificationCenterScreen() {
             marginBottom: 16,
           }}
         >
-          <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>
-            Owner verification
-          </Text>
-          <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 20 }}>
-            Add a reachable phone number, ID details, front and back document photos, and a guided selfie.
+          <CollapsibleHeader
+            title="Owner verification"
+            subtitle="Add a reachable phone number, ID details, front and back document photos, and a guided selfie."
+            expanded={ownerVerificationExpanded}
+            onPress={() => setOwnerVerificationExpanded((current) => !current)}
+          />
+
+          {ownerStatus === 'rejected' && rejectionReason ? (
+            <View
+              style={{
+                backgroundColor: '#fef2f2',
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#fecaca',
+                padding: 12,
+                marginTop: 12,
+                marginBottom: 4,
+              }}
+            >
+              <Text style={{ color: '#b91c1c', fontWeight: '900', marginBottom: 4 }}>
+                Rejected notice
+              </Text>
+              <Text style={{ color: '#7f1d1d', lineHeight: 19 }}>
+                {rejectionReason}
+              </Text>
+            </View>
+          ) : null}
+
+          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
+            Daily retry limit: {attemptCountToday}/3 used today. {attemptsRemaining} attempt{attemptsRemaining === 1 ? '' : 's'} left.
           </Text>
 
-          <View style={{ marginTop: 10 }}>
-            <RequirementRow
-              icon="mail-outline"
-              title="Email confirmed"
-              done={emailConfirmed}
-              subtitle={emailConfirmed ? 'Good to go.' : 'Confirm your login email first.'}
-            />
-            <RequirementRow
-              icon="call-outline"
-              title="Phone on file"
-              done={hasPhone}
-              subtitle={hasPhone ? 'We can reach you on this number.' : 'Add a contact number for renters and review.'}
-            />
-            <RequirementRow
-              icon="card-outline"
-              title="ID details"
-              done={hasIdDigits}
-              subtitle={hasIdDigits ? 'Your ID type and last 4 digits are attached.' : 'Add an ID type and last 4 digits.'}
-            />
-            <RequirementRow
-              icon="document-text-outline"
-              title="Front and back document photos"
-              done={hasFrontDoc && hasBackDoc}
-              subtitle={hasFrontDoc && hasBackDoc ? 'Both sides are ready.' : 'Upload both sides clearly and fully.'}
-            />
-            <RequirementRow
-              icon="scan-outline"
-              title="Guided selfie"
-              done={hasSelfie}
-              subtitle={hasSelfie ? 'Selfie captured with guide prompts.' : 'Smile and nod slightly during guided capture.'}
-            />
-          </View>
-
-          <View style={{ marginTop: 6 }}>
+          {ownerVerificationExpanded ? (
+          <View style={{ marginTop: 12 }}>
             <Field
               label="Verification phone"
               value={phone}
@@ -1062,30 +1227,6 @@ export default function VerificationCenterScreen() {
               </Text>
             </View>
 
-            {ownerStatus === 'rejected' && rejectionReason ? (
-              <View
-                style={{
-                  backgroundColor: '#fef2f2',
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: '#fecaca',
-                  padding: 12,
-                  marginBottom: 14,
-                }}
-              >
-                <Text style={{ color: '#b91c1c', fontWeight: '900', marginBottom: 4 }}>
-                  Rejected notice
-                </Text>
-                <Text style={{ color: '#7f1d1d', lineHeight: 19 }}>
-                  {rejectionReason}
-                </Text>
-              </View>
-            ) : null}
-
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 14 }}>
-              Daily retry limit: {attemptCountToday}/3 used today. {attemptsRemaining} attempt{attemptsRemaining === 1 ? '' : 's'} left.
-            </Text>
-
             <TouchableOpacity
               onPress={submitOwnerVerification}
               disabled={savingOwner}
@@ -1105,6 +1246,7 @@ export default function VerificationCenterScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+          ) : null}
         </View>
 
         <View
@@ -1123,7 +1265,7 @@ export default function VerificationCenterScreen() {
             Ask for a trust badge on the properties you want to highlight most.
           </Text>
 
-          {!posts.length ? (
+          {!activePropertyRequests.length ? (
             <View
               style={{
                 backgroundColor: '#f8fafc',
@@ -1134,11 +1276,13 @@ export default function VerificationCenterScreen() {
               }}
             >
               <Text style={{ color: '#475569', lineHeight: 20 }}>
-                Publish a property first, then you can request listing verification here.
+                {posts.length
+                  ? 'No active property verification requests right now.'
+                  : 'Publish a property first, then you can request listing verification here.'}
               </Text>
             </View>
           ) : (
-            posts.map((item) => (
+            activePropertyRequests.map((item) => (
               <ListingRow
                 key={item.id}
                 item={item}
@@ -1148,6 +1292,78 @@ export default function VerificationCenterScreen() {
             ))
           )}
         </View>
+
+        {verifiedProperties.length ? (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              padding: 16,
+              marginTop: 16,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setVerifiedPropertiesExpanded((current) => !current)}
+              activeOpacity={0.85}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>
+                  Verified properties
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 4 }}>
+                  {verifiedProperties.length} verified {verifiedProperties.length === 1 ? 'listing' : 'listings'}
+                </Text>
+              </View>
+
+              <Ionicons
+                name={verifiedPropertiesExpanded ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color="#334155"
+              />
+            </TouchableOpacity>
+
+            {verifiedPropertiesExpanded ? (
+              <View style={{ marginTop: 14 }}>
+                {verifiedProperties.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      padding: 14,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                          {item.title || 'Untitled property'}
+                        </Text>
+                        <Text style={{ color: '#64748b', marginTop: 4 }}>
+                          {item.location || 'Location not added'}
+                        </Text>
+                      </View>
+                      <StatusChip
+                        meta={getVerificationMeta('verified', {
+                          verifiedLabel: 'Verified property',
+                        })}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
 
       <Modal
