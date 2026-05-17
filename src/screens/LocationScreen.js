@@ -27,6 +27,7 @@ const DEFAULT_REGION = {
 
 export default function LocationScreen({ navigation, route }) {
   const mapRef = useRef(null)
+  const hasManualSelectionRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [searchText, setSearchText] = useState(route?.params?.initialLabel || '')
@@ -35,6 +36,7 @@ export default function LocationScreen({ navigation, route }) {
   const [selectedLabel, setSelectedLabel] = useState('Loading location...')
   const [selectedDetails, setSelectedDetails] = useState('')
   const [mapReady, setMapReady] = useState(false)
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false)
 
   useEffect(() => {
     loadInitialLocation()
@@ -73,11 +75,15 @@ export default function LocationScreen({ navigation, route }) {
         return
       }
 
-      const permission = await Location.requestForegroundPermissionsAsync()
+      setSelectedCoords(DEFAULT_REGION)
+      setSelectedLabel(route?.params?.initialLabel || 'Select an area on the map')
+      setSelectedDetails('')
+      setLoading(false)
+
+      const permission = await Location.getForegroundPermissionsAsync()
+      setLocationPermissionGranted(Boolean(permission.granted))
 
       if (!permission.granted) {
-        setSelectedLabel('Location permission off')
-        setLoading(false)
         return
       }
 
@@ -91,11 +97,17 @@ export default function LocationScreen({ navigation, route }) {
       }
 
       setCurrentCoords(coords)
-      setSelectedCoords(coords)
-      await updateSelectedLabel(coords, 'Current location')
+
+      if (!hasManualSelectionRef.current && !route?.params?.initialLocation) {
+        setSelectedCoords(coords)
+        await updateSelectedLabel(coords, 'Current location')
+      }
     } catch (_error) {
-      setSelectedLabel('Location unavailable')
-      setSelectedDetails('')
+      if (!hasManualSelectionRef.current && !route?.params?.initialLocation) {
+        setSelectedLabel(route?.params?.initialLabel || 'Select an area on the map')
+        setSelectedDetails('')
+        setSelectedCoords(DEFAULT_REGION)
+      }
     } finally {
       setLoading(false)
     }
@@ -132,6 +144,7 @@ export default function LocationScreen({ navigation, route }) {
         longitude: selection.longitude,
       }
 
+      hasManualSelectionRef.current = true
       setSelectedCoords(coords)
       setSelectedLabel(selection.areaLabel || query)
       setSelectedDetails(selection.fullLabel || selection.areaLabel || query)
@@ -144,18 +157,44 @@ export default function LocationScreen({ navigation, route }) {
 
   async function handleMapPick(event) {
     const coords = event.nativeEvent.coordinate
+    hasManualSelectionRef.current = true
     setSelectedCoords(coords)
     await updateSelectedLabel(coords, 'Pinned location')
   }
 
   async function handleUseCurrentLocation() {
-    if (!currentCoords) {
-      await loadInitialLocation()
-      return
-    }
+    try {
+      if (!locationPermissionGranted) {
+        const permission = await Location.requestForegroundPermissionsAsync()
+        setLocationPermissionGranted(Boolean(permission.granted))
 
-    setSelectedCoords(currentCoords)
-    await updateSelectedLabel(currentCoords, 'Current location')
+        if (!permission.granted) {
+          Alert.alert('Location permission needed', 'Please allow location access to use your current position.')
+          return
+        }
+      }
+
+      let coords = currentCoords
+
+      if (!coords) {
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        })
+
+        coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }
+
+        setCurrentCoords(coords)
+      }
+
+      hasManualSelectionRef.current = true
+      setSelectedCoords(coords)
+      await updateSelectedLabel(coords, 'Current location')
+    } catch (_error) {
+      Alert.alert('Location unavailable', 'We could not get your current location right now.')
+    }
   }
 
   function handleConfirmLocation() {
