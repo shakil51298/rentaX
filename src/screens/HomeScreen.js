@@ -775,6 +775,17 @@ export default function HomeScreen({ navigation, route }) {
           loadProperties({ silent: true })
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'property_views',
+        },
+        () => {
+          loadProperties({ silent: true })
+        }
+      )
       .subscribe()
 
     return () => {

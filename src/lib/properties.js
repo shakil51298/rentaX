@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchPropertyViewCounts } from './propertyViews'
 
 export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = false } = {}) {
   let query = supabase
@@ -23,22 +24,29 @@ export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = fal
 
   const posts = (data || []).filter((post) => includeBanned || !post.admin_is_banned)
   const ownerIds = [...new Set(posts.map((post) => post.owner_id).filter(Boolean))]
+  const propertyIds = posts.map((post) => post.id)
   let profilesByUserId = {}
+  let viewCountsByPropertyId = {}
 
-  if (ownerIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('user_profiles')
-      .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
-      .in('user_id', ownerIds)
+  const [profilesResponse, viewCountsResponse] = await Promise.all([
+    ownerIds.length > 0
+      ? supabase
+          .from('user_profiles')
+          .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
+          .in('user_id', ownerIds)
+      : Promise.resolve({ data: [] }),
+    fetchPropertyViewCounts(propertyIds),
+  ])
 
-    profilesByUserId = (profiles || []).reduce((profilesById, profile) => ({
-      ...profilesById,
-      [profile.user_id]: profile,
-    }), {})
-  }
+  profilesByUserId = (profilesResponse?.data || []).reduce((profilesById, profile) => ({
+    ...profilesById,
+    [profile.user_id]: profile,
+  }), {})
+  viewCountsByPropertyId = viewCountsResponse || {}
 
   return posts.map((post) => ({
     ...post,
+    view_count: viewCountsByPropertyId[String(post.id)] || post.view_count || 0,
     owner_profile: profilesByUserId[post.owner_id] || null,
   }))
 }

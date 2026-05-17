@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
+import { fetchPropertyViewCount, recordPropertyView } from '../lib/propertyViews'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 
 function timeAgo(date) {
@@ -316,6 +317,34 @@ export default function PropertyScreen({ route, navigation }) {
     loadPost()
   }, [initialProperty?.id])
 
+  useEffect(() => {
+    if (!initialProperty?.id) return undefined
+
+    const channel = supabase
+      .channel(`property-views-${initialProperty.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'property_views',
+          filter: `property_id=eq.${String(initialProperty.id)}`,
+        },
+        async () => {
+          const latestViewCount = await fetchPropertyViewCount(initialProperty.id)
+          setPost((currentPost) => ({
+            ...currentPost,
+            view_count: latestViewCount,
+          }))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [initialProperty?.id])
+
   async function loadPost() {
     setLoading(true)
 
@@ -355,8 +384,25 @@ export default function PropertyScreen({ route, navigation }) {
       ownerProfile = profile || null
     }
 
+    let viewCount = nextPost.view_count || 0
+
+    if (nextPost.id) {
+      const viewResult = await recordPropertyView({
+        propertyId: nextPost.id,
+        userId: user?.id,
+        ownerId: nextPost.owner_id,
+      })
+
+      if (viewResult.viewCount) {
+        viewCount = viewResult.viewCount
+      } else {
+        viewCount = await fetchPropertyViewCount(nextPost.id)
+      }
+    }
+
     setPost({
       ...nextPost,
+      view_count: viewCount,
       owner_profile: ownerProfile,
     })
     setLoading(false)

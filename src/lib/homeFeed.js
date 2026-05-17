@@ -81,7 +81,7 @@ function getRecencyBucket(createdAt) {
 function rotateTopCandidates(items, offset) {
   if (items.length <= 1) return items
 
-  const headSize = Math.min(items.length, 12)
+  const headSize = Math.min(items.length, 24)
   const head = items.slice(0, headSize)
   const tail = items.slice(headSize)
   const safeOffset = offset % head.length
@@ -105,13 +105,13 @@ export function rankHomePosts(posts, {
   const groups = new Map()
 
   for (const post of posts || []) {
-    const isOwnPost = Boolean(userId && String(post.owner_id) === String(userId))
     const isSeen = seenIds.has(String(post.id))
     const matchesArea = effectiveArea
       ? isPostRelevantToArea(post.location, effectiveArea)
       : false
     const recencyBucket = getRecencyBucket(post.created_at)
-    const groupKey = `${isOwnPost ? 0 : 1}-${isSeen ? 1 : 0}-${matchesArea ? 1 : 0}-${recencyBucket}`
+    const isOwnPost = Boolean(userId && String(post.owner_id) === String(userId))
+    const groupKey = `${isSeen ? 1 : 0}-${matchesArea ? 0 : 1}-${recencyBucket}-${isOwnPost ? 0 : 1}`
     const currentGroup = groups.get(groupKey) || []
 
     currentGroup.push(post)
@@ -119,15 +119,15 @@ export function rankHomePosts(posts, {
   }
 
   const orderedGroupKeys = [...groups.keys()].sort((leftKey, rightKey) => {
-    const [leftOwnPost, leftSeen, leftAreaMatch, leftRecency] = leftKey.split('-').map(Number)
-    const [rightOwnPost, rightSeen, rightAreaMatch, rightRecency] = rightKey.split('-').map(Number)
-
-    if (leftOwnPost !== rightOwnPost) return leftOwnPost - rightOwnPost
+    const [leftSeen, leftAreaMatch, leftRecency, leftOwnPost] = leftKey.split('-').map(Number)
+    const [rightSeen, rightAreaMatch, rightRecency, rightOwnPost] = rightKey.split('-').map(Number)
 
     if (leftSeen !== rightSeen) return leftSeen - rightSeen
-    if (leftAreaMatch !== rightAreaMatch) return rightAreaMatch - leftAreaMatch
+    if (leftAreaMatch !== rightAreaMatch) return leftAreaMatch - rightAreaMatch
 
-    return leftRecency - rightRecency
+    if (leftRecency !== rightRecency) return leftRecency - rightRecency
+
+    return leftOwnPost - rightOwnPost
   })
 
   return orderedGroupKeys.flatMap((groupKey) => {
@@ -145,7 +145,8 @@ export function rankHomePosts(posts, {
       return leftPersonal - rightPersonal
     })
 
-    const rotationOffset = getStableHash(`${baseSeed}:${groupKey}`) % Math.max(postsInGroup.length, 1)
+    const rotationBase = getStableHash(`${baseSeed}:${groupKey}`)
+    const rotationOffset = (rotationBase + refreshTick) % Math.max(postsInGroup.length, 1)
 
     return rotateTopCandidates(postsInGroup, rotationOffset)
   })

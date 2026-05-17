@@ -164,7 +164,11 @@ export default function AppNavigator() {
         }}
       >
       <Stack.Navigator initialRouteName={session ? 'Home' : 'Login'}>
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="Home"
           component={HomeScreen}

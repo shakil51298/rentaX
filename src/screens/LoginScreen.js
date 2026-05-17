@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -31,6 +34,7 @@ const USER_TYPES = [
 ]
 
 export default function LoginScreen({ navigation }) {
+  const scrollRef = useRef(null)
   const [mode, setMode] = useState('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -38,8 +42,37 @@ export default function LoginScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [userType, setUserType] = useState('renter')
   const [loading, setLoading] = useState(false)
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const [passwordFieldY, setPasswordFieldY] = useState(0)
+  const [confirmPasswordFieldY, setConfirmPasswordFieldY] = useState(0)
 
   const isRegisterMode = mode === 'register'
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setKeyboardVisible(true)
+    })
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false)
+    })
+
+    return () => {
+      showSubscription.remove()
+      hideSubscription.remove()
+    }
+  }, [])
+
+  function scrollToField(fieldY) {
+    if (!scrollRef.current) return
+
+    scrollRef.current.scrollTo({
+      y: Math.max(0, fieldY - 120),
+      animated: true,
+    })
+  }
 
   function resetFormForMode(nextMode) {
     setMode(nextMode)
@@ -161,16 +194,26 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f4f7fb' }}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          flexGrow: 1,
-          paddingHorizontal: 22,
-          paddingVertical: 26,
-          justifyContent: 'center',
-        }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 20}
       >
-        <View style={{ alignItems: 'center', marginBottom: 28 }}>
+        <ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: 22,
+            paddingTop: 12,
+            paddingBottom: 26,
+            justifyContent: keyboardVisible ? 'flex-start' : 'center',
+            paddingBottom: keyboardVisible ? 120 : 26,
+          }}
+        >
+        <View style={{ flex: 1, justifyContent: keyboardVisible ? 'flex-start' : 'center' }}>
+        <View style={{ alignItems: 'center', marginBottom: 18 }}>
           <View
             style={{
               width: 80,
@@ -189,20 +232,6 @@ export default function LoginScreen({ navigation }) {
               resizeMode="contain"
             />
           </View>
-
-          <Text style={{ marginTop: 16, fontSize: 32, fontWeight: '800', color: '#111827' }}>
-            Rental X
-          </Text>
-          <Text
-            style={{
-              marginTop: 6,
-              fontSize: 15,
-              color: '#64748b',
-              fontWeight: '600',
-            }}
-          >
-            Find • Rent • Live
-          </Text>
         </View>
 
         <View
@@ -302,7 +331,12 @@ export default function LoginScreen({ navigation }) {
             />
           </View>
 
-          <View style={{ marginBottom: 12 }}>
+          <View
+            style={{ marginBottom: 12 }}
+            onLayout={(event) => {
+              setPasswordFieldY(event.nativeEvent.layout.y)
+            }}
+          >
             <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 7 }}>
               Password
             </Text>
@@ -311,6 +345,7 @@ export default function LoginScreen({ navigation }) {
               placeholder="Enter your password"
               value={password}
               onChangeText={setPassword}
+              onFocus={() => scrollToField(passwordFieldY)}
               secureTextEntry
               textContentType={isRegisterMode ? 'newPassword' : 'password'}
               style={{
@@ -327,7 +362,12 @@ export default function LoginScreen({ navigation }) {
 
           {isRegisterMode ? (
             <>
-              <View style={{ marginBottom: 16 }}>
+              <View
+                style={{ marginBottom: 16 }}
+                onLayout={(event) => {
+                  setConfirmPasswordFieldY(event.nativeEvent.layout.y)
+                }}
+              >
                 <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 7 }}>
                   Confirm password
                 </Text>
@@ -336,6 +376,7 @@ export default function LoginScreen({ navigation }) {
                   placeholder="Re-enter your password"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
+                  onFocus={() => scrollToField(confirmPasswordFieldY)}
                   secureTextEntry
                   textContentType="newPassword"
                   style={{
@@ -450,7 +491,9 @@ export default function LoginScreen({ navigation }) {
         <Text style={{ color: '#94a3b8', textAlign: 'center', marginTop: 18, fontSize: 12 }}>
           Rental X version {appConfig.expo.version}
         </Text>
+        </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
