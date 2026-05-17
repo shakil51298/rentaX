@@ -28,6 +28,7 @@ const DEFAULT_REGION = {
 export default function LocationScreen({ navigation, route }) {
   const mapRef = useRef(null)
   const hasManualSelectionRef = useRef(false)
+  const isMountedRef = useRef(true)
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [searchText, setSearchText] = useState(route?.params?.initialLabel || '')
@@ -40,6 +41,9 @@ export default function LocationScreen({ navigation, route }) {
 
   useEffect(() => {
     loadInitialLocation()
+    return () => {
+      isMountedRef.current = false
+    }
   }, [])
 
   useEffect(() => {
@@ -81,15 +85,24 @@ export default function LocationScreen({ navigation, route }) {
       setLoading(false)
 
       const permission = await Location.getForegroundPermissionsAsync()
+      if (!isMountedRef.current) return
       setLocationPermissionGranted(Boolean(permission.granted))
 
       if (!permission.granted) {
         return
       }
 
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      })
+      const lastKnownPosition = await Location.getLastKnownPositionAsync()
+
+      const position =
+        lastKnownPosition ||
+        await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        })
+
+      if (!position || !isMountedRef.current) {
+        return
+      }
 
       const coords = {
         latitude: position.coords.latitude,
@@ -116,9 +129,11 @@ export default function LocationScreen({ navigation, route }) {
   async function updateSelectedLabel(coords, fallbackLabel) {
     try {
       const selection = await getLocationSelectionFromCoords(coords, fallbackLabel)
+      if (!isMountedRef.current) return
       setSelectedLabel(selection.areaLabel || fallbackLabel || 'Pinned location')
       setSelectedDetails(selection.fullLabel || selection.areaLabel || '')
     } catch (_error) {
+      if (!isMountedRef.current) return
       setSelectedLabel(fallbackLabel || 'Pinned location')
       setSelectedDetails('')
     }
@@ -177,9 +192,17 @@ export default function LocationScreen({ navigation, route }) {
       let coords = currentCoords
 
       if (!coords) {
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        })
+        const lastKnownPosition = await Location.getLastKnownPositionAsync()
+        const position =
+          lastKnownPosition ||
+          await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          })
+
+        if (!position || !isMountedRef.current) {
+          Alert.alert('Location unavailable', 'We could not get your current location right now.')
+          return
+        }
 
         coords = {
           latitude: position.coords.latitude,
