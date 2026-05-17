@@ -2,8 +2,6 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  Pressable,
   ScrollView,
   Share,
   Text,
@@ -16,44 +14,10 @@ import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
 import { createNotification } from '../lib/notifications'
+import ActionSheetModal from '../components/common/ActionSheetModal'
 import PostCard from '../components/home/PostCard'
 import MediaViewer from '../components/common/MediaViewer'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
-
-function ActionRow({ icon, title, subtitle, danger, onPress }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
-    >
-      <View
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 19,
-          backgroundColor: danger ? '#fef2f2' : '#eff6ff',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginRight: 12,
-        }}
-      >
-        <Ionicons name={icon} size={18} color={danger ? '#dc2626' : '#2563eb'} />
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: danger ? '#dc2626' : '#0f172a', fontWeight: '800', fontSize: 15 }}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12, lineHeight: 18 }}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </View>
-    </TouchableOpacity>
-  )
-}
 
 export default function AdminUserPostsScreen({ navigation, route }) {
   const targetUserId = route?.params?.userId || null
@@ -304,94 +268,53 @@ export default function AdminUserPostsScreen({ navigation, route }) {
         onClose={closeMediaViewer}
       />
 
-      <Modal
+      <ActionSheetModal
         visible={Boolean(actionPost)}
-        transparent
-        animationType="fade"
-        onRequestClose={closeActionSheet}
-      >
-        <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.35)',
-            justifyContent: 'flex-end',
-          }}
-          onPress={closeActionSheet}
-        >
-          <Pressable
-            onPress={(event) => event.stopPropagation()}
-            style={{
-              backgroundColor: '#fff',
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              paddingHorizontal: 18,
-              paddingTop: 14,
-              paddingBottom: 26,
-            }}
-          >
-            <View
-              style={{
-                alignSelf: 'center',
-                width: 42,
-                height: 5,
-                borderRadius: 999,
-                backgroundColor: '#dbe4ee',
-                marginBottom: 14,
-              }}
-            />
-
-            <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>
-              Post actions
-            </Text>
-            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 20 }}>
-              Moderate this listing as admin.
-            </Text>
-
-            <View style={{ marginTop: 10 }}>
-              <ActionRow
-                icon="create-outline"
-                title="Edit post"
-                subtitle="Open this post in the editor."
-                onPress={() => {
-                  const post = actionPost
-                  closeActionSheet()
-                  navigation.navigate('CreatePost', {
-                    post,
-                    adminEditMode: true,
-                  })
-                }}
-              />
-              <ActionRow
-                icon={actionPost?.admin_is_banned ? 'eye-outline' : 'ban-outline'}
-                title={actionPost?.admin_is_banned ? 'Unban post' : 'Ban post'}
-                subtitle={
-                  actionPost?.admin_is_banned
-                    ? 'Let this post appear in feeds again.'
-                    : 'Hide this post from live feeds.'
-                }
-                onPress={() => toggleBanPost(actionPost)}
-              />
-              <ActionRow
-                icon="open-outline"
-                title="Open details"
-                subtitle="View the full property page."
-                onPress={() => {
-                  const post = actionPost
-                  closeActionSheet()
-                  navigation.navigate('Property', { property: post })
-                }}
-              />
-              <ActionRow
-                icon="trash-outline"
-                title="Delete post"
-                subtitle="Permanently remove this listing."
-                danger
-                onPress={() => deletePost(actionPost)}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={closeActionSheet}
+        title="Post actions"
+        subtitle="Moderate this listing as admin."
+        actions={[
+          {
+            icon: 'create-outline',
+            title: 'Edit post',
+            subtitle: 'Open this post in the editor.',
+            onPress: () => {
+              const post = actionPost
+              closeActionSheet()
+              navigation.navigate('CreatePost', {
+                post,
+                adminEditMode: true,
+              })
+            },
+          },
+          {
+            icon: actionPost?.admin_is_banned ? 'eye-outline' : 'ban-outline',
+            title: actionPost?.admin_is_banned ? 'Unban post' : 'Ban post',
+            subtitle:
+              actionPost?.admin_is_banned
+                ? 'Let this post appear in feeds again.'
+                : 'Hide this post from live feeds.',
+            onPress: () => toggleBanPost(actionPost),
+          },
+          {
+            icon: 'open-outline',
+            title: 'Open details',
+            subtitle: 'View the full property page.',
+            onPress: () => {
+              const post = actionPost
+              closeActionSheet()
+              navigation.navigate('Property', { property: post })
+            },
+          },
+          {
+            icon: 'trash-outline',
+            title: 'Delete post',
+            subtitle: 'Permanently remove this listing.',
+            danger: true,
+            onPress: () => deletePost(actionPost),
+          },
+        ]}
+      />
     </SafeAreaView>
   )
 }

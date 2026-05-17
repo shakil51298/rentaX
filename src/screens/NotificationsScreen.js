@@ -34,6 +34,9 @@ function getActorName(notification) {
 }
 
 function getNotificationIcon(type) {
+  if (type === 'user_report_submitted' || type === 'property_report_submitted') {
+    return 'flag'
+  }
   if (type === 'owner_verification_review_requested' || type === 'property_verification_review_requested') {
     return 'shield-checkmark'
   }
@@ -54,6 +57,9 @@ function getNotificationIcon(type) {
 }
 
 function getNotificationColor(type) {
+  if (type === 'user_report_submitted' || type === 'property_report_submitted') {
+    return '#dc2626'
+  }
   if (type === 'owner_verification_review_requested' || type === 'property_verification_review_requested') {
     return '#7c3aed'
   }
@@ -261,6 +267,14 @@ export default function NotificationsScreen({ navigation }) {
 
   async function openNotification(notification) {
     await markNotificationRead(notification)
+
+    if (
+      notification.type === 'user_report_submitted'
+      || notification.type === 'property_report_submitted'
+    ) {
+      navigation.navigate('AdminReports')
+      return
+    }
 
     if (
       notification.type === 'owner_verification_review_requested'

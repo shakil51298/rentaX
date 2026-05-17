@@ -18,6 +18,7 @@ import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { isPrimaryAdmin } from '../lib/admin'
+import { fetchAdminReportCounts } from '../lib/reporting'
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -164,7 +165,7 @@ export default function ProfileScreen({ navigation }) {
       return
     }
 
-    const [{ count: ownerCount }, { count: propertyCount }] = await Promise.all([
+    const [{ count: ownerCount }, { count: propertyCount }, reportCounts] = await Promise.all([
       supabase
         .from('user_profiles')
         .select('user_id', { count: 'exact', head: true })
@@ -173,9 +174,15 @@ export default function ProfileScreen({ navigation }) {
         .from('properties')
         .select('id', { count: 'exact', head: true })
         .eq('verification_status', 'pending'),
+      fetchAdminReportCounts(),
     ])
 
-    setAdminPanelCount((ownerCount || 0) + (propertyCount || 0))
+    setAdminPanelCount(
+      (ownerCount || 0)
+      + (propertyCount || 0)
+      + (reportCounts.userReportCount || 0)
+      + (reportCounts.propertyReportCount || 0)
+    )
   }, [])
 
   useFocusEffect(
@@ -218,9 +225,29 @@ export default function ProfileScreen({ navigation }) {
       )
       .subscribe()
 
+    const userReportChannel = supabase
+      .channel(`profile-admin-user-reports-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_reports' },
+        refreshAdminCount
+      )
+      .subscribe()
+
+    const propertyReportChannel = supabase
+      .channel(`profile-admin-property-reports-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'property_reports' },
+        refreshAdminCount
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(ownerChannel)
       supabase.removeChannel(propertyChannel)
+      supabase.removeChannel(userReportChannel)
+      supabase.removeChannel(propertyReportChannel)
     }
   }, [loadAdminPanelCount, showAdminPanel])
 

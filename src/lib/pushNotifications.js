@@ -221,6 +221,11 @@ export function routeFromNotificationData(navigation, payload = {}) {
     return
   }
 
+  if (type === 'user_report_submitted' || type === 'property_report_submitted') {
+    navigation.navigate('AdminReports')
+    return
+  }
+
   if (type === 'owner_verification_approved') {
     navigation.navigate('VerificationCenter')
     return

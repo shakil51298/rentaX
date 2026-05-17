@@ -19,6 +19,8 @@ import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
 import { fetchPropertyViewCount, recordPropertyView } from '../lib/propertyViews'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
+import { blockUser } from '../lib/social'
+import ActionSheetModal from '../components/common/ActionSheetModal'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -312,6 +314,7 @@ export default function PropertyScreen({ route, navigation }) {
     media: [],
     index: 0,
   })
+  const [actionSheetVisible, setActionSheetVisible] = useState(false)
 
   useEffect(() => {
     loadPost()
@@ -516,6 +519,27 @@ export default function PropertyScreen({ route, navigation }) {
     })
   }
 
+  async function blockOwner() {
+    if (!currentUser?.id || !post?.owner_id) return
+
+    const { error } = await blockUser(currentUser.id, post.owner_id)
+
+    if (error) {
+      Alert.alert('Block failed', error.message)
+      return
+    }
+
+    Alert.alert(
+      'Blocked',
+      'This user was blocked and their posts will be hidden from your feed.',
+      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    )
+  }
+
+  function openMoreActions() {
+    setActionSheetVisible(true)
+  }
+
   function openMediaViewer(media, index) {
     setMediaViewer({
       visible: true,
@@ -618,7 +642,9 @@ export default function PropertyScreen({ route, navigation }) {
               </View>
             </TouchableOpacity>
 
-            <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+            <TouchableOpacity onPress={openMoreActions} hitSlop={10}>
+              <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+            </TouchableOpacity>
           </View>
 
           <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>
@@ -774,6 +800,69 @@ export default function PropertyScreen({ route, navigation }) {
         media={mediaViewer.media}
         initialIndex={mediaViewer.index}
         onClose={closeMediaViewer}
+      />
+
+      <ActionSheetModal
+        visible={actionSheetVisible}
+        onClose={() => setActionSheetVisible(false)}
+        title="Post actions"
+        subtitle="Choose what you want to do here."
+        actions={[
+          {
+            icon: 'share-social-outline',
+            title: 'Share post',
+            subtitle: 'Send this listing to someone else.',
+            onPress: () => {
+              setActionSheetVisible(false)
+              sharePost()
+            },
+          },
+          ...(String(post.owner_id) === String(currentUser?.id)
+            ? []
+            : [
+                {
+                  icon: 'flag-outline',
+                  title: 'Report post',
+                  subtitle: 'Report scam, spam, or fake listing details.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    navigation.navigate('ReportIssue', {
+                      kind: 'property',
+                      property: post,
+                      owner: {
+                        id: post.owner_id,
+                        name: ownerDisplayName,
+                      },
+                    })
+                  },
+                },
+                {
+                  icon: 'person-outline',
+                  title: 'Report user',
+                  subtitle: 'Report this owner account to admin review.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    navigation.navigate('ReportIssue', {
+                      kind: 'user',
+                      owner: {
+                        id: post.owner_id,
+                        name: ownerDisplayName,
+                      },
+                    })
+                  },
+                },
+                {
+                  icon: 'ban-outline',
+                  title: 'Block user',
+                  subtitle: 'Hide this user and remove their posts from your feed.',
+                  danger: true,
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    blockOwner()
+                  },
+                },
+              ])
+        ]}
       />
     </SafeAreaView>
   )

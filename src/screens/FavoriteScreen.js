@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
+import { fetchHiddenContentState } from '../lib/reporting'
 
 export default function FavoriteScreen({ navigation }) {
   const [favorites, setFavorites] = useState([])
@@ -25,6 +26,7 @@ export default function FavoriteScreen({ navigation }) {
     const {
       data: { user },
     } = await supabase.auth.getUser()
+    const hiddenState = await fetchHiddenContentState(user?.id)
 
     const { data, error } = await supabase
       .from('property_favorites')
@@ -36,7 +38,29 @@ export default function FavoriteScreen({ navigation }) {
       .order('created_at', { ascending: false })
 
     if (!error) {
-      setFavorites((data || []).filter((item) => !item.properties?.admin_is_banned))
+      setFavorites(
+        (data || []).filter((item) => {
+          const property = item.properties
+
+          if (!property || property.admin_is_banned) {
+            return false
+          }
+
+          if (hiddenState.blockedUserIds.has(property.owner_id)) {
+            return false
+          }
+
+          if (hiddenState.reportedUserIds.has(property.owner_id)) {
+            return false
+          }
+
+          if (hiddenState.reportedPropertyIds.has(String(property.id))) {
+            return false
+          }
+
+          return true
+        })
+      )
     }
 
     setLoading(false)

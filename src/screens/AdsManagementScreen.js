@@ -2,8 +2,6 @@ import { useCallback, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  Pressable,
   ScrollView,
   Share,
   Text,
@@ -14,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import ActionSheetModal from '../components/common/ActionSheetModal'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
@@ -383,51 +382,6 @@ export default function AdsManagementScreen({ navigation }) {
     Alert.alert('Request sent', 'This property is now marked for verification review.')
   }
 
-  function ActionRow({ icon, title, subtitle, danger, disabled, onPress }) {
-    return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onPress}
-        disabled={disabled}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingVertical: 12,
-          opacity: disabled ? 0.55 : 1,
-        }}
-      >
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: danger ? '#fef2f2' : '#eff6ff',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 12,
-          }}
-        >
-          <Ionicons
-            name={icon}
-            size={18}
-            color={danger ? '#dc2626' : '#2563eb'}
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: danger ? '#dc2626' : '#0f172a', fontWeight: '800', fontSize: 15 }}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text style={{ color: '#64748b', marginTop: 3, lineHeight: 18 }}>
-              {subtitle}
-            </Text>
-          ) : null}
-        </View>
-      </TouchableOpacity>
-    )
-  }
-
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
@@ -551,159 +505,89 @@ export default function AdsManagementScreen({ navigation }) {
         onClose={closeMediaViewer}
       />
 
-      <Modal
+      <ActionSheetModal
         visible={Boolean(actionPost)}
-        transparent
-        animationType="fade"
-        onRequestClose={closeActionSheet}
-        statusBarTranslucent
-      >
-        <Pressable
-          onPress={closeActionSheet}
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.4)',
-            justifyContent: 'flex-end',
-            padding: 16,
-          }}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: 22,
-              paddingHorizontal: 16,
-              paddingTop: 12,
-              paddingBottom: 10,
-            }}
-          >
-            <View
-              style={{
-                alignSelf: 'center',
-                width: 42,
-                height: 5,
-                borderRadius: 999,
-                backgroundColor: '#cbd5e1',
-                marginBottom: 12,
-              }}
-            />
-
-            <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>
-              Manage ad
-            </Text>
-            <Text style={{ color: '#64748b', marginTop: 4 }}>
-              {actionPost?.title || 'Property post'}
-            </Text>
-
-            <View style={{ marginTop: 12 }}>
-              <ActionRow
-                icon="create-outline"
-                title="Edit ad"
-                subtitle="Update photos, price, title, or description."
-                onPress={() => {
-                  const post = actionPost
-                  closeActionSheet()
-                  navigation.navigate('CreatePost', { post })
-                }}
-              />
-
-              <ActionRow
-                icon={actionPost?.status === 'rented' ? 'checkmark-done-outline' : 'home-outline'}
-                title={actionPost?.status === 'rented' ? 'Mark as open for rent' : 'Mark as rented out'}
-                subtitle={
-                  actionPost?.status === 'rented'
-                    ? 'Show renters this property is available again.'
-                    : 'Show renters this ad is no longer available.'
-                }
-                onPress={() =>
-                  updatePostStatus(actionPost, actionPost?.status === 'rented' ? 'open' : 'rented')
-                }
-              />
-
-              <ActionRow
-                icon={
-                  getPropertyVerificationStatus(actionPost) === 'verified'
-                    ? 'checkmark-circle-outline'
-                    : 'shield-checkmark-outline'
-                }
-                title={
-                  getPropertyVerificationStatus(actionPost) === 'verified'
-                    ? 'Verified property'
-                    : getPropertyVerificationStatus(actionPost) === 'pending'
-                      ? 'Verification pending'
-                      : 'Request verification'
-                }
-                subtitle={
-                  getPropertyVerificationStatus(actionPost) === 'verified'
-                    ? 'This property already has a trust badge.'
-                    : 'Send this listing for review before renters contact you.'
-                }
-                disabled={getPropertyVerificationStatus(actionPost) === 'verified'}
-                onPress={() => requestPostVerification(actionPost)}
-              />
-
-              <ActionRow
-                icon="chatbubble-ellipses-outline"
-                title="Open comments"
-                subtitle="Go straight to the comments for this post."
-                onPress={() => {
-                  const post = actionPost
-                  closeActionSheet()
-                  openComments(post)
-                }}
-              />
-
-              <ActionRow
-                icon="eye-outline"
-                title="View details"
-                subtitle="Open the full ad page."
-                onPress={() => {
-                  const post = actionPost
-                  closeActionSheet()
-                  navigation.navigate('Property', { property: post })
-                }}
-              />
-
-              <ActionRow
-                icon="share-social-outline"
-                title="Share ad"
-                subtitle="Send this ad to someone else."
-                onPress={() => {
-                  const post = actionPost
-                  closeActionSheet()
-                  sharePost(post)
-                }}
-              />
-
-              <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 4 }} />
-
-              <ActionRow
-                icon="trash-outline"
-                title="Delete ad"
-                subtitle="Remove this post permanently."
-                danger
-                onPress={() => deletePost(actionPost)}
-              />
-            </View>
-
-            <TouchableOpacity
-              onPress={closeActionSheet}
-              activeOpacity={0.86}
-              style={{
-                marginTop: 8,
-                borderRadius: 14,
-                backgroundColor: '#f8fafc',
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                paddingVertical: 13,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#334155', fontWeight: '800' }}>Close</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={closeActionSheet}
+        title="Manage ad"
+        subtitle={actionPost?.title || 'Property post'}
+        actions={[
+          {
+            icon: 'create-outline',
+            title: 'Edit ad',
+            subtitle: 'Update photos, price, title, or description.',
+            onPress: () => {
+              const post = actionPost
+              closeActionSheet()
+              navigation.navigate('CreatePost', { post })
+            },
+          },
+          {
+            icon: actionPost?.status === 'rented' ? 'checkmark-done-outline' : 'home-outline',
+            title: actionPost?.status === 'rented' ? 'Mark as open for rent' : 'Mark as rented out',
+            subtitle:
+              actionPost?.status === 'rented'
+                ? 'Show renters this property is available again.'
+                : 'Show renters this ad is no longer available.',
+            onPress: () =>
+              updatePostStatus(actionPost, actionPost?.status === 'rented' ? 'open' : 'rented'),
+          },
+          {
+            icon:
+              getPropertyVerificationStatus(actionPost) === 'verified'
+                ? 'checkmark-circle-outline'
+                : 'shield-checkmark-outline',
+            title:
+              getPropertyVerificationStatus(actionPost) === 'verified'
+                ? 'Verified property'
+                : getPropertyVerificationStatus(actionPost) === 'pending'
+                  ? 'Verification pending'
+                  : 'Request verification',
+            subtitle:
+              getPropertyVerificationStatus(actionPost) === 'verified'
+                ? 'This property already has a trust badge.'
+                : 'Send this listing for review before renters contact you.',
+            disabled: getPropertyVerificationStatus(actionPost) === 'verified',
+            onPress: () => requestPostVerification(actionPost),
+          },
+          {
+            icon: 'chatbubble-ellipses-outline',
+            title: 'Open comments',
+            subtitle: 'Go straight to the comments for this post.',
+            onPress: () => {
+              const post = actionPost
+              closeActionSheet()
+              openComments(post)
+            },
+          },
+          {
+            icon: 'eye-outline',
+            title: 'View details',
+            subtitle: 'Open the full ad page.',
+            onPress: () => {
+              const post = actionPost
+              closeActionSheet()
+              navigation.navigate('Property', { property: post })
+            },
+          },
+          {
+            icon: 'share-social-outline',
+            title: 'Share ad',
+            subtitle: 'Send this ad to someone else.',
+            onPress: () => {
+              const post = actionPost
+              closeActionSheet()
+              sharePost(post)
+            },
+          },
+          {
+            icon: 'trash-outline',
+            title: 'Delete ad',
+            subtitle: 'Remove this post permanently.',
+            danger: true,
+            onPress: () => deletePost(actionPost),
+          },
+        ]}
+      />
     </SafeAreaView>
   )
 }

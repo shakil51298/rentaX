@@ -26,6 +26,8 @@ import AdminUsersScreen from '../screens/AdminUsersScreen'
 import AdminUserDetailScreen from '../screens/AdminUserDetailScreen'
 import AdminUserPostsScreen from '../screens/AdminUserPostsScreen'
 import CustomerCareScreen from '../screens/CustomerCareScreen'
+import AdminReportsScreen from '../screens/AdminReportsScreen'
+import ReportIssueScreen from '../screens/ReportIssueScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -224,6 +226,11 @@ export default function AppNavigator() {
           options={{ title: 'Total Users' }}
         />
         <Stack.Screen
+          name="AdminReports"
+          component={AdminReportsScreen}
+          options={{ title: 'Report Queue' }}
+        />
+        <Stack.Screen
           name="AdminUserDetail"
           component={AdminUserDetailScreen}
           options={{ title: 'User Detail' }}
@@ -237,6 +244,11 @@ export default function AppNavigator() {
           name="CustomerCare"
           component={CustomerCareScreen}
           options={{ title: 'Customer Care' }}
+        />
+        <Stack.Screen
+          name="ReportIssue"
+          component={ReportIssueScreen}
+          options={{ title: 'Report' }}
         />
         <Stack.Screen
           name="Connections"

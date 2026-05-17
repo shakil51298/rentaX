@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
+import { fetchAdminReportCounts } from '../lib/reporting'
 
 function HubCard({ icon, title, subtitle, badgeCount = 0, onPress, tint = '#2563eb' }) {
   return (
@@ -114,6 +115,8 @@ export default function AdminPanelScreen({ navigation }) {
   const [counts, setCounts] = useState({
     pendingOwnerReviews: 0,
     pendingPropertyReviews: 0,
+    pendingUserReports: 0,
+    pendingPropertyReports: 0,
     totalUsers: 0,
   })
 
@@ -131,13 +134,20 @@ export default function AdminPanelScreen({ navigation }) {
       setCounts({
         pendingOwnerReviews: 0,
         pendingPropertyReviews: 0,
+        pendingUserReports: 0,
+        pendingPropertyReports: 0,
         totalUsers: 0,
       })
       setLoading(false)
       return
     }
 
-    const [{ count: ownerCount }, { count: propertyCount }, { count: totalUserCount }] = await Promise.all([
+    const [
+      { count: ownerCount },
+      { count: propertyCount },
+      { count: totalUserCount },
+      reportCounts,
+    ] = await Promise.all([
       supabase
         .from('user_profiles')
         .select('user_id', { count: 'exact', head: true })
@@ -149,11 +159,14 @@ export default function AdminPanelScreen({ navigation }) {
       supabase
         .from('user_profiles')
         .select('user_id', { count: 'exact', head: true }),
+      fetchAdminReportCounts(),
     ])
 
     setCounts({
       pendingOwnerReviews: ownerCount || 0,
       pendingPropertyReviews: propertyCount || 0,
+      pendingUserReports: reportCounts.userReportCount || 0,
+      pendingPropertyReports: reportCounts.propertyReportCount || 0,
       totalUsers: totalUserCount || 0,
     })
     setLoading(false)
@@ -190,9 +203,29 @@ export default function AdminPanelScreen({ navigation }) {
       )
       .subscribe()
 
+    const userReportChannel = supabase
+      .channel(`admin-hub-user-reports-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_reports' },
+        refresh
+      )
+      .subscribe()
+
+    const propertyReportChannel = supabase
+      .channel(`admin-hub-property-reports-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'property_reports' },
+        refresh
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(profileChannel)
       supabase.removeChannel(propertyChannel)
+      supabase.removeChannel(userReportChannel)
+      supabase.removeChannel(propertyReportChannel)
     }
   }, [authorized, loadAdminHub])
 
@@ -242,6 +275,7 @@ export default function AdminPanelScreen({ navigation }) {
   }
 
   const totalReviewCount = counts.pendingOwnerReviews + counts.pendingPropertyReviews
+  const totalReportCount = counts.pendingUserReports + counts.pendingPropertyReports
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
@@ -258,12 +292,31 @@ export default function AdminPanelScreen({ navigation }) {
             icon="shield-checkmark"
           />
           <SummaryTile
+            label="Pending reports"
+            value={totalReportCount}
+            tint="#dc2626"
+            icon="flag"
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
+          <SummaryTile
             label="Registered users"
             value={counts.totalUsers}
             tint="#16a34a"
             icon="people"
           />
+          <View style={{ flex: 1 }} />
         </View>
+
+        <HubCard
+          icon="flag-outline"
+          title="Report Queue"
+          subtitle="Review scam, spam, abuse, and fake listing reports from users."
+          badgeCount={totalReportCount}
+          tint="#dc2626"
+          onPress={() => navigation.navigate('AdminReports')}
+        />
 
         <HubCard
           icon="shield-checkmark-outline"

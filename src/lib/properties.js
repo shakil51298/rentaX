@@ -1,7 +1,8 @@
 import { supabase } from './supabase'
 import { fetchPropertyViewCounts } from './propertyViews'
+import { fetchHiddenContentState } from './reporting'
 
-export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = false } = {}) {
+export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = false, currentUserId } = {}) {
   let query = supabase
     .from('properties')
     .select(`
@@ -22,7 +23,30 @@ export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = fal
     throw error
   }
 
-  const posts = (data || []).filter((post) => includeBanned || !post.admin_is_banned)
+  const hiddenState = currentUserId ? await fetchHiddenContentState(currentUserId) : null
+  const posts = (data || []).filter((post) => {
+    if (!includeBanned && post.admin_is_banned) {
+      return false
+    }
+
+    if (!hiddenState) {
+      return true
+    }
+
+    if (hiddenState.blockedUserIds.has(post.owner_id)) {
+      return false
+    }
+
+    if (hiddenState.reportedUserIds.has(post.owner_id)) {
+      return false
+    }
+
+    if (hiddenState.reportedPropertyIds.has(String(post.id))) {
+      return false
+    }
+
+    return true
+  })
   const ownerIds = [...new Set(posts.map((post) => post.owner_id).filter(Boolean))]
   const propertyIds = posts.map((post) => post.id)
   let profilesByUserId = {}

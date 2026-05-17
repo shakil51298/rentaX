@@ -397,21 +397,41 @@ export default function OwnerProfileScreen({ route, navigation }) {
                     style={{
                       flex: 1,
                       backgroundColor: '#111827',
-                      paddingVertical: 12,
-                      borderRadius: 10,
-                      alignItems: 'center',
                       flexDirection: 'row',
+                      alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: '#111827',
                       paddingVertical: 13,
                       borderRadius: 14,
                     }}
                   >
                     <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
                     <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 6 }}>
-                      Message
+                      Message owner
                     </Text>
                   </TouchableOpacity>
+
+                  {!isOwnProfile ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        navigation.navigate('ReportIssue', {
+                          kind: 'user',
+                          owner: {
+                            id: ownerId,
+                            name: ownerName,
+                          },
+                        })
+                      }
+                      style={{
+                        width: 50,
+                        backgroundColor: '#fff7ed',
+                        borderRadius: 10,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="flag-outline" size={18} color="#ea580c" />
+                    </TouchableOpacity>
+                  ) : null}
 
                   {!isOwnProfile ? (
                     <TouchableOpacity

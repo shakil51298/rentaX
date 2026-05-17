@@ -27,6 +27,7 @@ import {
 } from '../lib/notifications'
 import { playNotificationSound } from '../lib/sounds'
 import MediaViewer from '../components/common/MediaViewer'
+import ActionSheetModal from '../components/common/ActionSheetModal'
 import PostCard from '../components/home/PostCard'
 import CommentItem from '../components/home/CommentItem'
 import Avatar from '../components/common/Avatar'
@@ -62,6 +63,7 @@ import { ensureUserProfileRecord } from '../lib/profileSync'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { getOwnerVerificationStatus } from '../lib/verification'
+import { blockUser } from '../lib/social'
 
 function formatCurrency(value) {
   return `৳ ${Number(value || 0).toLocaleString()}`
@@ -524,6 +526,7 @@ export default function HomeScreen({ navigation, route }) {
     media: [],
     index: 0,
   })
+  const [actionSheetPost, setActionSheetPost] = useState(null)
   const reopenCommentsOnFocus = useRef(false)
   const handledCommentRouteRequest = useRef(null)
   const commentReturnRoute = useRef(null)
@@ -1125,7 +1128,7 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     try {
-      setProperties(await fetchPropertiesWithProfiles())
+      setProperties(await fetchPropertiesWithProfiles({ currentUserId: currentUser?.id }))
     } catch (error) {
       Alert.alert('Error', error.message)
     }
@@ -1133,7 +1136,7 @@ export default function HomeScreen({ navigation, route }) {
     if (!options.silent) {
       setLoading(false)
     }
-  }, [])
+  }, [currentUser?.id])
 
   async function markPostsAsSeen(postIds) {
     if (!currentUser?.id || !postIds?.length) return
@@ -1810,6 +1813,25 @@ export default function HomeScreen({ navigation, route }) {
     })
   }
 
+  async function blockPostOwner(post) {
+    if (!currentUser?.id || !post?.owner_id) return
+
+    const { error } = await blockUser(currentUser.id, post.owner_id)
+
+    if (error) {
+      Alert.alert('Block failed', error.message)
+      return
+    }
+
+    setProperties((oldPosts) => oldPosts.filter((item) => item.owner_id !== post.owner_id))
+    Alert.alert('Blocked', 'This user was blocked and their posts are now hidden from your feed.')
+  }
+
+  function openPostMoreActions(post) {
+    if (!post) return
+    setActionSheetPost(post)
+  }
+
   const openMediaViewer = useCallback((media, index) => {
     setMediaViewer({
       visible: true,
@@ -1887,13 +1909,14 @@ export default function HomeScreen({ navigation, route }) {
       onShare={sharePost}
       onOpenMedia={openMediaViewer}
       onOpenOwnerProfile={openOwnerProfile}
+      onPressMore={openPostMoreActions}
       onOpenPost={(post) => {
         markPostsAsSeen([post.id])
         recordFeedSignal(buildPostSignalWeights(post, 3))
         navigation.navigate('Property', { property: post })
       }}
     />
-  ), [currentUser, navigation, openMediaViewer, openOwnerProfile])
+  ), [currentUser, navigation, openMediaViewer, openOwnerProfile, openPostMoreActions])
   const handleViewableItemsChanged = useRef(({ viewableItems }) => {
     const userId = currentUserIdRef.current
 
@@ -2764,6 +2787,97 @@ export default function HomeScreen({ navigation, route }) {
         media={mediaViewer.media}
         initialIndex={mediaViewer.index}
         onClose={closeMediaViewer}
+      />
+
+      <ActionSheetModal
+        visible={Boolean(actionSheetPost)}
+        onClose={() => setActionSheetPost(null)}
+        title={actionSheetPost?.title || 'Post actions'}
+        subtitle={
+          String(actionSheetPost?.owner_id) === String(currentUser?.id)
+            ? 'Choose what you want to do with this post.'
+            : 'You can report or block unsafe content here.'
+        }
+        actions={[
+          {
+            icon: 'eye-outline',
+            title: 'View details',
+            subtitle: 'Open the full property page.',
+            onPress: () => {
+              const post = actionSheetPost
+              setActionSheetPost(null)
+              navigation.navigate('Property', { property: post })
+            },
+          },
+          {
+            icon: 'share-social-outline',
+            title: 'Share post',
+            subtitle: 'Send this listing to someone else.',
+            onPress: () => {
+              const post = actionSheetPost
+              setActionSheetPost(null)
+              sharePost(post)
+            },
+          },
+          ...(
+            String(actionSheetPost?.owner_id) === String(currentUser?.id)
+              ? []
+              : [
+                  {
+                    icon: 'flag-outline',
+                    title: 'Report post',
+                    subtitle: 'Report scam, spam, or fake listing details.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      navigation.navigate('ReportIssue', {
+                        kind: 'property',
+                        property: post,
+                        owner: {
+                          id: post.owner_id,
+                          name:
+                            post.owner_profile?.display_name
+                            || post.owner_name
+                            || post.owner_email
+                            || 'Property owner',
+                        },
+                      })
+                    },
+                  },
+                  {
+                    icon: 'person-outline',
+                    title: 'Report user',
+                    subtitle: 'Report this owner account to admin review.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      navigation.navigate('ReportIssue', {
+                        kind: 'user',
+                        owner: {
+                          id: post.owner_id,
+                          name:
+                            post.owner_profile?.display_name
+                            || post.owner_name
+                            || post.owner_email
+                            || 'Property owner',
+                        },
+                      })
+                    },
+                  },
+                  {
+                    icon: 'ban-outline',
+                    title: 'Block user',
+                    subtitle: 'Hide this user and remove their posts from your feed.',
+                    danger: true,
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      blockPostOwner(post)
+                    },
+                  },
+                ]
+          )
+        ]}
       />
 
       <BottomNavBar
