@@ -21,11 +21,16 @@ function ConnectionActions({
   item,
   kind,
   isOwnProfile,
+  readOnly,
   currentUserId,
   navigation,
   onReload,
   onOptimisticUpdate,
 }) {
+  if (readOnly) {
+    return null
+  }
+
   const targetUserId = item.related_user_id
   const followButtonLabel =
     kind === 'following'
@@ -187,6 +192,8 @@ export default function ConnectionsScreen({ navigation, route }) {
   const kind = route.params?.kind || 'followers'
   const title = route.params?.title || (kind === 'following' ? 'Following' : 'Followers')
   const isOwnProfile = Boolean(route.params?.isOwnProfile)
+  const readOnly = Boolean(route.params?.readOnly)
+  const showBlockListButton = route.params?.showBlockListButton ?? isOwnProfile
   const [currentUserId, setCurrentUserId] = useState(null)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -346,6 +353,7 @@ export default function ConnectionsScreen({ navigation, route }) {
           item={item}
           kind={kind}
           isOwnProfile={isOwnProfile}
+          readOnly={readOnly}
           currentUserId={currentUserId}
           navigation={navigation}
           onReload={loadConnections}
@@ -392,9 +400,16 @@ export default function ConnectionsScreen({ navigation, route }) {
             </Text>
           </View>
 
-          {isOwnProfile ? (
+          {showBlockListButton ? (
             <TouchableOpacity
-              onPress={() => navigation.navigate('BlockList')}
+              onPress={() =>
+                navigation.navigate('BlockList', {
+                  userId,
+                  isOwnProfile,
+                  readOnly,
+                  title: 'Block list',
+                })
+              }
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

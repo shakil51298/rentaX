@@ -36,6 +36,25 @@ begin
     select 1 from pg_policies
     where schemaname = 'public'
       and tablename = 'user_blocks'
+      and policyname = 'Primary admin can read all block lists'
+  ) then
+    create policy "Primary admin can read all block lists"
+      on public.user_blocks
+      for select
+      using (
+        exists (
+          select 1
+          from public.user_profiles admin_profile
+          where admin_profile.user_id = auth.uid()
+            and lower(coalesce(admin_profile.email, '')) = 'shakilkhan51298@gmail.com'
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'user_blocks'
       and policyname = 'Users can block others'
   ) then
     create policy "Users can block others"

@@ -122,7 +122,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
     }
 
     setProfile(profileData || null)
-    setPosts(postData || [])
+    setPosts((postData || []).filter((item) => !item.admin_is_banned))
     const counts = await fetchUserSocialCounts(ownerId)
 
     setFollowers(followersCount || counts.followers || 0)

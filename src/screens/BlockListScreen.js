@@ -14,7 +14,21 @@ import { fetchBlockedUsers, unblockUser } from '../lib/social'
 import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
 
-export default function BlockListScreen({ navigation }) {
+function formatDate(value) {
+  if (!value) return 'Unknown time'
+
+  try {
+    return new Date(value).toLocaleString()
+  } catch (_error) {
+    return 'Unknown time'
+  }
+}
+
+export default function BlockListScreen({ navigation, route }) {
+  const blockerUserId = route?.params?.userId || null
+  const isOwnProfile = Boolean(route?.params?.isOwnProfile)
+  const readOnly = Boolean(route?.params?.readOnly)
+  const title = route?.params?.title || 'Block list'
   const [currentUserId, setCurrentUserId] = useState(null)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -29,21 +43,21 @@ export default function BlockListScreen({ navigation }) {
     setCurrentUserId(user?.id || null)
 
     try {
-      const rows = await fetchBlockedUsers(user?.id || null)
+      const rows = await fetchBlockedUsers(blockerUserId || user?.id || null)
       setItems(rows)
     } catch (error) {
       Alert.alert('Load failed', error.message)
     }
 
     setLoading(false)
-  }, [])
+  }, [blockerUserId])
 
   useEffect(() => {
     loadBlockedUsers()
   }, [loadBlockedUsers])
 
   async function handleUnblock(targetUserId) {
-    if (!currentUserId || !targetUserId) return
+    if (!currentUserId || !targetUserId || readOnly || !isOwnProfile) return
 
     const { error } = await unblockUser(currentUserId, targetUserId)
 
@@ -61,7 +75,17 @@ export default function BlockListScreen({ navigation }) {
     const name = getProfileName(item.profile, 'Rental X member')
 
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={() =>
+          navigation.navigate('OwnerProfile', {
+            owner: {
+              id: item.blocked_id,
+              email: item.profile?.email,
+              name,
+            },
+          })
+        }
         style={{
           backgroundColor: '#fff',
           borderRadius: 18,
@@ -87,25 +111,30 @@ export default function BlockListScreen({ navigation }) {
             <Text style={{ marginTop: 3, color: '#64748b', fontSize: 12 }}>
               {item.profile?.location || item.profile?.email || 'Rental X member'}
             </Text>
+            <Text style={{ marginTop: 4, color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>
+              Blocked on {formatDate(item.created_at)}
+            </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={() => handleUnblock(item.blocked_id)}
-            style={{
-              height: 34,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              backgroundColor: '#ecfdf5',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: '#059669', fontSize: 12, fontWeight: '900' }}>
-              Unblock
-            </Text>
-          </TouchableOpacity>
+          {isOwnProfile && !readOnly ? (
+            <TouchableOpacity
+              onPress={() => handleUnblock(item.blocked_id)}
+              style={{
+                height: 34,
+                paddingHorizontal: 12,
+                borderRadius: 12,
+                backgroundColor: '#ecfdf5',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#059669', fontSize: 12, fontWeight: '900' }}>
+                Unblock
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      </View>
+      </TouchableOpacity>
     )
   }
 
@@ -139,10 +168,12 @@ export default function BlockListScreen({ navigation }) {
 
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 19, fontWeight: '900', color: '#0f172a' }}>
-              Block list
+              {title}
             </Text>
             <Text style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
-              Manage the people you have blocked.
+              {isOwnProfile && !readOnly
+                ? 'Manage the people you have blocked.'
+                : 'Lifetime block history for this account.'}
             </Text>
           </View>
         </View>

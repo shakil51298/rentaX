@@ -123,8 +123,8 @@ function TableRow({ label, value, multiline }) {
   )
 }
 
-function CountTile({ icon, label, value, tint }) {
-  return (
+function CountTile({ icon, label, value, tint, onPress }) {
+  const content = (
     <View
       style={{
         flex: 1,
@@ -143,6 +143,16 @@ function CountTile({ icon, label, value, tint }) {
         {label}
       </Text>
     </View>
+  )
+
+  if (!onPress) {
+    return content
+  }
+
+  return (
+    <TouchableOpacity activeOpacity={0.86} onPress={onPress} style={{ flex: 1 }}>
+      {content}
+    </TouchableOpacity>
   )
 }
 
@@ -368,10 +378,64 @@ export default function AdminUserDetailScreen({ navigation, route }) {
         </SectionCard>
 
         <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-          <CountTile icon="newspaper-outline" label="Posts" value={socialCounts.posts} tint="#2563eb" />
-          <CountTile icon="people-outline" label="Followers" value={socialCounts.followers} tint="#16a34a" />
-          <CountTile icon="person-add-outline" label="Following" value={socialCounts.following} tint="#ea580c" />
-          <CountTile icon="ban-outline" label="Blocked" value={socialCounts.blocked} tint="#dc2626" />
+          <CountTile
+            icon="newspaper-outline"
+            label="Posts"
+            value={socialCounts.posts}
+            tint="#2563eb"
+            onPress={() =>
+              navigation.navigate('AdminUserPosts', {
+                userId: targetUserId,
+                ownerName: userDetail?.display_name || userDetail?.email || 'User posts',
+              })
+            }
+          />
+          <CountTile
+            icon="people-outline"
+            label="Followers"
+            value={socialCounts.followers}
+            tint="#16a34a"
+            onPress={() =>
+              navigation.navigate('Connections', {
+                userId: targetUserId,
+                kind: 'followers',
+                title: 'Followers',
+                isOwnProfile: false,
+                readOnly: true,
+                showBlockListButton: false,
+              })
+            }
+          />
+          <CountTile
+            icon="person-add-outline"
+            label="Following"
+            value={socialCounts.following}
+            tint="#ea580c"
+            onPress={() =>
+              navigation.navigate('Connections', {
+                userId: targetUserId,
+                kind: 'following',
+                title: 'Following',
+                isOwnProfile: false,
+                readOnly: true,
+                showBlockListButton: false,
+              })
+            }
+          />
+          <CountTile
+            icon="ban-outline"
+            label="Blocked"
+            value={socialCounts.blocked}
+            tint="#dc2626"
+            onPress={() =>
+              navigation.navigate('BlockList', {
+                userId: targetUserId,
+                title: 'Blocked users',
+                isOwnProfile: false,
+                readOnly: true,
+              })
+            }
+          />
         </View>
 
         <SectionCard title="Account details" subtitle="Core account information in one place.">

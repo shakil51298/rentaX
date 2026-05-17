@@ -246,6 +246,24 @@ export function routeFromNotificationData(navigation, payload = {}) {
     return
   }
 
+  if (type === 'property_banned_by_admin') {
+    navigation.navigate('CustomerCare', {
+      property: property
+        ? {
+            ...property,
+            location: payload.propertyLocation || '',
+            price: payload.propertyPrice || '',
+            admin_ban_reason: payload.banReason || '',
+          }
+        : null,
+      notification: {
+        title: payload.propertyTitle || 'Ad hidden by admin',
+        body: payload.banReason || 'Your ad was hidden from live feeds.',
+      },
+    })
+    return
+  }
+
   if (property?.id) {
     navigation.navigate('Property', { property })
     return

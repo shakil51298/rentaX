@@ -66,7 +66,7 @@ export default function AdsManagementScreen({ navigation }) {
     }
 
     try {
-      setPosts(await fetchPropertiesWithProfiles({ ownerId: user.id }))
+      setPosts(await fetchPropertiesWithProfiles({ ownerId: user.id, includeBanned: true }))
     } catch (error) {
       Alert.alert('Error', error.message)
     }

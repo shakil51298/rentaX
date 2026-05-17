@@ -36,7 +36,7 @@ export default function FavoriteScreen({ navigation }) {
       .order('created_at', { ascending: false })
 
     if (!error) {
-      setFavorites(data || [])
+      setFavorites((data || []).filter((item) => !item.properties?.admin_is_banned))
     }
 
     setLoading(false)

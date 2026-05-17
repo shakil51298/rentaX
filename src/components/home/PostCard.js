@@ -69,6 +69,7 @@ export default function PostCard({
   const isVerifiedProperty = getPropertyVerificationStatus(item) === 'verified'
   const locationLabel = getShortLocationLabel(item.location)
   const rentLabel = item.price ? `৳ ${item.price}` : ''
+  const isAdminBanned = Boolean(item.admin_is_banned)
   const contentText = useMemo(
     () =>
       `${item.title || ''}\n${item.description || 'No description added'}`,
@@ -147,6 +148,30 @@ export default function PostCard({
                   />
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#2563eb' }}>
                     Verified
+                  </Text>
+                </View>
+              ) : null}
+
+              {isAdminBanned ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#fef2f2',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                  }}
+                >
+                  <Ionicons
+                    name="ban-outline"
+                    size={11}
+                    color="#dc2626"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#dc2626' }}>
+                    Hidden by admin
                   </Text>
                 </View>
               ) : null}

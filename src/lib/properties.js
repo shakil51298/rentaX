@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-export async function fetchPropertiesWithProfiles({ ownerId } = {}) {
+export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = false } = {}) {
   let query = supabase
     .from('properties')
     .select(`
@@ -21,7 +21,7 @@ export async function fetchPropertiesWithProfiles({ ownerId } = {}) {
     throw error
   }
 
-  const posts = data || []
+  const posts = (data || []).filter((post) => includeBanned || !post.admin_is_banned)
   const ownerIds = [...new Set(posts.map((post) => post.owner_id).filter(Boolean))]
   let profilesByUserId = {}
 

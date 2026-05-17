@@ -119,13 +119,13 @@ export async function fetchConnections({ userId, kind = 'followers', currentUser
   })
 }
 
-export async function fetchBlockedUsers(currentUserId) {
-  if (!currentUserId) return []
+export async function fetchBlockedUsers(blockerUserId) {
+  if (!blockerUserId) return []
 
   const { data: rows, error } = await supabase
     .from('user_blocks')
     .select('id, blocker_id, blocked_id, created_at')
-    .eq('blocker_id', currentUserId)
+    .eq('blocker_id', blockerUserId)
     .order('created_at', { ascending: false })
 
   if (error) throw error

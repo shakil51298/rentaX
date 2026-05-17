@@ -24,6 +24,8 @@ import AdminPanelScreen from '../screens/AdminPanelScreen'
 import ReviewVerifyScreen from '../screens/ReviewVerifyScreen'
 import AdminUsersScreen from '../screens/AdminUsersScreen'
 import AdminUserDetailScreen from '../screens/AdminUserDetailScreen'
+import AdminUserPostsScreen from '../screens/AdminUserPostsScreen'
+import CustomerCareScreen from '../screens/CustomerCareScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -217,6 +219,16 @@ export default function AppNavigator() {
           name="AdminUserDetail"
           component={AdminUserDetailScreen}
           options={{ title: 'User Detail' }}
+        />
+        <Stack.Screen
+          name="AdminUserPosts"
+          component={AdminUserPostsScreen}
+          options={{ title: 'User Posts' }}
+        />
+        <Stack.Screen
+          name="CustomerCare"
+          component={CustomerCareScreen}
+          options={{ title: 'Customer Care' }}
         />
         <Stack.Screen
           name="Connections"

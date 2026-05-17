@@ -16,6 +16,7 @@ import Avatar from '../components/common/Avatar'
 import { supabase } from '../lib/supabase'
 import { normalizeMediaList, PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
+import { isPrimaryAdmin } from '../lib/admin'
 
 function Field({ label, placeholder, multiline, keyboardType, value, onChangeText }) {
   return (
@@ -142,6 +143,7 @@ export default function CreatePostScreen({ navigation, route }) {
   const [selectedLocationMeta, setSelectedLocationMeta] = useState(null)
   const editingPost = route?.params?.post || null
   const isEditing = Boolean(editingPost?.id)
+  const adminEditMode = Boolean(route?.params?.adminEditMode)
 
   useEffect(() => {
     loadComposer()
@@ -319,20 +321,27 @@ export default function CreatePostScreen({ navigation, route }) {
       getUserDisplayName(user) ||
       user.email
 
+    const ownerId = adminEditMode && editingPost?.owner_id ? editingPost.owner_id : user.id
+    const ownerEmail = adminEditMode && editingPost?.owner_email ? editingPost.owner_email : user.email
+    const ownerNameToSave = adminEditMode && editingPost?.owner_name ? editingPost.owner_name : ownerName
+
     const payload = {
       title,
       description,
       price,
       location,
-      owner_id: user.id,
-      owner_email: user.email,
-      owner_name: ownerName,
+      owner_id: ownerId,
+      owner_email: ownerEmail,
+      owner_name: ownerNameToSave,
       image_url: uploadedMedia[0]?.uri || null,
       media: uploadedMedia,
     }
 
+    const canAdminEdit = adminEditMode && isPrimaryAdmin(user)
     const query = isEditing
-      ? supabase.from('properties').update(payload).eq('id', editingPost.id).eq('owner_id', user.id)
+      ? canAdminEdit
+        ? supabase.from('properties').update(payload).eq('id', editingPost.id)
+        : supabase.from('properties').update(payload).eq('id', editingPost.id).eq('owner_id', user.id)
       : supabase.from('properties').insert(payload)
 
     const { error } = await query
@@ -347,6 +356,13 @@ export default function CreatePostScreen({ navigation, route }) {
     Alert.alert('Success', isEditing ? 'Property post updated' : 'Property post created')
 
     if (isEditing) {
+      if (adminEditMode) {
+        navigation.navigate('AdminUserPosts', {
+          userId: editingPost?.owner_id,
+          ownerName: editingPost?.owner_name || editingPost?.owner_email || 'User posts',
+        })
+        return
+      }
       navigation.navigate('AdsManagement')
       return
     }
