@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import { createNotification } from '../lib/notifications'
 import { blockUser, fetchUserSocialCounts } from '../lib/social'
+import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 
 function displayNameFromEmail(email) {
   if (!email) return 'Rental X member'
@@ -202,6 +203,8 @@ export default function OwnerProfileScreen({ route, navigation }) {
   }
 
   function renderPost({ item }) {
+    const isVerifiedProperty = getPropertyVerificationStatus(item) === 'verified'
+
     return (
       <TouchableOpacity
         onPress={() => navigation.navigate('Property', { property: item })}
@@ -222,9 +225,30 @@ export default function OwnerProfileScreen({ route, navigation }) {
           {item.description || 'No description added'}
         </Text>
 
-        <Text style={{ color: '#1877F2', fontWeight: '800', marginTop: 8 }}>
-          Rent: ৳ {item.price}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+          <Text style={{ color: '#1877F2', fontWeight: '800' }}>
+            Rent: ৳ {item.price}
+          </Text>
+
+          {isVerifiedProperty ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#eff6ff',
+                borderRadius: 999,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                marginLeft: 8,
+              }}
+            >
+              <Ionicons name="checkmark-circle" size={12} color="#2563eb" />
+              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '800', marginLeft: 4 }}>
+                Verified
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
         <Text style={{ color: '#6b7280', marginTop: 3 }}>
           {item.location || 'Location not added'}
@@ -243,6 +267,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
 
   const ownerName = getOwnerName(owner, profile)
   const isOwnProfile = currentUser?.id && currentUser.id === ownerId
+  const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
@@ -272,7 +297,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
                       {ownerName}
                     </Text>
 
-                    {profile?.is_verified ? (
+                    {isVerifiedOwner ? (
                       <Ionicons
                         name="checkmark-circle"
                         size={22}

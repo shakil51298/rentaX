@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabase'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
+import { getPropertyVerificationStatus } from '../lib/verification'
 
 export default function AdsManagementScreen({ navigation }) {
   const [currentUser, setCurrentUser] = useState(null)
@@ -335,15 +336,64 @@ export default function AdsManagementScreen({ navigation }) {
     }
   }
 
-  function ActionRow({ icon, title, subtitle, danger, onPress }) {
+  async function requestPostVerification(post) {
+    if (!currentUser?.id || !post?.id) return
+
+    closeActionSheet()
+
+    const currentStatus = getPropertyVerificationStatus(post)
+
+    if (currentStatus === 'verified') {
+      return
+    }
+
+    const previousPosts = posts
+    const requestedAt = new Date().toISOString()
+
+    setPosts((currentPosts) =>
+      currentPosts.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              verification_status: 'pending',
+              verification_requested_at: requestedAt,
+            }
+          : item
+      )
+    )
+
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        verification_status: 'pending',
+        verification_requested_at: requestedAt,
+      })
+      .eq('id', post.id)
+      .eq('owner_id', currentUser.id)
+
+    if (error) {
+      setPosts(previousPosts)
+      Alert.alert(
+        'Verification setup needed',
+        'Run supabase-verification-features.sql in Supabase, then try again.'
+      )
+      return
+    }
+
+    Alert.alert('Request sent', 'This property is now marked for verification review.')
+  }
+
+  function ActionRow({ icon, title, subtitle, danger, disabled, onPress }) {
     return (
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={onPress}
+        disabled={disabled}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           paddingVertical: 12,
+          opacity: disabled ? 0.55 : 1,
         }}
       >
         <View
@@ -568,6 +618,28 @@ export default function AdsManagementScreen({ navigation }) {
                 onPress={() =>
                   updatePostStatus(actionPost, actionPost?.status === 'rented' ? 'open' : 'rented')
                 }
+              />
+
+              <ActionRow
+                icon={
+                  getPropertyVerificationStatus(actionPost) === 'verified'
+                    ? 'checkmark-circle-outline'
+                    : 'shield-checkmark-outline'
+                }
+                title={
+                  getPropertyVerificationStatus(actionPost) === 'verified'
+                    ? 'Verified property'
+                    : getPropertyVerificationStatus(actionPost) === 'pending'
+                      ? 'Verification pending'
+                      : 'Request verification'
+                }
+                subtitle={
+                  getPropertyVerificationStatus(actionPost) === 'verified'
+                    ? 'This property already has a trust badge.'
+                    : 'Send this listing for review before renters contact you.'
+                }
+                disabled={getPropertyVerificationStatus(actionPost) === 'verified'}
+                onPress={() => requestPostVerification(actionPost)}
               />
 
               <ActionRow

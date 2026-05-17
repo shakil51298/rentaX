@@ -28,7 +28,7 @@ export async function fetchPropertiesWithProfiles({ ownerId } = {}) {
   if (ownerIds.length > 0) {
     const { data: profiles } = await supabase
       .from('user_profiles')
-      .select('user_id, email, display_name, avatar_url, is_verified, user_type')
+      .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
       .in('user_id', ownerIds)
 
     profilesByUserId = (profiles || []).reduce((profilesById, profile) => ({

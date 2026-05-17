@@ -52,6 +52,7 @@ import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
+import { getOwnerVerificationStatus } from '../lib/verification'
 
 function formatCurrency(value) {
   return `৳ ${Number(value || 0).toLocaleString()}`
@@ -593,7 +594,7 @@ export default function HomeScreen({ navigation, route }) {
           return false
         }
 
-        if (appliedFilters.verifiedOnly && !post.owner_profile?.is_verified) {
+        if (appliedFilters.verifiedOnly && getOwnerVerificationStatus(post.owner_profile) !== 'verified') {
           return false
         }
 

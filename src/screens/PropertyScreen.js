@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
+import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -347,7 +348,7 @@ export default function PropertyScreen({ route, navigation }) {
     if (nextPost.owner_id) {
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('user_id, email, display_name, avatar_url, is_verified, user_type')
+        .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
         .eq('user_id', nextPost.owner_id)
         .maybeSingle()
 
@@ -505,6 +506,8 @@ export default function PropertyScreen({ route, navigation }) {
   const isFavorite = post.property_favorites?.some(
     (item) => item.user_id === currentUser?.id
   )
+  const isVerifiedOwner = getOwnerVerificationStatus(ownerProfile) === 'verified'
+  const isVerifiedProperty = getPropertyVerificationStatus(post) === 'verified'
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
@@ -532,7 +535,7 @@ export default function PropertyScreen({ route, navigation }) {
                     {ownerDisplayName}
                   </Text>
 
-                  {ownerProfile.is_verified ? (
+                  {isVerifiedOwner ? (
                     <Ionicons
                       name="checkmark-circle"
                       size={16}
@@ -542,9 +545,30 @@ export default function PropertyScreen({ route, navigation }) {
                   ) : null}
                 </View>
 
-                <Text style={{ color: '#777', fontSize: 12 }}>
-                  {timeAgo(post.created_at)}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 3 }}>
+                  <Text style={{ color: '#777', fontSize: 12 }}>
+                    {timeAgo(post.created_at)}
+                  </Text>
+
+                  {isVerifiedProperty ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: 999,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        marginLeft: 8,
+                      }}
+                    >
+                      <Ionicons name="checkmark-circle" size={12} color="#2563eb" />
+                      <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '800', marginLeft: 4 }}>
+                        Verified property
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
             </TouchableOpacity>
 

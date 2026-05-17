@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchUserSocialCounts } from '../lib/social'
+import { getOwnerVerificationStatus } from '../lib/verification'
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -101,11 +102,12 @@ export default function ProfileScreen({ navigation }) {
       avatar_url: metadata.avatar_url || metadata.picture || null,
       cover_url: metadata.cover_url || null,
       is_verified: false,
+      owner_verification_status: 'unverified',
     }
 
     const { data: dbProfile } = await supabase
       .from('user_profiles')
-      .select('display_name, avatar_url, cover_url, is_verified')
+      .select('display_name, avatar_url, cover_url, is_verified, owner_verification_status')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -132,6 +134,7 @@ export default function ProfileScreen({ navigation }) {
   const displayName = profile?.display_name || displayNameFromEmail(email)
   const avatarUrl = profile?.avatar_url || null
   const coverUrl = profile?.cover_url || null
+  const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
 
   function openConnections(kind) {
     if (!currentUserId) return
@@ -173,29 +176,6 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={{ alignItems: 'center', marginTop: -42, paddingHorizontal: 18 }}>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('BlockList')}
-                  style={{
-                    position: 'absolute',
-                    right: 18,
-                    top: 0,
-                    zIndex: 5,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: '#fff',
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: '#dbe4ee',
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                  }}
-                >
-                  <Ionicons name="ban-outline" size={15} color="#dc2626" />
-                  <Text style={{ color: '#dc2626', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
-                    Block list {socialCounts.blocked ? `(${socialCounts.blocked})` : ''}
-                  </Text>
-                </TouchableOpacity>
-
                 {avatarUrl ? (
                   <Image
                     source={{ uri: avatarUrl }}
@@ -232,7 +212,7 @@ export default function ProfileScreen({ navigation }) {
                     {displayName || 'User'}
                   </Text>
 
-                  {profile?.is_verified ? (
+                  {isVerifiedOwner ? (
                     <Ionicons
                       name="checkmark-circle"
                       size={20}

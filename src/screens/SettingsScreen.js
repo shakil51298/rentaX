@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
+import { getVerificationMeta } from '../lib/verification'
 
 const USER_TYPES = [
   { id: 'property_owner', title: 'Property owner' },
@@ -123,6 +124,51 @@ function SectionCard({ children }) {
   )
 }
 
+function ActionCard({ icon, title, subtitle, onPress }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.86}
+      style={{
+        backgroundColor: '#fff',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        padding: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: '#eff6ff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icon} size={22} color="#2563eb" />
+        </View>
+
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+            {title}
+          </Text>
+          <Text style={{ color: '#64748b', marginTop: 4 }}>
+            {subtitle}
+          </Text>
+        </View>
+      </View>
+
+      <Ionicons name="chevron-forward" size={20} color="#64748b" />
+    </TouchableOpacity>
+  )
+}
+
 function SettingRow({ title, subtitle, value, onValueChange }) {
   return (
     <View
@@ -160,6 +206,7 @@ export default function SettingsScreen({ navigation }) {
   const [location, setLocation] = useState('')
   const [userType, setUserType] = useState('renter')
   const [isVerified, setIsVerified] = useState(false)
+  const [ownerVerificationStatus, setOwnerVerificationStatus] = useState('unverified')
   const [notifyMessages, setNotifyMessages] = useState(true)
   const [notifyActivity, setNotifyActivity] = useState(true)
   const [profileExpanded, setProfileExpanded] = useState(false)
@@ -208,11 +255,21 @@ export default function SettingsScreen({ navigation }) {
         setLocation(data.location || '')
         setUserType(data.user_type || metadata.user_type || 'renter')
         setIsVerified(Boolean(data.is_verified))
+        setOwnerVerificationStatus(data.owner_verification_status || (data.is_verified ? 'verified' : 'unverified'))
+      } else {
+        setOwnerVerificationStatus('unverified')
       }
     }
 
     setLoading(false)
   }
+
+  const verificationMeta = getVerificationMeta(ownerVerificationStatus, {
+    verifiedLabel: 'Verified owner',
+    pendingLabel: 'Verification pending',
+    rejectedLabel: 'Update verification info',
+    defaultLabel: 'Not verified yet',
+  })
 
   async function saveProfile() {
     if (!user) return
@@ -415,7 +472,7 @@ export default function SettingsScreen({ navigation }) {
                   {displayName || 'User'}
                 </Text>
 
-                {isVerified ? (
+                {ownerVerificationStatus === 'verified' || isVerified ? (
                   <Ionicons
                     name="checkmark-circle"
                     size={21}
@@ -432,6 +489,15 @@ export default function SettingsScreen({ navigation }) {
           </View>
 
           <View style={{ padding: 16, gap: 18 }}>
+            {userType === 'property_owner' ? (
+              <ActionCard
+                icon="shield-checkmark-outline"
+                title="Verification center"
+                subtitle={verificationMeta.label}
+                onPress={() => navigation.navigate('VerificationCenter')}
+              />
+            ) : null}
+
             <CollapsibleSection
               title="Profile settings"
               expanded={profileExpanded}

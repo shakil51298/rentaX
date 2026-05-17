@@ -5,6 +5,7 @@ import Avatar from '../common/Avatar'
 import { normalizeMediaList } from '../../lib/media'
 import { timeAgo } from '../../lib/time'
 import { getProfileName } from '../../lib/userDisplay'
+import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../../lib/verification'
 
 function getStatusMeta(status) {
   if (status === 'rented') {
@@ -49,6 +50,7 @@ export default function PostCard({
   const totalFavorites = item.property_favorites?.length || 0
   const media = normalizeMediaList(item.media)
   const ownerProfile = item.owner_profile || {}
+  const isVerifiedOwner = getOwnerVerificationStatus(ownerProfile) === 'verified'
   const ownerDisplayName = getProfileName(
     {
       ...ownerProfile,
@@ -64,6 +66,7 @@ export default function PostCard({
     (fav) => fav.user_id === currentUser?.id
   )
   const statusMeta = getStatusMeta(item.status)
+  const isVerifiedProperty = getPropertyVerificationStatus(item) === 'verified'
   const locationLabel = getShortLocationLabel(item.location)
   const rentLabel = item.price ? `৳ ${item.price}` : ''
   const contentText = useMemo(
@@ -96,7 +99,7 @@ export default function PostCard({
                 {ownerDisplayName}
               </Text>
 
-              {ownerProfile.is_verified ? (
+              {isVerifiedOwner ? (
                 <Ionicons
                   name="checkmark-circle"
                   size={16}
@@ -123,6 +126,30 @@ export default function PostCard({
                     {statusMeta.label}
                   </Text>
                 </View>
+
+              {isVerifiedProperty ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                  }}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={11}
+                    color="#2563eb"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#2563eb' }}>
+                    Verified
+                  </Text>
+                </View>
+              ) : null}
 
               {locationLabel ? (
                 <View

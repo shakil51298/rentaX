@@ -9,11 +9,13 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import Avatar from '../components/common/Avatar'
 import { createNotification } from '../lib/notifications'
 import { fetchConnections, followUser, unfollowUser, blockUser } from '../lib/social'
 import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
+import { getOwnerVerificationStatus } from '../lib/verification'
 
 function ConnectionActions({
   item,
@@ -25,9 +27,16 @@ function ConnectionActions({
   onOptimisticUpdate,
 }) {
   const targetUserId = item.related_user_id
+  const followButtonLabel =
+    kind === 'following'
+      ? 'Unfollow'
+      : item.is_following
+        ? 'Following'
+        : 'Follow'
 
   async function handleToggleFollow() {
     if (!currentUserId || !targetUserId || currentUserId === targetUserId) return
+    if (item.is_blocked) return
 
     if (item.is_following) {
       const { error } = await unfollowUser(currentUserId, targetUserId)
@@ -48,7 +57,7 @@ function ConnectionActions({
       return
     }
 
-    onOptimisticUpdate(targetUserId, { is_following: true })
+      onOptimisticUpdate(targetUserId, { is_following: true })
     await createNotification({
       recipientId: targetUserId,
       actorId: currentUserId,
@@ -78,7 +87,7 @@ function ConnectionActions({
               return
             }
 
-            onReload()
+            onOptimisticUpdate(targetUserId, { is_blocked: true }, true)
           },
         },
       ]
@@ -90,26 +99,35 @@ function ConnectionActions({
       {isOwnProfile ? (
         <TouchableOpacity
           onPress={handleToggleFollow}
+          disabled={item.is_blocked}
           style={{
             height: 34,
             paddingHorizontal: 12,
             borderRadius: 12,
-            backgroundColor: item.is_following ? '#e5e7eb' : '#1877F2',
+            backgroundColor: item.is_blocked
+              ? '#e5e7eb'
+              : item.is_following
+                ? '#e5e7eb'
+                : '#1877F2',
             alignItems: 'center',
             justifyContent: 'center',
+            opacity: item.is_blocked ? 0.55 : 1,
           }}
         >
-          <Text style={{ color: item.is_following ? '#111827' : '#fff', fontSize: 12, fontWeight: '900' }}>
-            {kind === 'following'
-              ? 'Unfollow'
-              : item.is_following
-                ? 'Following'
-                : 'Follow'}
+          <Text
+            style={{
+              color: item.is_blocked || item.is_following ? '#111827' : '#fff',
+              fontSize: 12,
+              fontWeight: '900',
+            }}
+          >
+            {followButtonLabel}
           </Text>
         </TouchableOpacity>
       ) : null}
 
       <TouchableOpacity
+        disabled={item.is_blocked}
         onPress={() =>
           navigation.navigate('Chat', {
             owner: {
@@ -128,6 +146,7 @@ function ConnectionActions({
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
+          opacity: item.is_blocked ? 0.55 : 1,
         }}
       >
         <Ionicons name="chatbubble-ellipses-outline" size={14} color="#fff" />
@@ -138,18 +157,24 @@ function ConnectionActions({
 
       {isOwnProfile ? (
         <TouchableOpacity
-          onPress={handleBlock}
+          onPress={item.is_blocked ? undefined : handleBlock}
           style={{
             height: 34,
             paddingHorizontal: 12,
             borderRadius: 12,
-            backgroundColor: '#fef2f2',
+            backgroundColor: item.is_blocked ? '#fff7ed' : '#fef2f2',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Text style={{ color: '#dc2626', fontSize: 12, fontWeight: '900' }}>
-            Block
+          <Text
+            style={{
+              color: item.is_blocked ? '#ea580c' : '#dc2626',
+              fontSize: 12,
+              fontWeight: '900',
+            }}
+          >
+            {item.is_blocked ? 'Blocked' : 'Block'}
           </Text>
         </TouchableOpacity>
       ) : null}
@@ -199,6 +224,51 @@ export default function ConnectionsScreen({ navigation, route }) {
     loadConnections()
   }, [loadConnections])
 
+  useFocusEffect(
+    useCallback(() => {
+      loadConnections()
+    }, [loadConnections])
+  )
+
+  useEffect(() => {
+    if (!userId) return undefined
+
+    const followsChannel = supabase
+      .channel(`connections-follows-${kind}-${userId}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_follows',
+        },
+        () => {
+          loadConnections()
+        }
+      )
+      .subscribe()
+
+    const blocksChannel = supabase
+      .channel(`connections-blocks-${kind}-${userId}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_blocks',
+        },
+        () => {
+          loadConnections()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(followsChannel)
+      supabase.removeChannel(blocksChannel)
+    }
+  }, [kind, loadConnections, userId])
+
   function updateConnectionItem(targetUserId, updates, removeItem = false) {
     setItems((currentItems) => {
       if (removeItem) {
@@ -218,6 +288,7 @@ export default function ConnectionsScreen({ navigation, route }) {
 
   function renderItem({ item }) {
     const name = getProfileName(item.profile, 'Rental X member')
+    const isVerifiedOwner = getOwnerVerificationStatus(item.profile) === 'verified'
 
     return (
       <TouchableOpacity
@@ -255,7 +326,7 @@ export default function ConnectionsScreen({ navigation, route }) {
                 {name}
               </Text>
 
-              {item.profile?.is_verified ? (
+              {isVerifiedOwner ? (
                 <Ionicons
                   name="checkmark-circle"
                   size={16}
@@ -320,6 +391,27 @@ export default function ConnectionsScreen({ navigation, route }) {
               {screenSubtitle}
             </Text>
           </View>
+
+          {isOwnProfile ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('BlockList')}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#fff',
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: '#dbe4ee',
+                paddingHorizontal: 10,
+                paddingVertical: 7,
+              }}
+            >
+              <Ionicons name="ban-outline" size={15} color="#dc2626" />
+              <Text style={{ color: '#dc2626', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                Block list
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 

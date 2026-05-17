@@ -19,6 +19,7 @@ import AudioCallScreen from '../screens/AudioCallScreen'
 import LocationScreen from '../screens/LocationScreen'
 import ConnectionsScreen from '../screens/ConnectionsScreen'
 import BlockListScreen from '../screens/BlockListScreen'
+import VerificationCenterScreen from '../screens/VerificationCenterScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -188,6 +189,11 @@ export default function AppNavigator() {
         />
         <Stack.Screen name="Favorite" component={FavoriteScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen
+          name="VerificationCenter"
+          component={VerificationCenterScreen}
+          options={{ title: 'Verification center' }}
+        />
         <Stack.Screen
           name="Connections"
           component={ConnectionsScreen}
