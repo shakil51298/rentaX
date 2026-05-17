@@ -19,6 +19,8 @@ import { useFocusEffect } from '@react-navigation/native'
 import * as ImagePicker from 'expo-image-picker'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { supabase } from '../lib/supabase'
+import { getPrimaryAdminUserIds } from '../lib/admin'
+import { createNotification } from '../lib/notifications'
 import {
   createSignedMediaUrl,
   getPrivateMediaPath,
@@ -1052,6 +1054,25 @@ export default function VerificationCenterScreen() {
         throw error
       }
 
+      const adminIds = await getPrimaryAdminUserIds()
+      const requestedAt = payload.owner_verification_requested_at
+
+      await Promise.all(
+        adminIds.map((adminId) =>
+          createNotification({
+            recipientId: adminId,
+            actorId: user.id,
+            type: 'owner_verification_review_requested',
+            title: 'Owner verification review requested',
+            body: 'sent an owner verification request for admin review.',
+            eventKey: `owner_verification_review_requested:${adminId}:${user.id}:${requestedAt}`,
+            pushData: {
+              screen: 'AdminPanel',
+            },
+          })
+        )
+      )
+
       Alert.alert(
         ownerVerificationChanged && ownerStatus === 'verified' ? 'Update request sent' : 'Request sent',
         ownerVerificationChanged && ownerStatus === 'verified'
@@ -1085,11 +1106,12 @@ export default function VerificationCenterScreen() {
 
     setBusyPropertyId(post.id)
 
+    const requestedAt = new Date().toISOString()
     const { error } = await supabase
       .from('properties')
       .update({
         verification_status: 'pending',
-        verification_requested_at: new Date().toISOString(),
+        verification_requested_at: requestedAt,
         verification_contact_phone: phone.trim(),
       })
       .eq('id', post.id)
@@ -1105,13 +1127,31 @@ export default function VerificationCenterScreen() {
       return
     }
 
+    const adminIds = await getPrimaryAdminUserIds()
+    await Promise.all(
+      adminIds.map((adminId) =>
+        createNotification({
+          recipientId: adminId,
+          actorId: user.id,
+          type: 'property_verification_review_requested',
+          propertyId: post.id,
+          title: 'Property verification review requested',
+          body: `requested review for ${post.title || 'a property listing'}.`,
+          eventKey: `property_verification_review_requested:${adminId}:${user.id}:${post.id}:${requestedAt}`,
+          pushData: {
+            screen: 'AdminPanel',
+          },
+        })
+      )
+    )
+
     setPosts((currentPosts) =>
       currentPosts.map((item) =>
         item.id === post.id
           ? {
               ...item,
               verification_status: 'pending',
-              verification_requested_at: new Date().toISOString(),
+              verification_requested_at: requestedAt,
             }
           : item
       )

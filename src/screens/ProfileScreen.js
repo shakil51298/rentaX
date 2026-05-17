@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import {
   ActivityIndicator,
   Image,
@@ -23,7 +23,7 @@ function displayNameFromEmail(email) {
   return email.split('@')[0]
 }
 
-function ActionCard({ icon, title, subtitle, onPress }) {
+function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -54,9 +54,29 @@ function ActionCard({ icon, title, subtitle, onPress }) {
         </View>
 
         <View style={{ marginLeft: 12, flex: 1 }}>
-          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
-            {title}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+              {title}
+            </Text>
+            {badgeCount ? (
+              <View
+                style={{
+                  marginLeft: 8,
+                  minWidth: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  paddingHorizontal: 6,
+                  backgroundColor: '#ef4444',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>
+                  {badgeCount > 99 ? '99+' : badgeCount}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={{ color: '#64748b', marginTop: 4 }}>
             {subtitle}
           </Text>
@@ -79,6 +99,7 @@ export default function ProfileScreen({ navigation }) {
     following: 0,
     blocked: 0,
   })
+  const [adminPanelCount, setAdminPanelCount] = useState(0)
 
   const loadProfile = useCallback(async () => {
     setLoading(true)
@@ -126,11 +147,75 @@ export default function ProfileScreen({ navigation }) {
     setLoading(false)
   }, [])
 
+  const loadAdminPanelCount = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!isPrimaryAdmin(user)) {
+      setAdminPanelCount(0)
+      return
+    }
+
+    const [{ count: ownerCount }, { count: propertyCount }] = await Promise.all([
+      supabase
+        .from('user_profiles')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('owner_verification_status', 'pending'),
+      supabase
+        .from('properties')
+        .select('id', { count: 'exact', head: true })
+        .eq('verification_status', 'pending'),
+    ])
+
+    setAdminPanelCount((ownerCount || 0) + (propertyCount || 0))
+  }, [])
+
   useFocusEffect(
     useCallback(() => {
       loadProfile()
-    }, [loadProfile])
+      loadAdminPanelCount()
+    }, [loadAdminPanelCount, loadProfile])
   )
+
+  useEffect(() => {
+    if (!showAdminPanel) return undefined
+
+    const refreshAdminCount = () => {
+      loadAdminPanelCount()
+    }
+
+    const ownerChannel = supabase
+      .channel(`profile-admin-owners-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_profiles',
+        },
+        refreshAdminCount
+      )
+      .subscribe()
+
+    const propertyChannel = supabase
+      .channel(`profile-admin-properties-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'properties',
+        },
+        refreshAdminCount
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(ownerChannel)
+      supabase.removeChannel(propertyChannel)
+    }
+  }, [loadAdminPanelCount, showAdminPanel])
 
   const displayName = profile?.display_name || displayNameFromEmail(email)
   const avatarUrl = profile?.avatar_url || null
@@ -309,6 +394,7 @@ export default function ProfileScreen({ navigation }) {
                   icon="shield-checkmark-outline"
                   title="Admin panel"
                   subtitle="Review owner and property verification requests."
+                  badgeCount={adminPanelCount}
                   onPress={() => navigation.navigate('AdminPanel')}
                 />
               ) : null}

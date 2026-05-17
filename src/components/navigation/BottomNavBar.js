@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { getUnreadNotificationCount } from '../../lib/notifications'
+import { playNotificationSound } from '../../lib/sounds'
 import { navigateToMainTab } from './tabNavigation'
 
 function Badge({ count }) {
@@ -134,7 +135,16 @@ export default function BottomNavBar({
             table: 'notifications',
             filter: `recipient_id=eq.${user.id}`,
           },
-          refreshCounts
+          (payload) => {
+            refreshCounts()
+
+            if (
+              payload.eventType === 'INSERT'
+              && ['owner_verification_review_requested', 'property_verification_review_requested'].includes(payload.new?.type)
+            ) {
+              playNotificationSound()
+            }
+          }
         )
         .subscribe()
 

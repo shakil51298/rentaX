@@ -34,6 +34,9 @@ function getActorName(notification) {
 }
 
 function getNotificationIcon(type) {
+  if (type === 'owner_verification_review_requested' || type === 'property_verification_review_requested') {
+    return 'shield-checkmark'
+  }
   if (type === 'property_comment') return 'chatbubble-ellipses'
   if (type === 'comment_reply') return 'return-down-forward'
   if (type === 'comment_like') return 'thumbs-up'
@@ -50,6 +53,9 @@ function getNotificationIcon(type) {
 }
 
 function getNotificationColor(type) {
+  if (type === 'owner_verification_review_requested' || type === 'property_verification_review_requested') {
+    return '#7c3aed'
+  }
   if (type === 'property_favorite') return '#ef4444'
   if (type === 'user_follow') return '#16a34a'
   if (type === 'owner_verification_approved' || type === 'property_verification_approved') {
@@ -253,6 +259,14 @@ export default function NotificationsScreen({ navigation }) {
 
   async function openNotification(notification) {
     await markNotificationRead(notification)
+
+    if (
+      notification.type === 'owner_verification_review_requested'
+      || notification.type === 'property_verification_review_requested'
+    ) {
+      navigation.navigate('AdminPanel')
+      return
+    }
 
     if (notification.type === 'owner_verification_rejected') {
       navigation.navigate('VerificationCenter')
