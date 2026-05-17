@@ -50,6 +50,39 @@ end $$;
 create index if not exists properties_verification_status_idx
   on public.properties(verification_status);
 
+grant update on public.properties to authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'user_profiles'
+      and policyname = 'Primary admin can review verification profiles'
+  ) then
+    create policy "Primary admin can review verification profiles"
+      on public.user_profiles
+      for update
+      to authenticated
+      using (lower(coalesce(auth.jwt() ->> 'email', '')) = 'shakilkhan51298@gmail.com')
+      with check (lower(coalesce(auth.jwt() ->> 'email', '')) = 'shakilkhan51298@gmail.com');
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'properties'
+      and policyname = 'Primary admin can review verification properties'
+  ) then
+    create policy "Primary admin can review verification properties"
+      on public.properties
+      for update
+      to authenticated
+      using (lower(coalesce(auth.jwt() ->> 'email', '')) = 'shakilkhan51298@gmail.com')
+      with check (lower(coalesce(auth.jwt() ->> 'email', '')) = 'shakilkhan51298@gmail.com');
+  end if;
+end $$;
+
 insert into storage.buckets (id, name, public)
 values ('verification-documents', 'verification-documents', false)
 on conflict (id) do nothing;

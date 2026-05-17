@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -138,7 +140,7 @@ function ReviewButtons({ approving, rejecting, onApprove, onReject }) {
   )
 }
 
-function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl }) {
+function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen }) {
   const previews = [
     { key: 'front', title: 'Front', uri: frontUrl },
     { key: 'back', title: 'Back', uri: backUrl },
@@ -155,8 +157,10 @@ function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl }) {
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {previews.map((item, index) => (
-          <View
+          <TouchableOpacity
             key={item.key}
+            onPress={() => onOpen?.(item)}
+            activeOpacity={0.88}
             style={{
               width: 114,
               marginRight: index === previews.length - 1 ? 0 : 10,
@@ -175,7 +179,7 @@ function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl }) {
             <Text style={{ color: '#475569', fontSize: 12, fontWeight: '800', marginTop: 6 }}>
               {item.title}
             </Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>
@@ -192,6 +196,7 @@ export default function AdminPanelScreen({ navigation }) {
   const [busyKey, setBusyKey] = useState('')
   const [ownerRejectReasons, setOwnerRejectReasons] = useState({})
   const [propertyRejectReasons, setPropertyRejectReasons] = useState({})
+  const [previewAsset, setPreviewAsset] = useState(null)
 
   const loadReviewData = useCallback(async () => {
     setLoading(true)
@@ -304,6 +309,45 @@ export default function AdminPanelScreen({ navigation }) {
     }, [loadReviewData])
   )
 
+  useEffect(() => {
+    if (!authorized) return undefined
+
+    const ownerChannel = supabase
+      .channel('admin-owner-verifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_profiles',
+        },
+        () => {
+          loadReviewData()
+        }
+      )
+      .subscribe()
+
+    const propertyChannel = supabase
+      .channel('admin-property-verifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'properties',
+        },
+        () => {
+          loadReviewData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(ownerChannel)
+      supabase.removeChannel(propertyChannel)
+    }
+  }, [authorized, loadReviewData])
+
   const ownerCount = owners.length
   const propertyCount = properties.length
 
@@ -333,15 +377,25 @@ export default function AdminPanelScreen({ navigation }) {
       updated_at: new Date().toISOString(),
     }
 
-    const { error } = await supabase
+    const { data: updatedOwner, error } = await supabase
       .from('user_profiles')
       .update(payload)
       .eq('user_id', item.user_id)
+      .select('user_id, owner_verification_status')
+      .maybeSingle()
 
     setBusyKey('')
 
     if (error) {
       Alert.alert('Review failed', error.message)
+      return
+    }
+
+    if (!updatedOwner || updatedOwner.owner_verification_status !== nextStatus) {
+      Alert.alert(
+        'Review did not save',
+        'Run the updated supabase-verification-features.sql so your admin account can review verification requests.'
+      )
       return
     }
 
@@ -369,6 +423,7 @@ export default function AdminPanelScreen({ navigation }) {
       delete next[item.user_id]
       return next
     })
+    loadReviewData()
   }
 
   async function reviewProperty(item, nextStatus) {
@@ -392,15 +447,25 @@ export default function AdminPanelScreen({ navigation }) {
       verification_rejection_reason: rejectionReason,
     }
 
-    const { error } = await supabase
+    const { data: updatedProperty, error } = await supabase
       .from('properties')
       .update(payload)
       .eq('id', item.id)
+      .select('id, verification_status')
+      .maybeSingle()
 
     setBusyKey('')
 
     if (error) {
       Alert.alert('Review failed', error.message)
+      return
+    }
+
+    if (!updatedProperty || updatedProperty.verification_status !== nextStatus) {
+      Alert.alert(
+        'Review did not save',
+        'Run the updated supabase-verification-features.sql so your admin account can review property verification requests.'
+      )
       return
     }
 
@@ -429,6 +494,7 @@ export default function AdminPanelScreen({ navigation }) {
       delete next[item.id]
       return next
     })
+    loadReviewData()
   }
 
   if (loading) {
@@ -540,6 +606,7 @@ export default function AdminPanelScreen({ navigation }) {
                     frontUrl={item.owner_verification_document_front_url}
                     backUrl={item.owner_verification_document_back_url}
                     selfieUrl={item.owner_verification_selfie_url}
+                    onOpen={setPreviewAsset}
                   />
                   <TextInput
                     value={ownerRejectReasons[item.user_id] || ''}
@@ -660,6 +727,59 @@ export default function AdminPanelScreen({ navigation }) {
           </SectionCard>
         )}
       </ScrollView>
+
+      <Modal
+        visible={Boolean(previewAsset)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewAsset(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(2, 6, 23, 0.92)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 18,
+          }}
+        >
+          <Pressable
+            onPress={() => setPreviewAsset(null)}
+            style={{
+              position: 'absolute',
+              top: 54,
+              right: 18,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: 'rgba(15, 23, 42, 0.65)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 2,
+            }}
+          >
+            <Ionicons name="close" size={22} color="#fff" />
+          </Pressable>
+
+          {previewAsset?.uri ? (
+            <>
+              <Image
+                source={{ uri: previewAsset.uri }}
+                style={{
+                  width: '100%',
+                  height: '76%',
+                  borderRadius: 20,
+                  backgroundColor: '#0f172a',
+                }}
+                resizeMode="contain"
+              />
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16, marginTop: 14 }}>
+                {previewAsset.title}
+              </Text>
+            </>
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
