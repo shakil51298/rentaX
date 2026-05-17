@@ -2,8 +2,10 @@ import { useCallback, useState, useEffect } from 'react'
 import {
   ActivityIndicator,
   Image,
+  Modal,
   ScrollView,
   Text,
+  Pressable,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -100,6 +102,11 @@ export default function ProfileScreen({ navigation }) {
     blocked: 0,
   })
   const [adminPanelCount, setAdminPanelCount] = useState(0)
+  const [imageViewer, setImageViewer] = useState({
+    visible: false,
+    title: '',
+    uri: null,
+  })
 
   const loadProfile = useCallback(async () => {
     setLoading(true)
@@ -223,6 +230,24 @@ export default function ProfileScreen({ navigation }) {
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
   const showAdminPanel = isPrimaryAdmin(email)
 
+  function openImageViewer(title, uri) {
+    if (!uri) return
+
+    setImageViewer({
+      visible: true,
+      title,
+      uri,
+    })
+  }
+
+  function closeImageViewer() {
+    setImageViewer({
+      visible: false,
+      title: '',
+      uri: null,
+    })
+  }
+
   function openConnections(kind) {
     if (!currentUserId) return
 
@@ -252,7 +277,12 @@ export default function ProfileScreen({ navigation }) {
             showsVerticalScrollIndicator={false}
           >
             <View style={{ backgroundColor: '#fff', paddingBottom: 18 }}>
-              <View style={{ height: 96, backgroundColor: '#1877F2' }}>
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={() => openImageViewer('Cover photo', coverUrl)}
+                disabled={!coverUrl}
+                style={{ height: 96, backgroundColor: '#1877F2' }}
+              >
                 {coverUrl ? (
                   <Image
                     source={{ uri: coverUrl }}
@@ -260,21 +290,26 @@ export default function ProfileScreen({ navigation }) {
                     resizeMode="cover"
                   />
                 ) : null}
-              </View>
+              </TouchableOpacity>
 
               <View style={{ alignItems: 'center', marginTop: -30, paddingHorizontal: 18 }}>
                 {avatarUrl ? (
-                  <Image
-                    source={{ uri: avatarUrl }}
-                    style={{
-                      width: 76,
-                      height: 76,
-                      borderRadius: 38,
-                      backgroundColor: '#ddd',
-                      borderWidth: 4,
-                      borderColor: '#fff',
-                    }}
-                  />
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => openImageViewer('Profile photo', avatarUrl)}
+                  >
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={{
+                        width: 76,
+                        height: 76,
+                        borderRadius: 38,
+                        backgroundColor: '#ddd',
+                        borderWidth: 4,
+                        borderColor: '#fff',
+                      }}
+                    />
+                  </TouchableOpacity>
                 ) : (
                   <View
                     style={{
@@ -411,6 +446,82 @@ export default function ProfileScreen({ navigation }) {
           <BottomNavBar navigation={navigation} activeTab="profile" />
         </View>
       </SwipeTabView>
+
+      <Modal
+        visible={imageViewer.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeImageViewer}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(2, 6, 23, 0.96)',
+          }}
+        >
+          <Pressable
+            onPress={closeImageViewer}
+            style={{
+              position: 'absolute',
+              inset: 0,
+            }}
+          />
+
+          <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right', 'bottom']}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingTop: 6,
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
+                {imageViewer.title}
+              </Text>
+
+              <TouchableOpacity
+                onPress={closeImageViewer}
+                activeOpacity={0.85}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 14,
+                paddingBottom: 20,
+              }}
+            >
+              {imageViewer.uri ? (
+                <Image
+                  source={{ uri: imageViewer.uri }}
+                  style={{
+                    width: '100%',
+                    height: '82%',
+                    borderRadius: 18,
+                    backgroundColor: '#0f172a',
+                  }}
+                  resizeMode="contain"
+                />
+              ) : null}
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

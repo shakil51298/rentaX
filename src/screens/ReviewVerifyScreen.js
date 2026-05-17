@@ -909,7 +909,7 @@ export default function ReviewVerifyScreen({ navigation }) {
               </View>
             ))
           ) : (
-            <Text style={{ color: '#64748b' }}>No verified owners yet.</Text>
+            <Text style={{ color: '#64748b' }}>No verified accounts yet.</Text>
           )}
         </CollapsibleSection>
 
@@ -962,7 +962,7 @@ export default function ReviewVerifyScreen({ navigation }) {
           visibleOwners.length ? (
             visibleOwners.map((item) => {
               const statusMeta = getVerificationMeta(item.owner_verification_status, {
-                verifiedLabel: 'Verified owner',
+                verifiedLabel: 'Verified account',
                 pendingLabel: 'Pending review',
                 rejectedLabel: 'Rejected',
                 defaultLabel: 'Not verified',
@@ -973,7 +973,7 @@ export default function ReviewVerifyScreen({ navigation }) {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
-                        {item.display_name || item.email || 'Property owner'}
+                        {item.display_name || item.email || 'Rental X user'}
                       </Text>
                       <Text style={{ color: '#64748b', marginTop: 4 }}>
                         {item.email || 'No email'}

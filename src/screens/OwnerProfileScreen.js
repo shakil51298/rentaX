@@ -4,6 +4,8 @@ import {
   Alert,
   FlatList,
   Image,
+  Modal,
+  Pressable,
   Text,
   TouchableOpacity,
   View,
@@ -74,6 +76,11 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const [following, setFollowing] = useState(0)
   const [isFollowing, setIsFollowing] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [imageViewer, setImageViewer] = useState({
+    visible: false,
+    title: '',
+    uri: null,
+  })
 
   const loadOwnerProfile = useCallback(async () => {
     setLoading(true)
@@ -202,6 +209,24 @@ export default function OwnerProfileScreen({ route, navigation }) {
     )
   }
 
+  function openImageViewer(title, uri) {
+    if (!uri) return
+
+    setImageViewer({
+      visible: true,
+      title,
+      uri,
+    })
+  }
+
+  function closeImageViewer() {
+    setImageViewer({
+      visible: false,
+      title: '',
+      uri: null,
+    })
+  }
+
   function renderPost({ item }) {
     const isVerifiedProperty = getPropertyVerificationStatus(item) === 'verified'
 
@@ -294,22 +319,22 @@ export default function OwnerProfileScreen({ route, navigation }) {
                 <View style={{ marginTop: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text style={{ fontSize: 25, fontWeight: '900', color: '#111827' }}>
-                      {ownerName}
-                    </Text>
+                        {ownerName}
+                      </Text>
 
-                    {isVerifiedOwner ? (
-                      <Ionicons
-                        name="checkmark-circle"
+                      {isVerifiedOwner ? (
+                        <Ionicons
+                          name="checkmark-circle"
                         size={22}
                         color="#1877F2"
-                        style={{ marginLeft: 6 }}
-                      />
-                    ) : null}
-                  </View>
+                          style={{ marginLeft: 6 }}
+                        />
+                      ) : null}
+                    </View>
 
                   <Text style={{ color: '#64748b', marginTop: 4 }}>
-                    {profile?.user_type === 'property_owner' ? 'Property owner' : 'Rental X member'}
-                  </Text>
+                      {profile?.user_type === 'property_owner' ? 'Property owner' : 'Rental X member'}
+                    </Text>
                 </View>
 
                 <View style={{ flexDirection: 'row', marginTop: 16 }}>
@@ -377,13 +402,16 @@ export default function OwnerProfileScreen({ route, navigation }) {
                       alignItems: 'center',
                       flexDirection: 'row',
                       justifyContent: 'center',
+                      backgroundColor: '#111827',
+                      paddingVertical: 13,
+                      borderRadius: 14,
                     }}
                   >
                     <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
                     <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 6 }}>
                       Message
                     </Text>
-                    </TouchableOpacity>
+                  </TouchableOpacity>
 
                   {!isOwnProfile ? (
                     <TouchableOpacity

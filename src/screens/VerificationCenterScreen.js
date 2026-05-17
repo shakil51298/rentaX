@@ -771,8 +771,8 @@ export default function VerificationCenterScreen() {
   const isOwner = profile?.user_type === 'property_owner' || user?.user_metadata?.user_type === 'property_owner'
   const ownerStatus = profile?.owner_verification_status || (profile?.is_verified ? 'verified' : 'unverified')
   const ownerStatusMeta = getVerificationMeta(ownerStatus, {
-    verifiedLabel: 'Verified owner',
-    pendingLabel: 'Owner verification pending',
+    verifiedLabel: 'Verified account',
+    pendingLabel: 'Account verification pending',
     rejectedLabel: 'Update and resend',
     defaultLabel: 'Not verified yet',
   })
@@ -808,7 +808,7 @@ export default function VerificationCenterScreen() {
       {
         key: 'owner',
         icon: 'shield-outline',
-        title: 'Owner verification',
+        title: 'Account verification',
         done: ownerStatus === 'verified',
         caption: ownerStatusMeta.label,
       },
@@ -952,10 +952,6 @@ export default function VerificationCenterScreen() {
 
   async function submitOwnerVerification() {
     if (!user?.id) return
-    if (!isOwner) {
-      Alert.alert('Owner account needed', 'Switch your account type to Property owner in Settings first.')
-      return
-    }
     if (!emailConfirmed) {
       Alert.alert('Confirm email first', 'Please confirm your email address before requesting verification.')
       return
@@ -1072,8 +1068,8 @@ export default function VerificationCenterScreen() {
             recipientId: adminId,
             actorId: user.id,
             type: 'owner_verification_review_requested',
-            title: 'Owner verification review requested',
-            body: 'sent an owner verification request for admin review.',
+            title: 'Account verification review requested',
+            body: 'sent an account verification request for admin review.',
             eventKey: `owner_verification_review_requested:${adminId}:${user.id}:${requestedAt}`,
             pushData: {
               screen: 'ReviewVerify',
@@ -1086,7 +1082,7 @@ export default function VerificationCenterScreen() {
         ownerVerificationChanged && ownerStatus === 'verified' ? 'Update request sent' : 'Request sent',
         ownerVerificationChanged && ownerStatus === 'verified'
           ? 'Your verification changes were sent to the admin panel and are now pending review again.'
-          : 'Your owner verification request is now pending review.'
+          : 'Your account verification request is now pending review.'
       )
       await loadData()
     } catch (error) {
@@ -1196,7 +1192,7 @@ export default function VerificationCenterScreen() {
             Verification center
           </Text>
           <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 20 }}>
-            Help renters trust your profile and listings before they message you.
+            Verify your account so other people can trust who they are speaking with on Rental X.
           </Text>
           <View style={{ marginTop: 10 }}>
             <StatusChip meta={ownerStatusMeta} />
@@ -1229,7 +1225,7 @@ export default function VerificationCenterScreen() {
           }}
         >
           <CollapsibleHeader
-            title="Owner verification"
+            title="Account verification"
             subtitle="Add a reachable phone number, ID details, front and back document photos, and a guided selfie."
             expanded={ownerVerificationExpanded}
             onPress={() => setOwnerVerificationExpanded((current) => !current)}
@@ -1369,13 +1365,14 @@ export default function VerificationCenterScreen() {
                   ? 'Sending request...'
                   : ownerStatus === 'pending'
                     ? 'Update verification request'
-                    : 'Request owner verification'}
+                    : 'Request account verification'}
               </Text>
             </TouchableOpacity>
           </View>
           ) : null}
         </View>
 
+        {isOwner ? (
         <View
           style={{
             backgroundColor: '#fff',
@@ -1419,8 +1416,9 @@ export default function VerificationCenterScreen() {
             ))
           )}
         </View>
+        ) : null}
 
-        {verifiedProperties.length ? (
+        {isOwner && verifiedProperties.length ? (
           <View
             style={{
               backgroundColor: '#fff',

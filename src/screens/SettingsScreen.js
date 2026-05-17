@@ -74,28 +74,50 @@ function Field({
   )
 }
 
-function SectionTitle({ children }) {
+function CollapsibleSection({ title, subtitle, icon, expanded, onPress, children }) {
   return (
-    <Text style={{ fontSize: 15, fontWeight: '900', color: '#0f172a', marginBottom: 0 }}>
-      {children}
-    </Text>
-  )
-}
-
-function CollapsibleSection({ title, expanded, onPress, children }) {
-  return (
-    <View>
+    <View style={{ gap: 10 }}>
       <TouchableOpacity
         onPress={onPress}
-        activeOpacity={0.8}
+        activeOpacity={0.86}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: expanded ? 10 : 0,
+          backgroundColor: '#fff',
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: '#e2e8f0',
+          paddingHorizontal: 14,
+          paddingVertical: 13,
         }}
       >
-        <SectionTitle>{title}</SectionTitle>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: '#eff6ff',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 12,
+            }}
+          >
+            <Ionicons name={icon} size={17} color="#2563eb" />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '900', color: '#0f172a' }}>
+              {title}
+            </Text>
+            {subtitle ? (
+              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2, lineHeight: 17 }}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+        </View>
 
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -266,7 +288,7 @@ export default function SettingsScreen({ navigation }) {
   }
 
   const verificationMeta = getVerificationMeta(ownerVerificationStatus, {
-    verifiedLabel: 'Verified owner',
+    verifiedLabel: 'Verified account',
     pendingLabel: 'Verification pending',
     rejectedLabel: 'Update verification info',
     defaultLabel: 'Not verified yet',
@@ -486,17 +508,17 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </View>
 
-            {userType === 'property_owner' ? (
-              <ActionCard
-                icon="shield-checkmark-outline"
-                title="Verification center"
-                subtitle={verificationMeta.label}
-                onPress={() => navigation.navigate('VerificationCenter')}
-              />
-            ) : null}
+            <ActionCard
+              icon="shield-checkmark-outline"
+              title="Verification center"
+              subtitle={verificationMeta.label}
+              onPress={() => navigation.navigate('VerificationCenter')}
+            />
 
             <CollapsibleSection
               title="Profile settings"
+              subtitle="Name, photos, bio, phone, location, and account type."
+              icon="person-outline"
               expanded={profileExpanded}
               onPress={() => setProfileExpanded((current) => !current)}
             >
@@ -587,6 +609,8 @@ export default function SettingsScreen({ navigation }) {
 
             <CollapsibleSection
               title="Notification settings"
+              subtitle="Control message alerts and activity updates."
+              icon="notifications-outline"
               expanded={notificationExpanded}
               onPress={() => setNotificationExpanded((current) => !current)}
             >
@@ -611,6 +635,8 @@ export default function SettingsScreen({ navigation }) {
 
             <CollapsibleSection
               title="Password and security"
+              subtitle="Update login email and password safely."
+              icon="shield-checkmark-outline"
               expanded={securityExpanded}
               onPress={() => setSecurityExpanded((current) => !current)}
             >
