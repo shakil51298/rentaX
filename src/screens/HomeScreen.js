@@ -29,6 +29,7 @@ import { playNotificationSound } from '../lib/sounds'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import CommentItem from '../components/home/CommentItem'
+import Avatar from '../components/common/Avatar'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import {
@@ -1857,21 +1858,33 @@ export default function HomeScreen({ navigation, route }) {
   const showFilteredEmptyState = !showInitialLoader && visibleProperties.length === 0
 
   function CreatePostBox() {
+    const composerName = getUserDisplayName(currentUser) || 'Property owner'
+    const composerPrompt =
+      currentUser?.user_metadata?.user_type === 'property_owner'
+        ? 'Post your rental ad, photos, rent, and location'
+        : 'Share your latest rental update'
+
     return (
-      <View style={{ backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }}>
+      <View
+        style={{
+          backgroundColor: '#fff',
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          marginBottom: 8,
+        }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: '#ddd',
-              alignItems: 'center',
-              justifyContent: 'center',
+          <Avatar
+            profile={{
+              display_name: composerName,
+              email: currentUser?.email,
+              avatar_url: getUserAvatarUrl(currentUser),
             }}
-          >
-            <Ionicons name="person" size={22} color="#666" />
-          </View>
+            name={composerName}
+            size={46}
+            backgroundColor="#dbeafe"
+            textColor="#1d4ed8"
+          />
 
           <TouchableOpacity
             onPress={() => navigation.navigate('CreatePost')}
@@ -1879,17 +1892,31 @@ export default function HomeScreen({ navigation, route }) {
               flex: 1,
               marginLeft: 10,
               borderWidth: 1,
-              borderColor: '#ddd',
-              borderRadius: 25,
+              borderColor: '#dbe4ee',
+              borderRadius: 26,
               paddingVertical: 11,
               paddingHorizontal: 16,
+              backgroundColor: '#f8fafc',
             }}
           >
-            <Text style={{ color: '#555' }}>What's on your mind?</Text>
+            <Text style={{ color: '#475569', fontSize: 14, fontWeight: '700' }}>
+              {composerPrompt}
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.navigate('CreatePost')} style={{ marginLeft: 10 }}>
-            <Ionicons name="images" size={28} color="green" />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreatePost')}
+            style={{
+              marginLeft: 10,
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: '#ecfdf5',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="images" size={22} color="#16a34a" />
           </TouchableOpacity>
         </View>
       </View>
