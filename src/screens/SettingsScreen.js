@@ -41,8 +41,8 @@ function Field({
   autoComplete,
 }) {
   return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 7 }}>
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
         {label}
       </Text>
 
@@ -58,14 +58,16 @@ function Field({
         blurOnSubmit={false}
         autoCorrect={false}
         style={{
-          backgroundColor: '#fff',
+          backgroundColor: '#f8fafc',
           borderWidth: 1,
           borderColor: '#e2e8f0',
-          borderRadius: 12,
-          paddingHorizontal: 14,
+          borderRadius: 14,
+          paddingHorizontal: 13,
           paddingVertical: 12,
-          minHeight: multiline ? 92 : undefined,
+          minHeight: multiline ? 84 : undefined,
           textAlignVertical: multiline ? 'top' : 'center',
+          color: '#0f172a',
+          fontSize: 14,
         }}
       />
     </View>
@@ -74,7 +76,7 @@ function Field({
 
 function SectionTitle({ children }) {
   return (
-    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 12 }}>
+    <Text style={{ fontSize: 15, fontWeight: '900', color: '#0f172a', marginBottom: 0 }}>
       {children}
     </Text>
   )
@@ -90,16 +92,15 @@ function CollapsibleSection({ title, expanded, onPress, children }) {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: expanded ? 12 : 0,
+          marginBottom: expanded ? 10 : 0,
         }}
       >
         <SectionTitle>{title}</SectionTitle>
 
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={20}
+          size={18}
           color="#334155"
-          style={{ marginTop: -10 }}
         />
       </TouchableOpacity>
 
@@ -113,8 +114,8 @@ function SectionCard({ children }) {
     <View
       style={{
         backgroundColor: '#fff',
-        borderRadius: 18,
-        padding: 16,
+        borderRadius: 16,
+        padding: 14,
         borderWidth: 1,
         borderColor: '#e2e8f0',
       }}
@@ -131,10 +132,10 @@ function ActionCard({ icon, title, subtitle, onPress }) {
       activeOpacity={0.86}
       style={{
         backgroundColor: '#fff',
-        borderRadius: 18,
+        borderRadius: 16,
         borderWidth: 1,
         borderColor: '#e2e8f0',
-        padding: 16,
+        padding: 14,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -143,28 +144,28 @@ function ActionCard({ icon, title, subtitle, onPress }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         <View
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: 21,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
             backgroundColor: '#eff6ff',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name={icon} size={22} color="#2563eb" />
+          <Ionicons name={icon} size={18} color="#2563eb" />
         </View>
 
         <View style={{ marginLeft: 12, flex: 1 }}>
-          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 14 }}>
             {title}
           </Text>
-          <Text style={{ color: '#64748b', marginTop: 4 }}>
+          <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12, lineHeight: 17 }}>
             {subtitle}
           </Text>
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={20} color="#64748b" />
+      <Ionicons name="chevron-forward" size={18} color="#64748b" />
     </TouchableOpacity>
   )
 }
@@ -176,12 +177,12 @@ function SettingRow({ title, subtitle, value, onValueChange }) {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 12,
+        paddingVertical: 10,
       }}
     >
       <View style={{ flex: 1, paddingRight: 16 }}>
-        <Text style={{ color: '#111827', fontWeight: '800', fontSize: 15 }}>{title}</Text>
-        <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 18 }}>{subtitle}</Text>
+        <Text style={{ color: '#111827', fontWeight: '800', fontSize: 13 }}>{title}</Text>
+        <Text style={{ color: '#64748b', marginTop: 3, lineHeight: 17, fontSize: 12 }}>{subtitle}</Text>
       </View>
 
       <Switch
@@ -419,76 +420,72 @@ export default function SettingsScreen({ navigation }) {
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: 30 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="none"
           automaticallyAdjustKeyboardInsets
         >
-          <View style={{ backgroundColor: '#fff', paddingBottom: 20 }}>
-            <View style={{ height: 118, backgroundColor: '#1877F2' }}>
-              {coverUrl ? (
-                <Image
-                  source={{ uri: coverUrl }}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="cover"
-                />
-              ) : null}
-            </View>
+          <View style={{ padding: 14, gap: 14 }}>
+            <View
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                padding: 14,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {avatarUrl ? (
+                  <Image
+                    source={{ uri: avatarUrl }}
+                    style={{
+                      width: 60,
+                      height: 60,
+                      borderRadius: 30,
+                      backgroundColor: '#ddd',
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 60,
+                      height: 60,
+                      borderRadius: 30,
+                      backgroundColor: '#dbeafe',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 24, fontWeight: '900', color: '#1d4ed8' }}>
+                      {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
+                    </Text>
+                  </View>
+                )}
 
-            <View style={{ alignItems: 'center', marginTop: -42 }}>
-              {avatarUrl ? (
-                <Image
-                  source={{ uri: avatarUrl }}
-                  style={{
-                    width: 86,
-                    height: 86,
-                    borderRadius: 43,
-                    backgroundColor: '#ddd',
-                    borderWidth: 4,
-                    borderColor: '#fff',
-                  }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: 86,
-                    height: 86,
-                    borderRadius: 43,
-                    backgroundColor: '#dbeafe',
-                    borderWidth: 4,
-                    borderColor: '#fff',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ fontSize: 30, fontWeight: '900', color: '#1d4ed8' }}>
-                    {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+                      {displayName || 'User'}
+                    </Text>
+
+                    {ownerVerificationStatus === 'verified' || isVerified ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#1877F2"
+                        style={{ marginLeft: 6 }}
+                      />
+                    ) : null}
+                  </View>
+
+                  <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                    {user?.email || ''}
                   </Text>
                 </View>
-              )}
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
-                <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827' }}>
-                  {displayName || 'User'}
-                </Text>
-
-                {ownerVerificationStatus === 'verified' || isVerified ? (
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={21}
-                    color="#1877F2"
-                    style={{ marginLeft: 6 }}
-                  />
-                ) : null}
               </View>
-
-              <Text style={{ marginTop: 4, color: '#666' }}>
-                {user?.email || ''}
-              </Text>
             </View>
-          </View>
 
-          <View style={{ padding: 16, gap: 18 }}>
             {userType === 'property_owner' ? (
               <ActionCard
                 icon="shield-checkmark-outline"
@@ -565,8 +562,9 @@ export default function SettingsScreen({ navigation }) {
                           borderRadius: 12,
                           borderWidth: 1,
                           borderColor: isSelected ? '#1877F2' : '#e2e8f0',
-                          backgroundColor: isSelected ? '#eff6ff' : '#fff',
-                          padding: 12,
+                          backgroundColor: isSelected ? '#eff6ff' : '#f8fafc',
+                          paddingVertical: 11,
+                          paddingHorizontal: 10,
                           alignItems: 'center',
                         }}
                       >
@@ -574,6 +572,7 @@ export default function SettingsScreen({ navigation }) {
                           style={{
                             color: isSelected ? '#1877F2' : '#475569',
                             fontWeight: '800',
+                            fontSize: 12,
                             textAlign: 'center',
                           }}
                         >
@@ -649,14 +648,14 @@ export default function SettingsScreen({ navigation }) {
                 <View
                   style={{
                     backgroundColor: '#f8fafc',
-                    borderRadius: 12,
+                    borderRadius: 14,
                     padding: 12,
                     borderWidth: 1,
                     borderColor: '#e2e8f0',
-                    marginBottom: 14,
+                    marginBottom: 12,
                   }}
                 >
-                  <Text style={{ color: '#475569', lineHeight: 20 }}>
+                  <Text style={{ color: '#475569', lineHeight: 18, fontSize: 12 }}>
                     Email changes may need inbox confirmation. Password updates apply after saving here.
                   </Text>
                 </View>
@@ -667,43 +666,54 @@ export default function SettingsScreen({ navigation }) {
                   style={{
                     backgroundColor: securitySaving ? '#8bbcf7' : '#1877F2',
                     borderRadius: 14,
-                    paddingVertical: 15,
+                    paddingVertical: 13,
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '900' }}>
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>
                     {securitySaving ? 'Updating...' : 'Update security'}
                   </Text>
                 </TouchableOpacity>
               </SectionCard>
             </CollapsibleSection>
 
-            <TouchableOpacity
-              onPress={saveProfile}
-              disabled={saving}
+            <View
               style={{
-                backgroundColor: saving ? '#8bbcf7' : '#1877F2',
-                borderRadius: 14,
-                paddingVertical: 15,
-                alignItems: 'center',
+                backgroundColor: '#fff',
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                padding: 12,
+                gap: 10,
               }}
             >
-              <Text style={{ color: '#fff', fontWeight: '900' }}>
-                {saving ? 'Saving...' : 'Save settings'}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={saveProfile}
+                disabled={saving}
+                style={{
+                  backgroundColor: saving ? '#8bbcf7' : '#1877F2',
+                  borderRadius: 14,
+                  paddingVertical: 13,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>
+                  {saving ? 'Saving...' : 'Save settings'}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={logout}
-              style={{
-                backgroundColor: '#111',
-                paddingVertical: 15,
-                borderRadius: 14,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '800' }}>Logout</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={logout}
+                style={{
+                  backgroundColor: '#111827',
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Logout</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

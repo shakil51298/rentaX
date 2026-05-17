@@ -49,6 +49,13 @@ import {
   rankHomePosts,
   saveSeenHomePostIds,
 } from '../lib/homeFeed'
+import {
+  buildPostSignalWeights,
+  buildSearchSignalWeights,
+  loadFeedSignalProfile,
+  mergeFeedSignalProfile,
+  saveFeedSignalProfile,
+} from '../lib/feedSignals'
 import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
 import { ensureUserProfileRecord } from '../lib/profileSync'
@@ -508,6 +515,7 @@ export default function HomeScreen({ navigation, route }) {
   const [draftSearchQuery, setDraftSearchQuery] = useState('')
   const [recentSearches, setRecentSearches] = useState([])
   const [seenPostIds, setSeenPostIds] = useState([])
+  const [feedSignalProfile, setFeedSignalProfile] = useState({ tokens: {}, updatedAt: null })
   const [feedRefreshTick, setFeedRefreshTick] = useState(0)
   const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
   const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
@@ -557,8 +565,9 @@ export default function HomeScreen({ navigation, route }) {
         seenPostIds,
         userId: currentUser?.id || currentUser?.email || 'guest',
         refreshTick: feedRefreshTick,
+        signalProfile: feedSignalProfile,
       }),
-    [currentUser?.email, currentUser?.id, defaultLocationArea, feedRefreshTick, properties, seenPostIds]
+    [currentUser?.email, currentUser?.id, defaultLocationArea, feedRefreshTick, feedSignalProfile, properties, seenPostIds]
   )
 
   const filteredProperties = useMemo(() => {
@@ -735,6 +744,31 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     hydrateSeenPosts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentUser?.id])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function hydrateFeedSignals() {
+      if (!currentUser?.id) {
+        if (isMounted) {
+          setFeedSignalProfile({ tokens: {}, updatedAt: null })
+        }
+        return
+      }
+
+      const cachedSignals = await loadFeedSignalProfile(currentUser.id)
+
+      if (isMounted) {
+        setFeedSignalProfile(cachedSignals)
+      }
+    }
+
+    hydrateFeedSignals()
 
     return () => {
       isMounted = false
@@ -1116,6 +1150,14 @@ export default function HomeScreen({ navigation, route }) {
     await saveSeenHomePostIds(currentUser.id, nextSeenIds)
   }
 
+  async function recordFeedSignal(tokenWeights) {
+    if (!currentUser?.id) return
+
+    const nextProfile = mergeFeedSignalProfile(feedSignalProfile, tokenWeights)
+    setFeedSignalProfile(nextProfile)
+    await saveFeedSignalProfile(currentUser.id, nextProfile)
+  }
+
   async function refreshHomeFeed({ scrollToTop = false } = {}) {
     setFeedRefreshTick((current) => current + 1)
     await loadProperties()
@@ -1196,6 +1238,9 @@ export default function HomeScreen({ navigation, route }) {
     const cleanedValue = (value || '').trim()
     setAppliedSearchQuery(cleanedValue)
     rememberSearch(cleanedValue)
+    if (cleanedValue) {
+      recordFeedSignal(buildSearchSignalWeights(cleanedValue, 4))
+    }
     closeSearch()
   }
 
@@ -1206,6 +1251,8 @@ export default function HomeScreen({ navigation, route }) {
 
   function openSearchResult(post) {
     rememberSearch(draftSearchQuery)
+    markPostsAsSeen([post.id])
+    recordFeedSignal(buildPostSignalWeights(post, 3))
     closeSearch()
     navigation.navigate('Property', { property: post })
   }
@@ -1307,6 +1354,9 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     updateLocalReaction(propertyId, '👍')
+    if (post) {
+      recordFeedSignal(buildPostSignalWeights(post, 5))
+    }
     await createNotification({
       recipientId: post?.owner_id,
       actorId: currentUser.id,
@@ -1724,6 +1774,8 @@ export default function HomeScreen({ navigation, route }) {
         user_id: currentUser.id,
       })
 
+      recordFeedSignal(buildPostSignalWeights(post, 7))
+
       setProperties((oldPosts) =>
         oldPosts.map((item) => {
           if (item.id !== post.id) return item
@@ -1837,6 +1889,7 @@ export default function HomeScreen({ navigation, route }) {
       onOpenOwnerProfile={openOwnerProfile}
       onOpenPost={(post) => {
         markPostsAsSeen([post.id])
+        recordFeedSignal(buildPostSignalWeights(post, 3))
         navigation.navigate('Property', { property: post })
       }}
     />
