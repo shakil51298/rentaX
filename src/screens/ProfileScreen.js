@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
+import { fetchUserSocialCounts } from '../lib/social'
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -69,6 +70,13 @@ export default function ProfileScreen({ navigation }) {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [email, setEmail] = useState('')
+  const [currentUserId, setCurrentUserId] = useState(null)
+  const [socialCounts, setSocialCounts] = useState({
+    posts: 0,
+    followers: 0,
+    following: 0,
+    blocked: 0,
+  })
 
   const loadProfile = useCallback(async () => {
     setLoading(true)
@@ -78,11 +86,14 @@ export default function ProfileScreen({ navigation }) {
     } = await supabase.auth.getUser()
 
     if (!user?.id) {
+      setCurrentUserId(null)
       setProfile(null)
       setEmail('')
       setLoading(false)
       return
     }
+
+    setCurrentUserId(user.id)
 
     const metadata = user.user_metadata || {}
     const fallbackProfile = {
@@ -98,10 +109,16 @@ export default function ProfileScreen({ navigation }) {
       .eq('user_id', user.id)
       .maybeSingle()
 
-    setProfile({
-      ...fallbackProfile,
-      ...(dbProfile || {}),
-    })
+    const [counts, nextProfile] = await Promise.all([
+      fetchUserSocialCounts(user.id),
+      Promise.resolve({
+        ...fallbackProfile,
+        ...(dbProfile || {}),
+      }),
+    ])
+
+    setProfile(nextProfile)
+    setSocialCounts(counts)
     setEmail(user.email || '')
     setLoading(false)
   }, [])
@@ -115,6 +132,17 @@ export default function ProfileScreen({ navigation }) {
   const displayName = profile?.display_name || displayNameFromEmail(email)
   const avatarUrl = profile?.avatar_url || null
   const coverUrl = profile?.cover_url || null
+
+  function openConnections(kind) {
+    if (!currentUserId) return
+
+    navigation.navigate('Connections', {
+      userId: currentUserId,
+      kind,
+      title: kind === 'following' ? 'Following' : 'Followers',
+      isOwnProfile: true,
+    })
+  }
 
   if (loading) {
     return (
@@ -145,6 +173,29 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={{ alignItems: 'center', marginTop: -42, paddingHorizontal: 18 }}>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('BlockList')}
+                  style={{
+                    position: 'absolute',
+                    right: 18,
+                    top: 0,
+                    zIndex: 5,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#fff',
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: '#dbe4ee',
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                  }}
+                >
+                  <Ionicons name="ban-outline" size={15} color="#dc2626" />
+                  <Text style={{ color: '#dc2626', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                    Block list {socialCounts.blocked ? `(${socialCounts.blocked})` : ''}
+                  </Text>
+                </TouchableOpacity>
+
                 {avatarUrl ? (
                   <Image
                     source={{ uri: avatarUrl }}
@@ -194,6 +245,72 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={{ marginTop: 4, color: '#64748b' }}>
                   {email}
                 </Text>
+
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    width: '100%',
+                    marginTop: 18,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      paddingVertical: 14,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>
+                      {socialCounts.posts}
+                    </Text>
+                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                      Posts
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => openConnections('followers')}
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      paddingVertical: 14,
+                      backgroundColor: '#fff',
+                      borderLeftWidth: 1,
+                      borderLeftColor: '#e2e8f0',
+                    }}
+                  >
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>
+                      {socialCounts.followers}
+                    </Text>
+                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                      Followers
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => openConnections('following')}
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      paddingVertical: 14,
+                      backgroundColor: '#fff',
+                      borderLeftWidth: 1,
+                      borderLeftColor: '#e2e8f0',
+                    }}
+                  >
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>
+                      {socialCounts.following}
+                    </Text>
+                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                      Following
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 

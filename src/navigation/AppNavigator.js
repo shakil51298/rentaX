@@ -17,6 +17,8 @@ import SettingsScreen from '../screens/SettingsScreen'
 import AdsManagementScreen from '../screens/AdsManagementScreen'
 import AudioCallScreen from '../screens/AudioCallScreen'
 import LocationScreen from '../screens/LocationScreen'
+import ConnectionsScreen from '../screens/ConnectionsScreen'
+import BlockListScreen from '../screens/BlockListScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -186,6 +188,16 @@ export default function AppNavigator() {
         />
         <Stack.Screen name="Favorite" component={FavoriteScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen
+          name="Connections"
+          component={ConnectionsScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="BlockList"
+          component={BlockListScreen}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="Location"
           component={LocationScreen}

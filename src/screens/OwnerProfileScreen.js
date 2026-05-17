@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import { createNotification } from '../lib/notifications'
+import { blockUser, fetchUserSocialCounts } from '../lib/social'
 
 function displayNameFromEmail(email) {
   if (!email) return 'Rental X member'
@@ -108,11 +109,6 @@ export default function OwnerProfileScreen({ route, navigation }) {
       .select('*', { count: 'exact', head: true })
       .eq('following_id', ownerId)
 
-    const { count: followingCount } = await supabase
-      .from('user_follows')
-      .select('*', { count: 'exact', head: true })
-      .eq('follower_id', ownerId)
-
     if (user && user.id !== ownerId) {
       const { data: followData } = await supabase
         .from('user_follows')
@@ -126,8 +122,10 @@ export default function OwnerProfileScreen({ route, navigation }) {
 
     setProfile(profileData || null)
     setPosts(postData || [])
-    setFollowers(followersCount || 0)
-    setFollowing(followingCount || 0)
+    const counts = await fetchUserSocialCounts(ownerId)
+
+    setFollowers(followersCount || counts.followers || 0)
+    setFollowing(counts.following || 0)
     setLoading(false)
   }, [ownerId])
 
@@ -175,6 +173,32 @@ export default function OwnerProfileScreen({ route, navigation }) {
       body: 'started following you',
       eventKey: `user_follow:${ownerId}:${currentUser.id}`,
     })
+  }
+
+  async function handleBlockOwner() {
+    if (!currentUser?.id || !ownerId || currentUser.id === ownerId) return
+
+    Alert.alert(
+      'Block this user?',
+      'They will be moved to your block list and any follow connection between you will be removed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await blockUser(currentUser.id, ownerId)
+
+            if (error) {
+              Alert.alert('Block failed', error.message)
+              return
+            }
+
+            navigation.goBack()
+          },
+        },
+      ]
+    )
   }
 
   function renderPost({ item }) {
@@ -269,15 +293,35 @@ export default function OwnerProfileScreen({ route, navigation }) {
                     <Text style={{ color: '#64748b', fontSize: 12 }}>Posts</Text>
                   </View>
 
-                  <View style={{ flex: 1 }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('Connections', {
+                        userId: ownerId,
+                        kind: 'followers',
+                        title: 'Followers',
+                        isOwnProfile,
+                      })
+                    }
+                    style={{ flex: 1 }}
+                  >
                     <Text style={{ fontWeight: '900', fontSize: 18 }}>{followers}</Text>
                     <Text style={{ color: '#64748b', fontSize: 12 }}>Followers</Text>
-                  </View>
+                  </TouchableOpacity>
 
-                  <View style={{ flex: 1 }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('Connections', {
+                        userId: ownerId,
+                        kind: 'following',
+                        title: 'Following',
+                        isOwnProfile,
+                      })
+                    }
+                    style={{ flex: 1 }}
+                  >
                     <Text style={{ fontWeight: '900', fontSize: 18 }}>{following}</Text>
                     <Text style={{ color: '#64748b', fontSize: 12 }}>Following</Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
@@ -314,7 +358,22 @@ export default function OwnerProfileScreen({ route, navigation }) {
                     <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 6 }}>
                       Message
                     </Text>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+
+                  {!isOwnProfile ? (
+                    <TouchableOpacity
+                      onPress={handleBlockOwner}
+                      style={{
+                        width: 50,
+                        backgroundColor: '#fef2f2',
+                        borderRadius: 10,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="ban-outline" size={18} color="#dc2626" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             </View>
