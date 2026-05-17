@@ -186,7 +186,11 @@ export default function AppNavigator() {
           component={AudioCallScreen}
           options={{ headerShown: false }}
         />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="Notifications"
           component={NotificationsScreen}

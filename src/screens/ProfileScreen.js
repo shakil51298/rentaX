@@ -243,7 +243,7 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['top', 'left', 'right', 'bottom']}>
       <SwipeTabView navigation={navigation} activeTab="profile">
         <View style={{ flex: 1 }}>
           <ScrollView
@@ -251,8 +251,8 @@ export default function ProfileScreen({ navigation }) {
             contentContainerStyle={{ paddingBottom: 140 }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={{ backgroundColor: '#fff', paddingBottom: 22 }}>
-              <View style={{ height: 132, backgroundColor: '#1877F2' }}>
+            <View style={{ backgroundColor: '#fff', paddingBottom: 18 }}>
+              <View style={{ height: 96, backgroundColor: '#1877F2' }}>
                 {coverUrl ? (
                   <Image
                     source={{ uri: coverUrl }}
@@ -262,14 +262,14 @@ export default function ProfileScreen({ navigation }) {
                 ) : null}
               </View>
 
-              <View style={{ alignItems: 'center', marginTop: -42, paddingHorizontal: 18 }}>
+              <View style={{ alignItems: 'center', marginTop: -30, paddingHorizontal: 18 }}>
                 {avatarUrl ? (
                   <Image
                     source={{ uri: avatarUrl }}
                     style={{
-                      width: 88,
-                      height: 88,
-                      borderRadius: 44,
+                      width: 76,
+                      height: 76,
+                      borderRadius: 38,
                       backgroundColor: '#ddd',
                       borderWidth: 4,
                       borderColor: '#fff',
@@ -278,9 +278,9 @@ export default function ProfileScreen({ navigation }) {
                 ) : (
                   <View
                     style={{
-                      width: 88,
-                      height: 88,
-                      borderRadius: 44,
+                      width: 76,
+                      height: 76,
+                      borderRadius: 38,
                       backgroundColor: '#dbeafe',
                       borderWidth: 4,
                       borderColor: '#fff',
@@ -288,28 +288,28 @@ export default function ProfileScreen({ navigation }) {
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 30, fontWeight: '900', color: '#1d4ed8' }}>
+                    <Text style={{ fontSize: 26, fontWeight: '900', color: '#1d4ed8' }}>
                       {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
                     </Text>
                   </View>
                 )}
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
-                  <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: '#111827' }}>
                     {displayName || 'User'}
                   </Text>
 
                   {isVerifiedOwner ? (
                     <Ionicons
                       name="checkmark-circle"
-                      size={20}
+                      size={18}
                       color="#1877F2"
                       style={{ marginLeft: 6 }}
                     />
                   ) : null}
                 </View>
 
-                <Text style={{ marginTop: 4, color: '#64748b' }}>
+                <Text style={{ marginTop: 3, color: '#64748b', fontSize: 13 }}>
                   {email}
                 </Text>
 
@@ -317,7 +317,7 @@ export default function ProfileScreen({ navigation }) {
                   style={{
                     flexDirection: 'row',
                     width: '100%',
-                    marginTop: 18,
+                    marginTop: 14,
                     borderWidth: 1,
                     borderColor: '#e2e8f0',
                     borderRadius: 18,
