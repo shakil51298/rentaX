@@ -264,7 +264,7 @@ export default function NotificationsScreen({ navigation }) {
       notification.type === 'owner_verification_review_requested'
       || notification.type === 'property_verification_review_requested'
     ) {
-      navigation.navigate('AdminPanel')
+      navigation.navigate('ReviewVerify')
       return
     }
 

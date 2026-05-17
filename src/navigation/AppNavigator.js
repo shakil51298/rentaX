@@ -21,6 +21,8 @@ import ConnectionsScreen from '../screens/ConnectionsScreen'
 import BlockListScreen from '../screens/BlockListScreen'
 import VerificationCenterScreen from '../screens/VerificationCenterScreen'
 import AdminPanelScreen from '../screens/AdminPanelScreen'
+import ReviewVerifyScreen from '../screens/ReviewVerifyScreen'
+import AdminUsersScreen from '../screens/AdminUsersScreen'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
@@ -199,6 +201,16 @@ export default function AppNavigator() {
           name="AdminPanel"
           component={AdminPanelScreen}
           options={{ title: 'Admin panel' }}
+        />
+        <Stack.Screen
+          name="ReviewVerify"
+          component={ReviewVerifyScreen}
+          options={{ title: 'Review Verify' }}
+        />
+        <Stack.Screen
+          name="AdminUsers"
+          component={AdminUsersScreen}
+          options={{ title: 'Total Users' }}
         />
         <Stack.Screen
           name="Connections"

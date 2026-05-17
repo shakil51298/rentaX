@@ -216,6 +216,11 @@ export function routeFromNotificationData(navigation, payload = {}) {
     return
   }
 
+  if (type === 'owner_verification_review_requested' || type === 'property_verification_review_requested') {
+    navigation.navigate('ReviewVerify')
+    return
+  }
+
   if (type === 'owner_verification_approved') {
     navigation.navigate('VerificationCenter')
     return

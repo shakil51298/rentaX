@@ -1076,7 +1076,7 @@ export default function VerificationCenterScreen() {
             body: 'sent an owner verification request for admin review.',
             eventKey: `owner_verification_review_requested:${adminId}:${user.id}:${requestedAt}`,
             pushData: {
-              screen: 'AdminPanel',
+              screen: 'ReviewVerify',
             },
           })
         )
@@ -1157,7 +1157,7 @@ export default function VerificationCenterScreen() {
           body: `requested review for ${post.title || 'a property listing'}.`,
           eventKey: `property_verification_review_requested:${adminId}:${user.id}:${post.id}:${requestedAt}`,
           pushData: {
-            screen: 'AdminPanel',
+            screen: 'ReviewVerify',
           },
         })
       )
