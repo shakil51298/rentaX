@@ -858,6 +858,38 @@ export default function VerificationCenterScreen() {
     ]
   )
 
+  const ownerVerificationChanged = useMemo(() => {
+    const currentPhone = (profile?.owner_verification_phone || profile?.phone || '').trim()
+    const currentIdType = profile?.owner_verification_id_type || 'national_id'
+    const currentLast4 = (profile?.owner_verification_id_last4 || '').trim()
+    const currentFrontPath = profile?.owner_verification_document_front_path || ''
+    const currentBackPath = profile?.owner_verification_document_back_path || ''
+    const currentSelfiePath = profile?.owner_verification_selfie_path || ''
+
+    return (
+      phone.trim() !== currentPhone ||
+      idType !== currentIdType ||
+      idLast4.trim() !== currentLast4 ||
+      (getPrivateMediaPath(documentFront) || '') !== currentFrontPath ||
+      (getPrivateMediaPath(documentBack) || '') !== currentBackPath ||
+      (getPrivateMediaPath(selfieAsset) || '') !== currentSelfiePath
+    )
+  }, [
+    documentBack,
+    documentFront,
+    idLast4,
+    idType,
+    phone,
+    profile?.owner_verification_document_back_path,
+    profile?.owner_verification_document_front_path,
+    profile?.owner_verification_id_last4,
+    profile?.owner_verification_id_type,
+    profile?.owner_verification_phone,
+    profile?.owner_verification_selfie_path,
+    profile?.phone,
+    selfieAsset,
+  ])
+
   useEffect(() => {
     if (!checkpointItems.length) return undefined
 
@@ -946,6 +978,37 @@ export default function VerificationCenterScreen() {
       Alert.alert('Daily retry limit reached', 'You can submit verification up to 3 times in one day. Please try again tomorrow.')
       return
     }
+    if (ownerStatus === 'verified' && !ownerVerificationChanged) {
+      Alert.alert(
+        'No new verification changes',
+        'Update your phone, ID details, or proof photos first if you want to send a new review request to the admin panel.'
+      )
+      return
+    }
+
+    if (ownerStatus === 'verified' && ownerVerificationChanged) {
+      Alert.alert(
+        'Send verification update?',
+        'Your verified blue badge will be removed until the admin reviews and approves your updated information again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Continue',
+            style: 'default',
+            onPress: () => {
+              continueOwnerVerificationSubmit()
+            },
+          },
+        ]
+      )
+      return
+    }
+
+    continueOwnerVerificationSubmit()
+  }
+
+  async function continueOwnerVerificationSubmit() {
+    if (!user?.id) return
 
     setSavingOwner(true)
 
@@ -966,6 +1029,7 @@ export default function VerificationCenterScreen() {
         user_id: user.id,
         email: user.email,
         phone: phone.trim(),
+        is_verified: false,
         owner_verification_status: 'pending',
         owner_verification_requested_at: new Date().toISOString(),
         owner_verification_reviewed_at: null,
@@ -988,7 +1052,12 @@ export default function VerificationCenterScreen() {
         throw error
       }
 
-      Alert.alert('Request sent', 'Your owner verification request is now pending review.')
+      Alert.alert(
+        ownerVerificationChanged && ownerStatus === 'verified' ? 'Update request sent' : 'Request sent',
+        ownerVerificationChanged && ownerStatus === 'verified'
+          ? 'Your verification changes were sent to the admin panel and are now pending review again.'
+          : 'Your owner verification request is now pending review.'
+      )
       await loadData()
     } catch (error) {
       Alert.alert(
