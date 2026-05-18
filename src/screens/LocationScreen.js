@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -24,6 +25,9 @@ const DEFAULT_REGION = {
   latitudeDelta: 0.12,
   longitudeDelta: 0.12,
 }
+
+const HAS_ANDROID_GOOGLE_MAPS_KEY =
+  Platform.OS !== 'android' || Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
 
 export default function LocationScreen({ navigation, route }) {
   const mapRef = useRef(null)
@@ -363,24 +367,90 @@ export default function LocationScreen({ navigation, route }) {
           </View>
         ) : (
           <>
-            <MapView
-              ref={mapRef}
-              style={{ flex: 1 }}
-              initialRegion={initialRegion}
-              onMapReady={() => setMapReady(true)}
-              onPress={handleMapPick}
-              showsUserLocation
-              showsMyLocationButton={false}
-              toolbarEnabled={false}
-            >
-              {selectedCoords ? (
-                <Marker
-                  coordinate={selectedCoords}
-                  draggable
-                  onDragEnd={(event) => handleMapPick(event)}
-                />
-              ) : null}
-            </MapView>
+            {HAS_ANDROID_GOOGLE_MAPS_KEY ? (
+              <MapView
+                ref={mapRef}
+                style={{ flex: 1 }}
+                initialRegion={initialRegion}
+                onMapReady={() => setMapReady(true)}
+                onPress={handleMapPick}
+                showsUserLocation
+                showsMyLocationButton={false}
+                toolbarEnabled={false}
+              >
+                {selectedCoords ? (
+                  <Marker
+                    coordinate={selectedCoords}
+                    draggable
+                    onDragEnd={(event) => handleMapPick(event)}
+                  />
+                ) : null}
+              </MapView>
+            ) : (
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#f8fafc',
+                  paddingHorizontal: 18,
+                  justifyContent: 'center',
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: '#fff',
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    padding: 18,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: '#eff6ff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Ionicons name="map-outline" size={22} color="#2563eb" />
+                  </View>
+
+                  <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>
+                    Map setup needed for installed Android app
+                  </Text>
+                  <Text style={{ color: '#64748b', lineHeight: 20, marginTop: 8 }}>
+                    This APK does not have a Google Maps API key yet. Search and current-location still work here, and the app should stop closing on open.
+                  </Text>
+                  <Text style={{ color: '#64748b', lineHeight: 20, marginTop: 8 }}>
+                    Add `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`, rebuild the app, and the full map will show in installed builds too.
+                  </Text>
+
+                  {selectedCoords ? (
+                    <View
+                      style={{
+                        marginTop: 14,
+                        backgroundColor: '#f8fafc',
+                        borderRadius: 14,
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ color: '#0f172a', fontWeight: '800' }}>
+                        Current selection
+                      </Text>
+                      <Text style={{ color: '#475569', marginTop: 5 }}>
+                        {selectedLabel}
+                      </Text>
+                      <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                        {selectedCoords.latitude.toFixed(5)}, {selectedCoords.longitude.toFixed(5)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            )}
 
             <TouchableOpacity
               onPress={handleUseCurrentLocation}

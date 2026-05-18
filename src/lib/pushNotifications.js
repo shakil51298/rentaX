@@ -5,16 +5,43 @@ import { supabase } from './supabase'
 
 let warnedAboutExpoGo = false
 
+const CHAT_NOTIFICATION_TYPES = new Set(['chat_message'])
+const OFFER_NOTIFICATION_TYPES = new Set([
+  'offer',
+  'offers',
+  'promotion',
+  'promotional_offer',
+  'announcement',
+  'campaign',
+])
+const ADMIN_NOTIFICATION_TYPES = new Set([
+  'owner_verification_review_requested',
+  'property_verification_review_requested',
+  'user_report_submitted',
+  'property_report_submitted',
+])
+
+function getNotificationChannelId(type) {
+  if (CHAT_NOTIFICATION_TYPES.has(type)) return 'messages'
+  if (OFFER_NOTIFICATION_TYPES.has(type)) return 'offers'
+  if (ADMIN_NOTIFICATION_TYPES.has(type)) return 'admin'
+  return 'activity'
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const type = notification?.request?.content?.data?.type
-    const isChatMessage = type === 'chat_message'
+    const channelId = getNotificationChannelId(type)
 
     return {
-      shouldPlaySound: false,
+      shouldPlaySound: true,
       shouldSetBadge: true,
-      shouldShowBanner: !isChatMessage,
-      shouldShowList: !isChatMessage,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      priority:
+        channelId === 'messages' || channelId === 'admin'
+          ? Notifications.AndroidNotificationPriority.MAX
+          : Notifications.AndroidNotificationPriority.DEFAULT,
     }
   },
 })
@@ -22,12 +49,65 @@ Notifications.setNotificationHandler({
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return
 
-  await Notifications.setNotificationChannelAsync('default', {
-    name: 'default',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#1877F2',
-  })
+  const channels = [
+    {
+      id: 'default',
+      name: 'General',
+      description: 'General Rental X updates',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 200, 150, 200],
+      lightColor: '#1877F2',
+    },
+    {
+      id: 'activity',
+      name: 'Activity',
+      description: 'Likes, comments, verification, and account activity',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 220, 180, 220],
+      lightColor: '#1877F2',
+    },
+    {
+      id: 'messages',
+      name: 'Messages',
+      description: 'Direct messages and chat updates',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 200, 250],
+      lightColor: '#34C759',
+    },
+    {
+      id: 'offers',
+      name: 'Offers',
+      description: 'Offers, promotions, and special announcements',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 180, 120, 180],
+      lightColor: '#F59E0B',
+    },
+    {
+      id: 'admin',
+      name: 'Admin reviews',
+      description: 'Urgent moderation and verification review requests',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 280, 180, 280],
+      lightColor: '#EF4444',
+    },
+  ]
+
+  await Promise.all(
+    channels.map((channel) =>
+      Notifications.setNotificationChannelAsync(channel.id, {
+        name: channel.name,
+        description: channel.description,
+        importance: channel.importance,
+        vibrationPattern: channel.vibrationPattern,
+        lightColor: channel.lightColor,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+        sound: 'default',
+      })
+    )
+  )
 }
 
 function getProjectId() {
@@ -155,12 +235,17 @@ export async function sendPushToUser({ recipientId, title, body, data }) {
   if (!recipientId) return
 
   try {
+    const type = data?.type
+
     await supabase.functions.invoke('send-push-notification', {
       body: {
         recipientId,
         title,
         body,
-        data: data || {},
+        data: {
+          ...(data || {}),
+          channelId: data?.channelId || getNotificationChannelId(type),
+        },
       },
     })
   } catch (error) {

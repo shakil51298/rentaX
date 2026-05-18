@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import * as Notifications from 'expo-notifications'
-import { ActivityIndicator, View } from 'react-native'
+import { ActivityIndicator, AppState, View } from 'react-native'
 
 import LoginScreen from '../screens/LoginScreen'
 import HomeScreen from '../screens/HomeScreen'
@@ -54,6 +54,12 @@ function NotificationCoordinator({ onOpenNotification }) {
 
     syncPushToken()
 
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        syncPushToken()
+      }
+    })
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -63,6 +69,7 @@ function NotificationCoordinator({ onOpenNotification }) {
     })
 
     return () => {
+      appStateSubscription.remove()
       subscription.unsubscribe()
     }
   }, [])

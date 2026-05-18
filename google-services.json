@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "871689136291",
+    "project_id": "rentalx-8026c",
+    "storage_bucket": "rentalx-8026c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:871689136291:android:32455524394b083a337716",
+        "android_client_info": {
+          "package_name": "com.zikaiwe02.rentalx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDd9-UCmQ04SmR_EBCJrjHAvm2px90RWHo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

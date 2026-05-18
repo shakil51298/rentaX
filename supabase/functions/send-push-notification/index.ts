@@ -12,6 +12,36 @@ type PushRequest = {
   data?: Record<string, unknown>
 }
 
+function getChannelId(type?: string, requestedChannelId?: string) {
+  if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
+    return requestedChannelId
+  }
+
+  if (type === 'chat_message') return 'messages'
+
+  if (
+    type === 'owner_verification_review_requested'
+    || type === 'property_verification_review_requested'
+    || type === 'user_report_submitted'
+    || type === 'property_report_submitted'
+  ) {
+    return 'admin'
+  }
+
+  if (
+    type === 'offer'
+    || type === 'offers'
+    || type === 'promotion'
+    || type === 'promotional_offer'
+    || type === 'announcement'
+    || type === 'campaign'
+  ) {
+    return 'offers'
+  }
+
+  return 'activity'
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -105,13 +135,18 @@ Deno.serve(async (request) => {
     })
   }
 
+  const channelId = getChannelId(
+    typeof payload.data?.type === 'string' ? payload.data.type : undefined,
+    typeof payload.data?.channelId === 'string' ? payload.data.channelId : undefined
+  )
+
   const messages = pushTokens.map((item) => ({
     to: item.expo_push_token,
     sound: 'default',
     title: payload.title,
     body: payload.body,
     data: payload.data || {},
-    channelId: 'default',
+    channelId,
     priority: 'high',
   }))
 
