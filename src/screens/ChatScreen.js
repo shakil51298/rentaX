@@ -58,6 +58,15 @@ import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/use
 
 const EMPTY_ROUTE_PARAMS = {}
 
+function normalizeMeteringLevel(metering) {
+  if (typeof metering !== 'number' || Number.isNaN(metering)) {
+    return 0.18
+  }
+
+  const clamped = Math.max(-60, Math.min(0, metering))
+  return Math.max(0.12, (clamped + 60) / 60)
+}
+
 function getConversationDeletionField(conversation, userId) {
   if (!conversation || !userId) return null
 
@@ -214,7 +223,10 @@ export default function ChatScreen({ route, navigation }) {
   const handledCapturedAssetNonceRef = useRef(null)
   const composerFocusAnim = useRef(new Animated.Value(0)).current
   const recordingPulseAnim = useRef(new Animated.Value(0)).current
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
+  const audioRecorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  })
   const recorderState = useAudioRecorderState(audioRecorder)
   const insets = useSafeAreaInsets()
   const routeParams = route.params || EMPTY_ROUTE_PARAMS
@@ -234,6 +246,7 @@ export default function ChatScreen({ route, navigation }) {
   const [uploading, setUploading] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
   const [pendingVoiceNote, setPendingVoiceNote] = useState(null)
+  const [recordingWaveform, setRecordingWaveform] = useState([])
   const [openedFromList, setOpenedFromList] = useState(false)
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [replyTarget, setReplyTarget] = useState(null)
@@ -589,6 +602,16 @@ export default function ChatScreen({ route, navigation }) {
       recordingPulseAnim.setValue(0)
     }
   }, [recordingPulseAnim, recorderState?.isRecording])
+
+  useEffect(() => {
+    if (!recorderState?.isRecording) return
+
+    setRecordingWaveform((current) => {
+      const nextLevel = normalizeMeteringLevel(recorderState?.metering)
+      const next = [...current, nextLevel]
+      return next.slice(-18)
+    })
+  }, [recorderState?.isRecording, recorderState?.metering])
 
   useEffect(() => {
     const capturedAsset = route?.params?.capturedChatAsset
@@ -1028,6 +1051,7 @@ export default function ChatScreen({ route, navigation }) {
         // ignore preview player pause issues
       }
       setPendingVoiceNote(null)
+      setRecordingWaveform([])
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
@@ -1059,7 +1083,9 @@ export default function ChatScreen({ route, navigation }) {
       setPendingVoiceNote({
         uri,
         durationMillis,
+        waveformLevels: recordingWaveform.length ? recordingWaveform : [0.2, 0.32, 0.28, 0.42, 0.24, 0.38],
       })
+      setRecordingWaveform([])
     } catch (error) {
       Alert.alert('Voice message failed', error.message)
     }
@@ -1976,30 +2002,23 @@ export default function ChatScreen({ route, navigation }) {
                 Recording {formatDuration(recorderState.durationMillis)}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 5 }}>
-                {[9, 15, 11, 18, 13, 22, 14, 19, 12].map((barHeight, index) => (
-                  <Animated.View
-                    key={`recording-bar-${index}`}
-                    style={{
-                      width: 5,
-                      height: barHeight,
-                      borderRadius: 999,
-                      marginRight: index === 8 ? 0 : 3,
-                      backgroundColor: '#ef4444',
-                      opacity: recordingPulseAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.45 + (index % 3) * 0.08, 0.95],
-                      }),
-                      transform: [
-                        {
-                          scaleY: recordingPulseAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.72 + (index % 2) * 0.05, 1.08],
-                          }),
-                        },
-                      ],
-                    }}
-                  />
-                ))}
+                {(recordingWaveform.length ? recordingWaveform : [0.18, 0.24, 0.2, 0.3, 0.16, 0.22]).map((level, index, items) => {
+                  const barHeight = 8 + Math.round(level * 20)
+
+                  return (
+                    <View
+                      key={`recording-bar-${index}`}
+                      style={{
+                        width: 5,
+                        height: barHeight,
+                        borderRadius: 999,
+                        marginRight: index === items.length - 1 ? 0 : 3,
+                        backgroundColor: '#ef4444',
+                        opacity: 0.9,
+                      }}
+                    />
+                  )
+                })}
               </View>
             </View>
             <Text style={{ color: '#991b1b', marginLeft: 10, fontWeight: '700' }}>
@@ -2051,7 +2070,7 @@ export default function ChatScreen({ route, navigation }) {
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 10 }}>
-              {[10, 16, 12, 20, 14, 24, 17, 21, 13, 18].map((barHeight, index, items) => {
+              {(pendingVoiceNote.waveformLevels || []).map((level, index, items) => {
                 const ratio =
                   pendingVoiceNote.durationMillis > 0
                     ? Math.min(
@@ -2060,6 +2079,7 @@ export default function ChatScreen({ route, navigation }) {
                     )
                     : 0
                 const active = ratio >= (index + 1) / items.length
+                const barHeight = 8 + Math.round(level * 20)
 
                 return (
                   <View
