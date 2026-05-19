@@ -134,13 +134,16 @@ function ConnectionActions({
       <TouchableOpacity
         disabled={item.is_blocked}
         onPress={() =>
-          navigation.navigate('Chat', {
-            owner: {
-              id: targetUserId,
-              email: item.profile?.email,
-              name: getProfileName(item.profile, 'Rental X member'),
+          navigation.navigate('MainTabs', {
+            screen: 'Chat',
+            params: {
+              owner: {
+                id: targetUserId,
+                email: item.profile?.email,
+                name: getProfileName(item.profile, 'Rental X member'),
+              },
+              profile: item.profile || null,
             },
-            profile: item.profile || null,
           })
         }
         style={{

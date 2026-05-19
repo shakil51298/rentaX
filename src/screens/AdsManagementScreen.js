@@ -23,6 +23,7 @@ export default function AdsManagementScreen({ navigation }) {
   const [userType, setUserType] = useState('renter')
   const [loading, setLoading] = useState(true)
   const [posts, setPosts] = useState([])
+  const [pendingVisitCount, setPendingVisitCount] = useState(0)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -60,12 +61,23 @@ export default function AdsManagementScreen({ navigation }) {
 
     if (resolvedUserType !== 'property_owner') {
       setPosts([])
+      setPendingVisitCount(0)
       setLoading(false)
       return
     }
 
     try {
-      setPosts(await fetchPropertiesWithProfiles({ ownerId: user.id, includeBanned: true }))
+      const [{ count }, ownerPosts] = await Promise.all([
+        supabase
+          .from('property_visit_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('owner_id', user.id)
+          .eq('status', 'pending'),
+        fetchPropertiesWithProfiles({ ownerId: user.id, includeBanned: true }),
+      ])
+
+      setPendingVisitCount(count || 0)
+      setPosts(ownerPosts)
     } catch (error) {
       Alert.alert('Error', error.message)
     }
@@ -236,10 +248,13 @@ export default function AdsManagementScreen({ navigation }) {
   }
 
   function openComments(post) {
-    navigation.navigate('Home', {
-      openCommentsForPostId: String(post.id),
-      openCommentsForPost: post,
-      openCommentsRequestId: `ads-management-${post.id}-${Date.now()}`,
+    navigation.navigate('MainTabs', {
+      screen: 'Home',
+      params: {
+        openCommentsForPostId: String(post.id),
+        openCommentsForPost: post,
+        openCommentsRequestId: `ads-management-${post.id}-${Date.now()}`,
+      },
     })
   }
 
@@ -443,6 +458,66 @@ export default function AdsManagementScreen({ navigation }) {
               </TouchableOpacity>
             ) : null}
           </View>
+
+          {userType === 'property_owner' ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('VisitRequests')}
+              activeOpacity={0.86}
+              style={{
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#dbeafe',
+                backgroundColor: '#eff6ff',
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 14,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: '#dbeafe',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 10,
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={18} color="#2563eb" />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 14 }}>
+                    Visit requests
+                  </Text>
+                  <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
+                    Review pending renter visit times and respond quickly.
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  minWidth: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: pendingVisitCount ? '#1877F2' : '#dbeafe',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 7,
+                }}
+              >
+                <Text style={{ color: pendingVisitCount ? '#fff' : '#1d4ed8', fontWeight: '900', fontSize: 12 }}>
+                  {pendingVisitCount}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
 
           {userType !== 'property_owner' ? (
             <View

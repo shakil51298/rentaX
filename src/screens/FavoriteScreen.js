@@ -12,7 +12,7 @@ import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchHiddenContentState } from '../lib/reporting'
 
-export default function FavoriteScreen({ navigation }) {
+export default function FavoriteScreen({ navigation, embeddedTabShell = false }) {
   const [favorites, setFavorites] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -127,7 +127,9 @@ export default function FavoriteScreen({ navigation }) {
         />
       </View>
 
-      <BottomNavBar navigation={navigation} activeTab="favorite" />
+      {!embeddedTabShell ? (
+        <BottomNavBar navigation={navigation} activeTab="favorite" />
+      ) : null}
       </SwipeTabView>
     </SafeAreaView>
   )

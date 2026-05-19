@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import * as Notifications from 'expo-notifications'
 import { ActivityIndicator, AppState, View } from 'react-native'
 
@@ -31,15 +32,81 @@ import AdminUserPostsScreen from '../screens/AdminUserPostsScreen'
 import CustomerCareScreen from '../screens/CustomerCareScreen'
 import AdminReportsScreen from '../screens/AdminReportsScreen'
 import ReportIssueScreen from '../screens/ReportIssueScreen'
+import VisitRequestsScreen from '../screens/VisitRequestsScreen'
+import BottomNavBar from '../components/navigation/BottomNavBar'
 import { supabase } from '../lib/supabase'
 import {
   registerDevicePushToken,
   routeFromNotificationData,
 } from '../lib/pushNotifications'
-import { useState } from 'react'
 
 const Stack = createNativeStackNavigator()
+const Tab = createBottomTabNavigator()
 const navigationRef = createNavigationContainerRef()
+
+const TAB_ACTIVE_KEYS = {
+  Home: 'home',
+  Chat: 'chat',
+  Favorite: 'favorite',
+  Notifications: 'notifications',
+  Profile: 'profile',
+}
+
+function HomeTabScreen(props) {
+  return <HomeScreen {...props} embeddedTabShell />
+}
+
+function ChatTabScreen(props) {
+  return <ChatScreen {...props} embeddedTabShell />
+}
+
+function FavoriteTabScreen(props) {
+  return <FavoriteScreen {...props} embeddedTabShell />
+}
+
+function NotificationsTabScreen(props) {
+  return <NotificationsScreen {...props} embeddedTabShell />
+}
+
+function ProfileTabScreen(props) {
+  return <ProfileScreen {...props} embeddedTabShell />
+}
+
+function MainTabsNavigator() {
+  return (
+    <Tab.Navigator
+      initialRouteName="Home"
+      screenOptions={{
+        headerShown: false,
+        lazy: false,
+        animation: 'fade',
+      }}
+      detachInactiveScreens={false}
+      tabBar={({ navigation, state }) => (
+        <BottomNavBar
+          navigation={navigation}
+          activeTab={TAB_ACTIVE_KEYS[state.routes[state.index]?.name] || 'home'}
+          onTabPress={(_tabKey, { screen }) => {
+            const targetRoute = state.routes.find((route) => route.name === screen)
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: targetRoute?.key,
+              canPreventDefault: true,
+            })
+
+            return event.defaultPrevented
+          }}
+        />
+      )}
+    >
+      <Tab.Screen name="Home" component={HomeTabScreen} />
+      <Tab.Screen name="Chat" component={ChatTabScreen} />
+      <Tab.Screen name="Favorite" component={FavoriteTabScreen} />
+      <Tab.Screen name="Notifications" component={NotificationsTabScreen} />
+      <Tab.Screen name="Profile" component={ProfileTabScreen} />
+    </Tab.Navigator>
+  )
+}
 
 function NotificationCoordinator({ onOpenNotification }) {
   const handledResponseIds = useRef(new Set())
@@ -175,24 +242,19 @@ export default function AppNavigator() {
           }
         }}
       >
-      <Stack.Navigator initialRouteName={session ? 'Home' : 'Login'}>
+      <Stack.Navigator initialRouteName={session ? 'MainTabs' : 'Login'}>
         <Stack.Screen
           name="Login"
           component={LoginScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
-          name="Home"
-          component={HomeScreen}
+          name="MainTabs"
+          component={MainTabsNavigator}
           options={{ headerShown: false }}
         />
         <Stack.Screen name="Property" component={PropertyScreen} />
         <Stack.Screen name="CreatePost" component={CreatePostScreen} />
-        <Stack.Screen
-          name="Chat"
-          component={ChatScreen}
-          options={{ headerShown: false }}
-        />
         <Stack.Screen
           name="ChatSettings"
           component={ChatSettingsScreen}
@@ -214,21 +276,10 @@ export default function AppNavigator() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Notifications"
-          component={NotificationsScreen}
-          options={{ title: 'Notifications' }}
-        />
-        <Stack.Screen
           name="OwnerProfile"
           component={OwnerProfileScreen}
           options={{ title: 'Public Profile' }}
         />
-        <Stack.Screen name="Favorite" component={FavoriteScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen
           name="VerificationCenter"
@@ -294,6 +345,11 @@ export default function AppNavigator() {
           name="AdsManagement"
           component={AdsManagementScreen}
           options={{ title: 'Ads Management' }}
+        />
+        <Stack.Screen
+          name="VisitRequests"
+          component={VisitRequestsScreen}
+          options={{ title: 'Visit Requests' }}
         />
       </Stack.Navigator>
       </NavigationContainer>

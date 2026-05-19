@@ -135,7 +135,7 @@ export default function LoginScreen({ navigation }) {
       }
     }
 
-    navigation.replace('Home')
+    navigation.replace('MainTabs')
   }
 
   async function register() {
@@ -171,7 +171,7 @@ export default function LoginScreen({ navigation }) {
       } catch (_error) {
         // Let registration continue; profile sync will retry from the app screens.
       }
-      navigation.replace('Home')
+      navigation.replace('MainTabs')
       return
     }
 

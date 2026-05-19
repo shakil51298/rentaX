@@ -259,7 +259,7 @@ async function fetchProfiles(userIds) {
   }, {})
 }
 
-export default function ChatScreen({ route, navigation }) {
+export default function ChatScreen({ route, navigation, embeddedTabShell = false }) {
   const flatListRef = useRef(null)
   const messageInputRef = useRef(null)
   const highlightTimerRef = useRef(null)
@@ -1675,36 +1675,40 @@ export default function ChatScreen({ route, navigation }) {
     selectedConversationIds,
   ])
 
-  useEffect(() => {
-    if (mode !== 'chat') return undefined
+  useFocusEffect(
+    useCallback(() => {
+      if (mode !== 'chat') return undefined
 
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (messageActionTarget) {
-        setMessageActionTarget(null)
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (messageActionTarget) {
+          setMessageActionTarget(null)
+          return true
+        }
+
+        goBackFromChat()
         return true
+      })
+
+      return () => {
+        subscription.remove()
       }
+    }, [goBackFromChat, messageActionTarget, mode])
+  )
 
-      goBackFromChat()
-      return true
-    })
+  useFocusEffect(
+    useCallback(() => {
+      if (mode !== 'list' || !selectionMode) return undefined
 
-    return () => {
-      subscription.remove()
-    }
-  }, [goBackFromChat, messageActionTarget, mode])
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        clearConversationSelection()
+        return true
+      })
 
-  useEffect(() => {
-    if (mode !== 'list' || !selectionMode) return undefined
-
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      clearConversationSelection()
-      return true
-    })
-
-    return () => {
-      subscription.remove()
-    }
-  }, [clearConversationSelection, mode, selectionMode])
+      return () => {
+        subscription.remove()
+      }
+    }, [clearConversationSelection, mode, selectionMode])
+  )
 
   const openMediaViewer = useCallback((media, index) => {
     setMediaViewer({
@@ -2033,7 +2037,9 @@ export default function ChatScreen({ route, navigation }) {
           />
         </View>
 
-        <BottomNavBar navigation={navigation} activeTab="chat" />
+        {!embeddedTabShell ? (
+          <BottomNavBar navigation={navigation} activeTab="chat" />
+        ) : null}
         </SwipeTabView>
       </SafeAreaView>
     )
@@ -2839,7 +2845,9 @@ export default function ChatScreen({ route, navigation }) {
         closeLabel="Done"
       />
 
-      <BottomNavBar navigation={navigation} activeTab="chat" />
+      {!embeddedTabShell ? (
+        <BottomNavBar navigation={navigation} activeTab="chat" />
+      ) : null}
     </SafeAreaView>
   )
 }

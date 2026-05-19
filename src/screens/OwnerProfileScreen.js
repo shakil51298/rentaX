@@ -393,7 +393,12 @@ export default function OwnerProfileScreen({ route, navigation }) {
                   ) : null}
 
                   <TouchableOpacity
-                    onPress={() => navigation.navigate('Chat', { owner, profile })}
+                    onPress={() =>
+                      navigation.navigate('MainTabs', {
+                        screen: 'Chat',
+                        params: { owner, profile },
+                      })
+                    }
                     style={{
                       flex: 1,
                       backgroundColor: '#111827',

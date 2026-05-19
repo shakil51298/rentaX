@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 
 export const CHAT_MEDIA_BUCKET = 'chat-media'
 export const PROPERTY_MEDIA_BUCKET = 'property-media'
+export const PROFILE_MEDIA_BUCKET = 'profile-media'
 export const VERIFICATION_MEDIA_BUCKET = 'verification-documents'
 
 export function normalizeMediaItem(item) {

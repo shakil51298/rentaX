@@ -496,7 +496,7 @@ function SearchResultRow({ item, onPress }) {
   )
 }
 
-export default function HomeScreen({ navigation, route }) {
+export default function HomeScreen({ navigation, route, embeddedTabShell = false }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [commentModal, setCommentModal] = useState(false)
@@ -780,14 +780,29 @@ export default function HomeScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (embeddedTabShell) {
+        return undefined
+      }
+
       loadUser()
       loadProperties({ silent: true })
 
       if (!manualLocationOverride.current && !route?.params?.selectedLocation) {
         loadCurrentLocation()
       }
-    }, [route?.params?.selectedLocation])
+    }, [embeddedTabShell, route?.params?.selectedLocation])
   )
+
+  useEffect(() => {
+    if (!embeddedTabShell) return undefined
+
+    return navigation.addListener('tabPress', (event) => {
+      if (!navigation.isFocused()) return
+
+      event.preventDefault()
+      refreshHomeFeed({ scrollToTop: true })
+    })
+  }, [embeddedTabShell, navigation])
 
   useEffect(() => {
     if (!route?.params?.refreshFeedAt) return
@@ -2880,13 +2895,15 @@ export default function HomeScreen({ navigation, route }) {
         ]}
       />
 
-      <BottomNavBar
-        navigation={navigation}
-        activeTab="home"
-        messageUnreadCount={messageUnreadCount}
-        notificationUnreadCount={notificationUnreadCount}
-        onTabPress={handleMainTabPress}
-      />
+      {!embeddedTabShell ? (
+        <BottomNavBar
+          navigation={navigation}
+          activeTab="home"
+          messageUnreadCount={messageUnreadCount}
+          notificationUnreadCount={notificationUnreadCount}
+          onTabPress={handleMainTabPress}
+        />
+      ) : null}
       </SwipeTabView>
     </SafeAreaView>
   )

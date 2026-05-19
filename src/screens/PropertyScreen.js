@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  TextInput,
   Modal,
   Pressable,
   ScrollView,
@@ -22,6 +23,16 @@ import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../li
 import { blockUser } from '../lib/social'
 import ActionSheetModal from '../components/common/ActionSheetModal'
 import { saveMediaToLibrary } from '../lib/mediaSave'
+import { createNotification } from '../lib/notifications'
+import {
+  buildVisitTimestamp,
+  cancelVisitRequest,
+  fetchVisitRequestForProperty,
+  formatVisitDateTime,
+  getVisitStatusMeta,
+  saveVisitRequest,
+  splitVisitTimestamp,
+} from '../lib/visitScheduling'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -354,6 +365,12 @@ export default function PropertyScreen({ route, navigation }) {
   const [post, setPost] = useState(initialProperty)
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [visitRequest, setVisitRequest] = useState(null)
+  const [visitModalVisible, setVisitModalVisible] = useState(false)
+  const [visitDate, setVisitDate] = useState('')
+  const [visitTime, setVisitTime] = useState('')
+  const [visitNote, setVisitNote] = useState('')
+  const [visitSaving, setVisitSaving] = useState(false)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -392,6 +409,40 @@ export default function PropertyScreen({ route, navigation }) {
       supabase.removeChannel(channel)
     }
   }, [initialProperty?.id])
+
+  useEffect(() => {
+    if (!post?.id || !currentUser?.id || String(post.owner_id) === String(currentUser.id)) {
+      return undefined
+    }
+
+    const channel = supabase
+      .channel(`property-visit-request-${post.id}-${currentUser.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'property_visit_requests',
+          filter: `property_id=eq.${String(post.id)}`,
+        },
+        async () => {
+          try {
+            const nextRequest = await fetchVisitRequestForProperty({
+              propertyId: post.id,
+              requesterId: currentUser.id,
+            })
+            setVisitRequest(nextRequest)
+          } catch {
+            // keep current state quiet if the table is not ready yet
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser?.id, post?.id, post?.owner_id])
 
   async function loadPost() {
     setLoading(true)
@@ -433,6 +484,7 @@ export default function PropertyScreen({ route, navigation }) {
     }
 
     let viewCount = nextPost.view_count || 0
+    let nextVisitRequest = null
 
     if (nextPost.id) {
       const viewResult = await recordPropertyView({
@@ -448,11 +500,23 @@ export default function PropertyScreen({ route, navigation }) {
       }
     }
 
+    if (user?.id && nextPost.id && String(nextPost.owner_id) !== String(user.id)) {
+      try {
+        nextVisitRequest = await fetchVisitRequestForProperty({
+          propertyId: nextPost.id,
+          requesterId: user.id,
+        })
+      } catch {
+        nextVisitRequest = null
+      }
+    }
+
     setPost({
       ...nextPost,
       view_count: viewCount,
       owner_profile: ownerProfile,
     })
+    setVisitRequest(nextVisitRequest)
     setLoading(false)
   }
 
@@ -600,6 +664,110 @@ export default function PropertyScreen({ route, navigation }) {
     }))
   }
 
+  function openVisitModal() {
+    const { dateText, timeText } = splitVisitTimestamp(
+      visitRequest?.status === 'rescheduled'
+        ? visitRequest?.owner_proposed_for
+        : visitRequest?.requested_for
+    )
+
+    setVisitDate(dateText)
+    setVisitTime(timeText)
+    setVisitNote(visitRequest?.request_message || '')
+    setVisitModalVisible(true)
+  }
+
+  function closeVisitModal() {
+    setVisitModalVisible(false)
+  }
+
+  async function submitVisitRequest() {
+    if (!currentUser?.id || !post?.id || !post?.owner_id) return
+
+    let requestedFor = null
+
+    try {
+      requestedFor = buildVisitTimestamp(visitDate, visitTime)
+    } catch (error) {
+      Alert.alert('Invalid visit time', error.message)
+      return
+    }
+
+    try {
+      setVisitSaving(true)
+      const savedRequest = await saveVisitRequest({
+        property: post,
+        requesterId: currentUser.id,
+        requestedFor,
+        requestMessage: visitNote,
+      })
+
+      setVisitRequest(savedRequest)
+      setVisitModalVisible(false)
+
+      const requesterName =
+        currentUser?.user_metadata?.name
+        || currentUser?.user_metadata?.full_name
+        || currentUser?.email?.split('@')?.[0]
+        || 'A renter'
+
+      await createNotification({
+        recipientId: post.owner_id,
+        actorId: currentUser.id,
+        type: 'visit_request_created',
+        propertyId: post.id,
+        title: 'New visit request',
+        body: `${requesterName} requested a visit for ${formatVisitDateTime(requestedFor)}.`,
+        eventKey: `visit_request_created:${post.id}:${currentUser.id}:${savedRequest.updated_at}`,
+        pushTitle: 'New visit request',
+        pushBody: `${requesterName} requested a visit for ${post.title || 'your property'}.`,
+        pushData: {
+          propertyTitle: post.title || '',
+          visitRequestId: savedRequest.id,
+        },
+      })
+
+      Alert.alert('Visit requested', 'Your request was sent to the property owner.')
+    } catch (error) {
+      Alert.alert(
+        'Visit scheduling setup needed',
+        error?.message || 'Run supabase-visit-scheduling-features.sql in Supabase, then try again.'
+      )
+    } finally {
+      setVisitSaving(false)
+    }
+  }
+
+  async function cancelCurrentVisitRequest() {
+    if (!visitRequest?.id || !currentUser?.id) return
+
+    try {
+      setVisitSaving(true)
+      const cancelledRequest = await cancelVisitRequest(visitRequest.id)
+      setVisitRequest(cancelledRequest)
+
+      await createNotification({
+        recipientId: post.owner_id,
+        actorId: currentUser.id,
+        type: 'visit_request_cancelled',
+        propertyId: post.id,
+        title: 'Visit request cancelled',
+        body: `A renter cancelled a visit request for ${post.title || 'your property'}.`,
+        eventKey: `visit_request_cancelled:${cancelledRequest.id}:${cancelledRequest.updated_at}`,
+        pushTitle: 'Visit request cancelled',
+        pushBody: `A renter cancelled a visit request for ${post.title || 'your property'}.`,
+        pushData: {
+          propertyTitle: post.title || '',
+          visitRequestId: cancelledRequest.id,
+        },
+      })
+    } catch (error) {
+      Alert.alert('Cancel failed', error?.message || 'Could not cancel this visit request.')
+    } finally {
+      setVisitSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5', justifyContent: 'center' }}>
@@ -623,6 +791,8 @@ export default function PropertyScreen({ route, navigation }) {
   )
   const isVerifiedOwner = getOwnerVerificationStatus(ownerProfile) === 'verified'
   const isVerifiedProperty = getPropertyVerificationStatus(post) === 'verified'
+  const isOwnProperty = String(post.owner_id) === String(currentUser?.id)
+  const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
@@ -790,10 +960,13 @@ export default function PropertyScreen({ route, navigation }) {
 
             <TouchableOpacity
               onPress={() =>
-                navigation.navigate('Home', {
-                  openCommentsForPostId: String(post.id),
-                  openCommentsForPost: post,
-                  openCommentsRequestId: `property-${post.id}-${Date.now()}`,
+                navigation.navigate('MainTabs', {
+                  screen: 'Home',
+                  params: {
+                    openCommentsForPostId: String(post.id),
+                    openCommentsForPost: post,
+                    openCommentsRequestId: `property-${post.id}-${Date.now()}`,
+                  },
                 })
               }
               style={{ flex: 1, paddingVertical: 13, alignItems: 'center' }}
@@ -821,23 +994,121 @@ export default function PropertyScreen({ route, navigation }) {
           </View>
         </View>
 
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Chat', { property: post })}
-          style={{
-            margin: 14,
-            backgroundColor: '#111827',
-            borderRadius: 12,
-            paddingVertical: 13,
-            alignItems: 'center',
-            flexDirection: 'row',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="chatbubble-ellipses-outline" size={19} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '900', marginLeft: 8 }}>
-            Message Owner
-          </Text>
-        </TouchableOpacity>
+        {!isOwnProperty ? (
+          <View style={{ margin: 14 }}>
+            {visitRequest ? (
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  padding: 14,
+                  marginBottom: 12,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                    Visit request
+                  </Text>
+
+                  <View
+                    style={{
+                      backgroundColor: visitStatusMeta.backgroundColor,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 999,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name={visitStatusMeta.icon} size={12} color={visitStatusMeta.color} />
+                    <Text style={{ color: visitStatusMeta.color, fontWeight: '900', fontSize: 11, marginLeft: 5 }}>
+                      {visitStatusMeta.label}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={{ color: '#334155', marginTop: 10, lineHeight: 20 }}>
+                  Preferred time: {formatVisitDateTime(visitRequest.requested_for)}
+                </Text>
+
+                {visitRequest.owner_proposed_for ? (
+                  <Text style={{ color: '#334155', marginTop: 6, lineHeight: 20 }}>
+                    Owner time: {formatVisitDateTime(visitRequest.owner_proposed_for)}
+                  </Text>
+                ) : null}
+
+                {visitRequest.owner_response_note ? (
+                  <Text style={{ color: '#475569', marginTop: 6, lineHeight: 20 }}>
+                    Response: {visitRequest.owner_response_note}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              onPress={openVisitModal}
+              disabled={visitSaving}
+              style={{
+                backgroundColor: '#1877F2',
+                borderRadius: 12,
+                paddingVertical: 13,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+                opacity: visitSaving ? 0.6 : 1,
+              }}
+            >
+              <Ionicons name="calendar-outline" size={19} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '900', marginLeft: 8 }}>
+                {visitRequest && !['cancelled', 'rejected'].includes(visitRequest.status)
+                  ? 'Update Visit Request'
+                  : 'Schedule Visit'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                  params: { property: post },
+                })
+              }
+              style={{
+                marginTop: 10,
+                backgroundColor: '#111827',
+                borderRadius: 12,
+                paddingVertical: 13,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={19} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '900', marginLeft: 8 }}>
+                Message Owner
+              </Text>
+            </TouchableOpacity>
+
+            {visitRequest && ['pending', 'accepted', 'rescheduled'].includes(visitRequest.status) ? (
+              <TouchableOpacity
+                onPress={cancelCurrentVisitRequest}
+                disabled={visitSaving}
+                style={{
+                  marginTop: 10,
+                  alignSelf: 'center',
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: '#b91c1c', fontWeight: '800' }}>
+                  Cancel visit request
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
 
       <MediaViewer
@@ -909,6 +1180,143 @@ export default function PropertyScreen({ route, navigation }) {
               ])
         ]}
       />
+
+      <Modal
+        visible={visitModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeVisitModal}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15,23,42,0.46)',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <TouchableOpacity style={{ position: 'absolute', inset: 0 }} activeOpacity={1} onPress={closeVisitModal} />
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 20,
+              padding: 18,
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 18 }}>
+              Schedule a visit
+            </Text>
+            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+              Ask the owner for a visit time. They can accept it, reject it, or propose a better time.
+            </Text>
+
+            <View style={{ marginTop: 14 }}>
+              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+                Preferred date
+              </Text>
+              <TextInput
+                value={visitDate}
+                onChangeText={setVisitDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor="#94a3b8"
+                style={{
+                  backgroundColor: '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 14,
+                  paddingHorizontal: 13,
+                  paddingVertical: 12,
+                  color: '#0f172a',
+                }}
+              />
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+                Preferred time
+              </Text>
+              <TextInput
+                value={visitTime}
+                onChangeText={setVisitTime}
+                placeholder="HH:MM"
+                placeholderTextColor="#94a3b8"
+                style={{
+                  backgroundColor: '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 14,
+                  paddingHorizontal: 13,
+                  paddingVertical: 12,
+                  color: '#0f172a',
+                }}
+              />
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+                Note for the owner
+              </Text>
+              <TextInput
+                value={visitNote}
+                onChangeText={setVisitNote}
+                placeholder="Anything the owner should know before the visit?"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{
+                  minHeight: 90,
+                  backgroundColor: '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 14,
+                  paddingHorizontal: 13,
+                  paddingVertical: 12,
+                  color: '#0f172a',
+                  textAlignVertical: 'top',
+                }}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={closeVisitModal}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: 14,
+                  backgroundColor: '#e2e8f0',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: '#334155', fontWeight: '900' }}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={submitVisitRequest}
+                disabled={visitSaving}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: 14,
+                  backgroundColor: '#1877F2',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: visitSaving ? 0.6 : 1,
+                }}
+              >
+                {visitSaving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>Send Request</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

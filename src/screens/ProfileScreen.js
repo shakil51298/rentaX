@@ -91,7 +91,7 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0 }) {
   )
 }
 
-export default function ProfileScreen({ navigation }) {
+export default function ProfileScreen({ navigation, embeddedTabShell = false }) {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [email, setEmail] = useState('')
@@ -187,10 +187,21 @@ export default function ProfileScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (embeddedTabShell) {
+        return undefined
+      }
+
       loadProfile()
       loadAdminPanelCount()
-    }, [loadAdminPanelCount, loadProfile])
+    }, [embeddedTabShell, loadAdminPanelCount, loadProfile])
   )
+
+  useEffect(() => {
+    if (!embeddedTabShell) return
+
+    loadProfile()
+    loadAdminPanelCount()
+  }, [embeddedTabShell, loadAdminPanelCount, loadProfile])
 
   useEffect(() => {
     if (!showAdminPanel) return undefined
@@ -470,7 +481,9 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </ScrollView>
 
-          <BottomNavBar navigation={navigation} activeTab="profile" />
+          {!embeddedTabShell ? (
+            <BottomNavBar navigation={navigation} activeTab="profile" />
+          ) : null}
         </View>
       </SwipeTabView>
 

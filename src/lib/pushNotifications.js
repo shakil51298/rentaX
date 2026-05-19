@@ -20,6 +20,15 @@ const ADMIN_NOTIFICATION_TYPES = new Set([
   'user_report_submitted',
   'property_report_submitted',
 ])
+const VISIT_REQUEST_OWNER_TYPES = new Set([
+  'visit_request_created',
+  'visit_request_cancelled',
+])
+const VISIT_REQUEST_RENTER_TYPES = new Set([
+  'visit_request_accepted',
+  'visit_request_rejected',
+  'visit_request_rescheduled',
+])
 
 function getNotificationChannelId(type) {
   if (CHAT_NOTIFICATION_TYPES.has(type)) return 'messages'
@@ -272,27 +281,48 @@ export function routeFromNotificationData(navigation, payload = {}) {
     : null
 
   if (type === 'chat_message' && payload.actorId) {
-    navigation.navigate('Chat', {
-      participant: {
-        id: payload.actorId,
-        name: payload.actorName || 'Rental X member',
-        avatar_url: payload.actorAvatarUrl || null,
-        is_verified: Boolean(payload.actorVerified),
+    navigation.navigate('MainTabs', {
+      screen: 'Chat',
+      params: {
+        participant: {
+          id: payload.actorId,
+          name: payload.actorName || 'Rental X member',
+          avatar_url: payload.actorAvatarUrl || null,
+          is_verified: Boolean(payload.actorVerified),
+        },
+        property,
       },
-      property,
     })
     return
   }
 
   if (['property_comment', 'comment_reply', 'comment_like'].includes(type) && property?.id) {
-    navigation.navigate('Home', {
-      openCommentsForPostId: property.id,
-      openCommentsForPost: property,
-      openCommentsTargetCommentId: payload.commentId || null,
-      openCommentsRequestId:
-        payload.requestId ||
-        `push-${type}-${property.id}-${payload.commentId || ''}-${payload.createdAt || Date.now()}`,
+    navigation.navigate('MainTabs', {
+      screen: 'Home',
+      params: {
+        openCommentsForPostId: property.id,
+        openCommentsForPost: property,
+        openCommentsTargetCommentId: payload.commentId || null,
+        openCommentsRequestId:
+          payload.requestId ||
+          `push-${type}-${property.id}-${payload.commentId || ''}-${payload.createdAt || Date.now()}`,
+      },
     })
+    return
+  }
+
+  if (VISIT_REQUEST_OWNER_TYPES.has(type)) {
+    navigation.navigate('VisitRequests')
+    return
+  }
+
+  if (VISIT_REQUEST_RENTER_TYPES.has(type)) {
+    if (property?.id) {
+      navigation.navigate('Property', { property })
+      return
+    }
+
+    navigation.navigate('MainTabs', { screen: 'Home' })
     return
   }
 

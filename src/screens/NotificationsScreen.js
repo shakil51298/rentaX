@@ -34,6 +34,18 @@ function getActorName(notification) {
 }
 
 function getNotificationIcon(type) {
+  if (type === 'visit_request_created' || type === 'visit_request_cancelled') {
+    return 'calendar-outline'
+  }
+  if (type === 'visit_request_accepted') {
+    return 'calendar-clear'
+  }
+  if (type === 'visit_request_rejected') {
+    return 'calendar-clear-outline'
+  }
+  if (type === 'visit_request_rescheduled') {
+    return 'calendar'
+  }
   if (type === 'user_report_submitted' || type === 'property_report_submitted') {
     return 'flag'
   }
@@ -57,6 +69,21 @@ function getNotificationIcon(type) {
 }
 
 function getNotificationColor(type) {
+  if (type === 'visit_request_created') {
+    return '#b45309'
+  }
+  if (type === 'visit_request_cancelled') {
+    return '#64748b'
+  }
+  if (type === 'visit_request_accepted') {
+    return '#16a34a'
+  }
+  if (type === 'visit_request_rejected') {
+    return '#dc2626'
+  }
+  if (type === 'visit_request_rescheduled') {
+    return '#7c3aed'
+  }
   if (type === 'user_report_submitted' || type === 'property_report_submitted') {
     return '#dc2626'
   }
@@ -115,7 +142,7 @@ function enrichNotifications(notifications, profilesById, propertiesById) {
   }))
 }
 
-export default function NotificationsScreen({ navigation }) {
+export default function NotificationsScreen({ navigation, embeddedTabShell = false }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -194,9 +221,19 @@ export default function NotificationsScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (embeddedTabShell) {
+        return undefined
+      }
+
       loadNotifications()
-    }, [loadNotifications])
+    }, [embeddedTabShell, loadNotifications])
   )
+
+  useEffect(() => {
+    if (!embeddedTabShell) return
+
+    loadNotifications()
+  }, [embeddedTabShell, loadNotifications])
 
   useEffect(() => {
     if (!currentUser?.id) return undefined
@@ -269,6 +306,28 @@ export default function NotificationsScreen({ navigation }) {
     await markNotificationRead(notification)
 
     if (
+      notification.type === 'visit_request_created'
+      || notification.type === 'visit_request_cancelled'
+    ) {
+      navigation.navigate('VisitRequests')
+      return
+    }
+
+    if (
+      notification.type === 'visit_request_accepted'
+      || notification.type === 'visit_request_rejected'
+      || notification.type === 'visit_request_rescheduled'
+    ) {
+      if (notification.property) {
+        navigation.navigate('Property', { property: notification.property })
+        return
+      }
+
+      navigation.navigate('MainTabs', { screen: 'Home' })
+      return
+    }
+
+    if (
       notification.type === 'user_report_submitted'
       || notification.type === 'property_report_submitted'
     ) {
@@ -323,12 +382,15 @@ export default function NotificationsScreen({ navigation }) {
     }
 
     if (shouldOpenCommentSheet(notification.type) && notification.property_id) {
-      navigation.navigate('Home', {
-        openCommentsForPostId: String(notification.property_id),
-        openCommentsForPost: notification.property || null,
-        openCommentsTargetCommentId: notification.comment_id || null,
-        openCommentsRequestId: notification.id,
-        openCommentsReturnTo: 'Notifications',
+      navigation.navigate('MainTabs', {
+        screen: 'Home',
+        params: {
+          openCommentsForPostId: String(notification.property_id),
+          openCommentsForPost: notification.property || null,
+          openCommentsTargetCommentId: notification.comment_id || null,
+          openCommentsRequestId: notification.id,
+          openCommentsReturnTo: 'Notifications',
+        },
       })
       return
     }
@@ -487,7 +549,9 @@ export default function NotificationsScreen({ navigation }) {
         />
       </View>
 
-      <BottomNavBar navigation={navigation} activeTab="notifications" />
+      {!embeddedTabShell ? (
+        <BottomNavBar navigation={navigation} activeTab="notifications" />
+      ) : null}
       </SwipeTabView>
     </SafeAreaView>
   )

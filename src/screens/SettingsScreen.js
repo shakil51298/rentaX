@@ -14,9 +14,11 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '../lib/supabase'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
 import { getVerificationMeta } from '../lib/verification'
+import { PROFILE_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 
 const USER_TYPES = [
   { id: 'property_owner', title: 'Property owner' },
@@ -192,6 +194,115 @@ function ActionCard({ icon, title, subtitle, onPress }) {
   )
 }
 
+function PhotoPickerCard({
+  title,
+  subtitle,
+  icon,
+  imageUri,
+  onPick,
+  onRemove,
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        backgroundColor: '#f8fafc',
+        padding: 12,
+        marginBottom: 10,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: '#eff6ff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icon} size={17} color="#2563eb" />
+        </View>
+
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 13 }}>{title}</Text>
+          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
+        </View>
+      </View>
+
+      <View
+        style={{
+          marginTop: 10,
+          borderRadius: 14,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: '#dbe4f0',
+          backgroundColor: '#fff',
+        }}
+      >
+        {imageUri ? (
+          <Image
+            source={{ uri: imageUri }}
+            style={{ width: '100%', height: 110, backgroundColor: '#dbeafe' }}
+            resizeMode="cover"
+          />
+        ) : (
+          <View
+            style={{
+              height: 110,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#eef4ff',
+            }}
+          >
+            <Ionicons name={icon} size={24} color="#93c5fd" />
+            <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '700', marginTop: 8 }}>
+              No image selected
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+        <TouchableOpacity
+          onPress={onPick}
+          style={{
+            flex: 1,
+            minHeight: 40,
+            borderRadius: 12,
+            backgroundColor: '#1877F2',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>
+            {imageUri ? 'Change image' : 'Upload image'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onRemove}
+          disabled={!imageUri}
+          style={{
+            paddingHorizontal: 14,
+            minHeight: 40,
+            borderRadius: 12,
+            backgroundColor: imageUri ? '#e2e8f0' : '#f1f5f9',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: imageUri ? 1 : 0.6,
+          }}
+        >
+          <Text style={{ color: '#334155', fontWeight: '900', fontSize: 12 }}>Remove</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
+
 function SettingRow({ title, subtitle, value, onValueChange }) {
   return (
     <View
@@ -224,6 +335,8 @@ export default function SettingsScreen({ navigation }) {
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [coverUrl, setCoverUrl] = useState('')
+  const [pendingAvatarAsset, setPendingAvatarAsset] = useState(null)
+  const [pendingCoverAsset, setPendingCoverAsset] = useState(null)
   const [bio, setBio] = useState('')
   const [phone, setPhone] = useState('')
   const [location, setLocation] = useState('')
@@ -244,6 +357,9 @@ export default function SettingsScreen({ navigation }) {
     loadUser()
   }, [])
 
+  const profilePreviewUri = pendingAvatarAsset?.uri || avatarUrl || ''
+  const coverPreviewUri = pendingCoverAsset?.uri || coverUrl || ''
+
   async function loadUser() {
     setLoading(true)
 
@@ -257,6 +373,8 @@ export default function SettingsScreen({ navigation }) {
     setDisplayName(metadata.name || metadata.full_name || displayNameFromEmail(user?.email))
     setAvatarUrl(metadata.avatar_url || metadata.picture || '')
     setCoverUrl(metadata.cover_url || '')
+    setPendingAvatarAsset(null)
+    setPendingCoverAsset(null)
     setUserType(metadata.user_type || 'renter')
     setNotifyMessages(metadata.notify_messages !== false)
     setNotifyActivity(metadata.notify_activity !== false)
@@ -273,6 +391,8 @@ export default function SettingsScreen({ navigation }) {
         setDisplayName(data.display_name || metadata.name || displayNameFromEmail(user.email))
         setAvatarUrl(data.avatar_url || metadata.avatar_url || '')
         setCoverUrl(data.cover_url || metadata.cover_url || '')
+        setPendingAvatarAsset(null)
+        setPendingCoverAsset(null)
         setBio(data.bio || '')
         setPhone(data.phone || '')
         setLocation(data.location || '')
@@ -304,13 +424,46 @@ export default function SettingsScreen({ navigation }) {
     setSaving(true)
 
     const selectedType = USER_TYPES.find((item) => item.id === userType)
+    let nextAvatarUrl = avatarUrl.trim() || null
+    let nextCoverUrl = coverUrl.trim() || null
+
+    try {
+      if (pendingAvatarAsset?.uri) {
+        const uploadResult = await uploadMediaAsset({
+          uri: pendingAvatarAsset.uri,
+          type: 'image',
+          mimeType: pendingAvatarAsset.mimeType,
+          userId: user.id,
+          bucket: PROFILE_MEDIA_BUCKET,
+        })
+        nextAvatarUrl = uploadResult.mediaUrl
+      }
+
+      if (pendingCoverAsset?.uri) {
+        const uploadResult = await uploadMediaAsset({
+          uri: pendingCoverAsset.uri,
+          type: 'image',
+          mimeType: pendingCoverAsset.mimeType,
+          userId: user.id,
+          bucket: PROFILE_MEDIA_BUCKET,
+        })
+        nextCoverUrl = uploadResult.mediaUrl
+      }
+    } catch (error) {
+      setSaving(false)
+      Alert.alert(
+        'Upload failed',
+        error?.message || 'Please run supabase-profile-media-features.sql in Supabase, then try again.'
+      )
+      return
+    }
 
     const { error: authError } = await supabase.auth.updateUser({
       data: {
         name: displayName.trim(),
         full_name: displayName.trim(),
-        avatar_url: avatarUrl.trim() || null,
-        cover_url: coverUrl.trim() || null,
+        avatar_url: nextAvatarUrl,
+        cover_url: nextCoverUrl,
         user_type: userType,
         user_type_label: selectedType?.title,
         notify_messages: notifyMessages,
@@ -329,8 +482,8 @@ export default function SettingsScreen({ navigation }) {
         user_id: user.id,
         email: user.email,
         display_name: displayName.trim(),
-        avatar_url: avatarUrl.trim() || null,
-        cover_url: coverUrl.trim() || null,
+        avatar_url: nextAvatarUrl,
+        cover_url: nextCoverUrl,
         bio: bio.trim() || null,
         phone: phone.trim() || null,
         location: location.trim() || null,
@@ -350,8 +503,32 @@ export default function SettingsScreen({ navigation }) {
       return
     }
 
+    setAvatarUrl(nextAvatarUrl || '')
+    setCoverUrl(nextCoverUrl || '')
+    setPendingAvatarAsset(null)
+    setPendingCoverAsset(null)
     Alert.alert('Saved', 'Your settings were updated.')
     loadUser()
+  }
+
+  async function pickImage(kind) {
+    const aspect = kind === 'avatar' ? [1, 1] : [16, 9]
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect,
+      quality: 0.92,
+    })
+
+    if (result.canceled || !result.assets?.length) return
+
+    const asset = result.assets[0]
+
+    if (kind === 'avatar') {
+      setPendingAvatarAsset(asset)
+    } else {
+      setPendingCoverAsset(asset)
+    }
   }
 
   async function saveSecuritySettings() {
@@ -447,63 +624,114 @@ export default function SettingsScreen({ navigation }) {
           keyboardDismissMode="none"
           automaticallyAdjustKeyboardInsets
         >
-          <View style={{ padding: 14, gap: 14 }}>
+          <View style={{ paddingHorizontal: 14, paddingTop: 6, paddingBottom: 14, gap: 14 }}>
             <View
               style={{
                 backgroundColor: '#fff',
                 borderRadius: 18,
                 borderWidth: 1,
                 borderColor: '#e2e8f0',
-                padding: 14,
+                padding: 12,
+                overflow: 'hidden',
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {avatarUrl ? (
-                  <Image
-                    source={{ uri: avatarUrl }}
-                    style={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: 30,
-                      backgroundColor: '#ddd',
-                    }}
-                  />
-                ) : (
-                  <View
-                    style={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: 30,
-                      backgroundColor: '#dbeafe',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ fontSize: 24, fontWeight: '900', color: '#1d4ed8' }}>
-                      {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
-                    </Text>
-                  </View>
-                )}
+              <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800', marginBottom: 8 }}>
+                Preview
+              </Text>
 
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
-                      {displayName || 'User'}
-                    </Text>
+              <View
+                style={{
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  backgroundColor: '#eff6ff',
+                  borderWidth: 1,
+                  borderColor: '#dbeafe',
+                }}
+              >
+                <View style={{ height: 116, backgroundColor: '#dbeafe' }}>
+                  {coverPreviewUri ? (
+                    <Image
+                      source={{ uri: coverPreviewUri }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#dbeafe',
+                      }}
+                    >
+                      <Ionicons name="image-outline" size={28} color="#93c5fd" />
+                      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '700', marginTop: 6 }}>
+                        Cover preview
+                      </Text>
+                    </View>
+                  )}
+                </View>
 
-                    {ownerVerificationStatus === 'verified' || isVerified ? (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={18}
-                        color="#1877F2"
-                        style={{ marginLeft: 6 }}
+                <View style={{ paddingHorizontal: 12, paddingBottom: 12, paddingTop: 0 }}>
+                  <View style={{ marginTop: -20, flexDirection: 'row', alignItems: 'flex-end' }}>
+                    {profilePreviewUri ? (
+                      <Image
+                        source={{ uri: profilePreviewUri }}
+                        style={{
+                          width: 68,
+                          height: 68,
+                          borderRadius: 34,
+                          backgroundColor: '#ddd',
+                          borderWidth: 3,
+                          borderColor: '#fff',
+                        }}
                       />
-                    ) : null}
-                  </View>
+                    ) : (
+                      <View
+                        style={{
+                          width: 68,
+                          height: 68,
+                          borderRadius: 34,
+                          backgroundColor: '#dbeafe',
+                          borderWidth: 3,
+                          borderColor: '#fff',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 24, fontWeight: '900', color: '#1d4ed8' }}>
+                          {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
+                        </Text>
+                      </View>
+                    )}
 
-                  <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
-                    {user?.email || ''}
-                  </Text>
+                    <View style={{ flex: 1, minWidth: 0, marginLeft: 10, paddingBottom: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
+                        <Text
+                          style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: '900', color: '#111827' }}
+                          numberOfLines={2}
+                        >
+                          {displayName || 'User'}
+                        </Text>
+
+                        {ownerVerificationStatus === 'verified' || isVerified ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={17}
+                            color="#1877F2"
+                            style={{ marginLeft: 6, flexShrink: 0 }}
+                          />
+                        ) : null}
+                      </View>
+
+                      <Text
+                        style={{ marginTop: 3, color: '#64748b', fontSize: 12 }}
+                        numberOfLines={1}
+                      >
+                        {user?.email || ''}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
@@ -530,18 +758,28 @@ export default function SettingsScreen({ navigation }) {
                   placeholder="Your public name"
                 />
 
-                <Field
-                  label="Profile picture URL"
-                  value={avatarUrl}
-                  onChangeText={setAvatarUrl}
-                  placeholder="https://..."
+                <PhotoPickerCard
+                  title="Profile photo"
+                  subtitle="Upload a square image and review it above before saving."
+                  icon="person-circle-outline"
+                  imageUri={profilePreviewUri}
+                  onPick={() => pickImage('avatar')}
+                  onRemove={() => {
+                    setPendingAvatarAsset(null)
+                    setAvatarUrl('')
+                  }}
                 />
 
-                <Field
-                  label="Cover photo URL"
-                  value={coverUrl}
-                  onChangeText={setCoverUrl}
-                  placeholder="https://..."
+                <PhotoPickerCard
+                  title="Cover photo"
+                  subtitle="Upload a wide image and review how it pairs with your profile photo."
+                  icon="image-outline"
+                  imageUri={coverPreviewUri}
+                  onPick={() => pickImage('cover')}
+                  onRemove={() => {
+                    setPendingCoverAsset(null)
+                    setCoverUrl('')
+                  }}
                 />
 
                 <Field

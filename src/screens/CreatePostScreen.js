@@ -379,8 +379,11 @@ export default function CreatePostScreen({ navigation, route }) {
       return
     }
 
-    navigation.navigate('Home', {
-      refreshFeedAt: Date.now(),
+    navigation.navigate('MainTabs', {
+      screen: 'Home',
+      params: {
+        refreshFeedAt: Date.now(),
+      },
     })
   }
 

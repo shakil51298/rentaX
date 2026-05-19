@@ -1,5 +1,3 @@
-import { CommonActions } from '@react-navigation/native'
-
 export const MAIN_TAB_SCREENS = {
   home: 'Home',
   chat: 'Chat',
@@ -20,10 +18,5 @@ export function navigateToMainTab(navigation, screen) {
     return
   }
 
-  navigation.dispatch(
-    CommonActions.reset({
-      index: 0,
-      routes: [{ name: screen }],
-    })
-  )
+  navigation.navigate(screen)
 }
