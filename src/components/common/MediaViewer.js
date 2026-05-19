@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -12,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { normalizeMediaList } from '../../lib/media'
+import { saveMediaToLibrary } from '../../lib/mediaSave'
 
 function distanceBetweenTouches(touches) {
   if (touches.length < 2) return 0
@@ -130,6 +133,7 @@ export default function MediaViewer({ visible, media, initialIndex, onClose }) {
   const insets = useSafeAreaInsets()
   const items = normalizeMediaList(media)
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [saving, setSaving] = useState(false)
   const safeInitialIndex = Math.min(initialIndex, Math.max(items.length - 1, 0))
 
   useEffect(() => {
@@ -156,6 +160,25 @@ export default function MediaViewer({ visible, media, initialIndex, onClose }) {
       )}
     </View>
   ), [currentIndex, height, visible, width])
+
+  async function saveCurrentMedia() {
+    const currentItem = items[currentIndex]
+
+    if (!currentItem?.uri || saving) return
+
+    try {
+      setSaving(true)
+      await saveMediaToLibrary({
+        uri: currentItem.uri,
+        type: currentItem.type || 'image',
+      })
+      Alert.alert('Saved', `${currentItem.type === 'video' ? 'Video' : 'Photo'} saved to your device.`)
+    } catch (error) {
+      Alert.alert('Save failed', error?.message || 'Could not save this media right now.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Modal
@@ -189,20 +212,44 @@ export default function MediaViewer({ visible, media, initialIndex, onClose }) {
             {items.length ? `${currentIndex + 1} / ${items.length}` : ''}
           </Text>
 
-          <Pressable
-            onPress={onClose}
-            hitSlop={12}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              backgroundColor: 'rgba(255,255,255,0.16)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="close" size={26} color="#fff" />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable
+              onPress={saveCurrentMedia}
+              disabled={!items.length || saving}
+              hitSlop={12}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 8,
+                opacity: !items.length || saving ? 0.5 : 1,
+              }}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="download-outline" size={22} color="#fff" />
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="close" size={26} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         {items.length > 0 ? (

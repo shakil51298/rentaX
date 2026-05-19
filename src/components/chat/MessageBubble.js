@@ -153,6 +153,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           height: 38,
           borderRadius: 10,
           marginRight: 10,
+          flexShrink: 0,
           backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
         }}
         resizeMode="cover"
@@ -168,6 +169,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           height: 38,
           borderRadius: 10,
           marginRight: 10,
+          flexShrink: 0,
           backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
@@ -190,6 +192,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           height: 38,
           borderRadius: 10,
           marginRight: 10,
+          flexShrink: 0,
           backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
@@ -212,6 +215,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           height: 38,
           borderRadius: 10,
           marginRight: 10,
+          flexShrink: 0,
           backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
@@ -365,6 +369,12 @@ export default function MessageBubble({
   const lastTapTimeRef = useRef(0)
   const reactionCount = [item.sender_reaction, item.receiver_reaction].filter(Boolean).length
   const isCallMessage = item.message_type === 'call'
+  const hasReplyBlock = Boolean(repliedMessage)
+  const bubbleMaxWidth = hasReplyBlock
+    ? '94%'
+    : item.message_type === 'text'
+      ? '89%'
+      : '82%'
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -455,7 +465,7 @@ export default function MessageBubble({
           {...panResponder.panHandlers}
           style={{
             transform: [{ translateX }],
-            maxWidth: '82%',
+            maxWidth: bubbleMaxWidth,
           }}
         >
           <View
@@ -498,18 +508,20 @@ export default function MessageBubble({
                   paddingVertical: 8,
                   backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
                   flexDirection: 'row',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
+                  overflow: 'hidden',
                 }}
               >
                 <ReplyPreviewMedia message={repliedMessage} isMine={isMine} />
 
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
                       color: isMine ? '#fff' : '#1877F2',
                       fontWeight: '900',
                       fontSize: 12,
                     }}
+                    numberOfLines={1}
                   >
                     {repliedMessage.sender_id === currentUserId ? 'You' : 'Reply'}
                   </Text>
@@ -517,6 +529,8 @@ export default function MessageBubble({
                     style={{
                       color: isMine ? 'rgba(255,255,255,0.9)' : '#334155',
                       marginTop: 3,
+                      fontSize: 12,
+                      lineHeight: 17,
                     }}
                     numberOfLines={2}
                   >

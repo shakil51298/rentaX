@@ -26,6 +26,9 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
@@ -54,6 +57,19 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Allow Rental X to access your location to show your area on the home page."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Rental X to save photos from posts and chats to your device.",
+          "savePhotosPermission": "Allow Rental X to save photos and videos to your device.",
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": [
+            "photo",
+            "video",
+            "audio"
+          ]
         }
       ],
       "expo-font",

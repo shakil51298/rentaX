@@ -21,6 +21,7 @@ import { fetchPropertyViewCount, recordPropertyView } from '../lib/propertyViews
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 import { blockUser } from '../lib/social'
 import ActionSheetModal from '../components/common/ActionSheetModal'
+import { saveMediaToLibrary } from '../lib/mediaSave'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -177,6 +178,7 @@ function MediaViewer({ visible, media, initialIndex, onClose }) {
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [saving, setSaving] = useState(false)
   const safeInitialIndex = Math.min(initialIndex, Math.max(media.length - 1, 0))
 
   useEffect(() => {
@@ -203,6 +205,25 @@ function MediaViewer({ visible, media, initialIndex, onClose }) {
       )}
     </View>
   ), [currentIndex, height, visible, width])
+
+  async function saveCurrentMedia() {
+    const currentItem = media[currentIndex]
+
+    if (!currentItem?.uri || saving) return
+
+    try {
+      setSaving(true)
+      await saveMediaToLibrary({
+        uri: currentItem.uri,
+        type: currentItem.type || 'image',
+      })
+      Alert.alert('Saved', `${currentItem.type === 'video' ? 'Video' : 'Photo'} saved to your device.`)
+    } catch (error) {
+      Alert.alert('Save failed', error?.message || 'Could not save this media right now.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Modal
@@ -234,20 +255,44 @@ function MediaViewer({ visible, media, initialIndex, onClose }) {
             {media.length ? `${currentIndex + 1} / ${media.length}` : ''}
           </Text>
 
-          <Pressable
-            onPress={onClose}
-            hitSlop={12}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              backgroundColor: 'rgba(255,255,255,0.16)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="close" size={26} color="#fff" />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable
+              onPress={saveCurrentMedia}
+              disabled={!media.length || saving}
+              hitSlop={12}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 8,
+                opacity: !media.length || saving ? 0.5 : 1,
+              }}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="download-outline" size={22} color="#fff" />
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="close" size={26} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         {media.length > 0 ? (

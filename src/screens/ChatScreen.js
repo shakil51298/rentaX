@@ -1541,12 +1541,12 @@ export default function ChatScreen({ route, navigation }) {
                 paddingHorizontal: 12,
                 paddingVertical: 10,
                 flexDirection: 'row',
-                alignItems: 'center',
+                alignItems: 'flex-start',
               }}
             >
               <Pressable
                 onPress={() => jumpToMessage(replyTarget.id)}
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start' }}
               >
                 {replyTarget.message_type === 'image' && replyTarget.media_url ? (
                   <Image
@@ -1556,6 +1556,7 @@ export default function ChatScreen({ route, navigation }) {
                       height: 38,
                       borderRadius: 10,
                       marginRight: 10,
+                      flexShrink: 0,
                       backgroundColor: '#dbeafe',
                     }}
                     resizeMode="cover"
@@ -1567,6 +1568,7 @@ export default function ChatScreen({ route, navigation }) {
                       height: 38,
                       borderRadius: 10,
                       marginRight: 10,
+                      flexShrink: 0,
                       backgroundColor: '#dbeafe',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1581,6 +1583,7 @@ export default function ChatScreen({ route, navigation }) {
                       height: 38,
                       borderRadius: 10,
                       marginRight: 10,
+                      flexShrink: 0,
                       backgroundColor: '#dbeafe',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1595,6 +1598,7 @@ export default function ChatScreen({ route, navigation }) {
                       height: 38,
                       borderRadius: 10,
                       marginRight: 10,
+                      flexShrink: 0,
                       backgroundColor: '#dbeafe',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1604,12 +1608,15 @@ export default function ChatScreen({ route, navigation }) {
                   </View>
                 ) : null}
 
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#1877F2', fontWeight: '900', fontSize: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={{ color: '#1877F2', fontWeight: '900', fontSize: 12 }}
+                    numberOfLines={1}
+                  >
                     Replying to {replyTarget.sender_id === currentUser?.id ? 'yourself' : otherUserName}
                   </Text>
                   <Text
-                    style={{ color: '#0f172a', marginTop: 4 }}
+                    style={{ color: '#0f172a', marginTop: 4, fontSize: 12, lineHeight: 17 }}
                     numberOfLines={2}
                   >
                     {getReplySnippet(replyTarget)}
