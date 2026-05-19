@@ -1716,7 +1716,7 @@ export default function ChatScreen({ route, navigation }) {
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="call-outline" size={22} color="#1877F2" />
+            <Ionicons name="call-outline" size={22} color={activeColorPreset.accent} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1729,7 +1729,7 @@ export default function ChatScreen({ route, navigation }) {
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="videocam-outline" size={23} color="#1877F2" />
+            <Ionicons name="videocam-outline" size={23} color={activeColorPreset.accent} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1742,7 +1742,7 @@ export default function ChatScreen({ route, navigation }) {
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="information-circle-outline" size={23} color="#1877F2" />
+            <Ionicons name="information-circle-outline" size={23} color={activeColorPreset.accent} />
           </TouchableOpacity>
         </View>
 
