@@ -14,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import * as Clipboard from 'expo-clipboard'
@@ -65,6 +66,20 @@ function normalizeMeteringLevel(metering) {
 
   const clamped = Math.max(-60, Math.min(0, metering))
   return Math.max(0.12, (clamped + 60) / 60)
+}
+
+function hexToRgba(hex, alpha = 1) {
+  const safeHex = String(hex || '').replace('#', '')
+
+  if (safeHex.length !== 6) {
+    return `rgba(24, 119, 242, ${alpha})`
+  }
+
+  const red = parseInt(safeHex.slice(0, 2), 16)
+  const green = parseInt(safeHex.slice(2, 4), 16)
+  const blue = parseInt(safeHex.slice(4, 6), 16)
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 
 function getConversationDeletionField(conversation, userId) {
@@ -221,6 +236,8 @@ export default function ChatScreen({ route, navigation }) {
   const highlightTimerRef = useRef(null)
   const suppressAutoScrollUntilRef = useRef(0)
   const handledCapturedAssetNonceRef = useRef(null)
+  const longPressRecordingRef = useRef(false)
+  const skipNextMicTapRef = useRef(false)
   const composerFocusAnim = useRef(new Animated.Value(0)).current
   const recordingPulseAnim = useRef(new Animated.Value(0)).current
   const audioRecorder = useAudioRecorder({
@@ -229,6 +246,7 @@ export default function ChatScreen({ route, navigation }) {
   })
   const recorderState = useAudioRecorderState(audioRecorder)
   const insets = useSafeAreaInsets()
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const routeParams = route.params || EMPTY_ROUTE_PARAMS
   const directTarget = useMemo(() => getDirectTarget(routeParams), [routeParams])
   const directProperty = routeParams?.property || null
@@ -1035,13 +1053,13 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   async function startRecording() {
-    if (!currentUser?.id || recorderState?.isRecording) return
+    if (!currentUser?.id || recorderState?.isRecording) return false
 
     const permission = await requestRecordingPermissionsAsync()
 
     if (!permission.granted) {
       Alert.alert('Microphone needed', 'Please allow microphone access to send voice messages.')
-      return
+      return false
     }
 
     try {
@@ -1058,8 +1076,10 @@ export default function ChatScreen({ route, navigation }) {
       })
       await audioRecorder.prepareToRecordAsync()
       audioRecorder.record()
+      return true
     } catch (error) {
       Alert.alert('Recording failed', error.message)
+      return false
     }
   }
 
@@ -1157,6 +1177,50 @@ export default function ChatScreen({ route, navigation }) {
       stopRecordingForReview()
     } else {
       startRecording()
+    }
+  }
+
+  async function stopAndSendRecordingDirectly() {
+    if (!recorderState?.isRecording || uploading || !currentUser?.id) return
+
+    try {
+      setUploading(true)
+      await audioRecorder.stop()
+
+      const uri = audioRecorder.uri
+      const durationMillis = recorderState.durationMillis || 0
+
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      })
+
+      if (!uri) {
+        throw new Error('No recording file was created.')
+      }
+
+      const uploadResult = await uploadMediaAsset({
+        uri,
+        type: 'voice',
+        mimeType: 'audio/mp4',
+        userId: currentUser.id,
+        bucket: CHAT_MEDIA_BUCKET,
+      })
+
+      await sendMessage({
+        messageType: 'voice',
+        mediaUrl: uploadResult.mediaUrl,
+        mediaMimeType: uploadResult.mediaMimeType,
+        audioDurationMs: durationMillis,
+      })
+
+      setRecordingWaveform([])
+      setPendingVoiceNote(null)
+    } catch (error) {
+      Alert.alert('Voice message failed', error.message)
+    } finally {
+      setUploading(false)
+      longPressRecordingRef.current = false
     }
   }
 
@@ -1579,13 +1643,20 @@ export default function ChatScreen({ route, navigation }) {
   }, [currentUser?.id, messageActionTarget])
 
   const chatStatusText = getChatStatusText()
+  const currentRecordingLevel = recorderState?.isRecording
+    ? (recordingWaveform[recordingWaveform.length - 1] ?? normalizeMeteringLevel(recorderState?.metering))
+    : 0
+  const recordingAuraCount = Math.max(5, Math.min(10, 5 + Math.round(currentRecordingLevel * 5)))
+  const recordingAuraMaxSize = Math.min(windowWidth * 0.96, windowHeight * 0.48)
+  const recordingAuraMinSize = Math.min(110, recordingAuraMaxSize * 0.42)
+  const recordingAuraStep = (recordingAuraMaxSize - recordingAuraMinSize) / 9
   const leftAccessoryWidth = composerFocusAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [42, 0],
   })
   const sideAccessoryWidth = composerFocusAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [36, 0],
+    outputRange: [42, 0],
   })
   const accessoryOpacity = composerFocusAnim.interpolate({
     inputRange: [0, 1],
@@ -2259,7 +2330,8 @@ export default function ChatScreen({ route, navigation }) {
           <View
             style={{
               flexDirection: 'row',
-              alignItems: 'flex-end',
+              alignItems: 'center',
+              overflow: 'visible',
             }}
           >
           <Animated.View
@@ -2337,7 +2409,7 @@ export default function ChatScreen({ route, navigation }) {
           <Animated.View
             style={{
               width: sideAccessoryWidth,
-              height: 36,
+              height: 42,
               marginLeft: accessorySpacing,
               opacity: accessoryOpacity,
               overflow: 'hidden',
@@ -2347,9 +2419,9 @@ export default function ChatScreen({ route, navigation }) {
               onPress={pickMedia}
               disabled={uploading || sending || composerFocused}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 42,
+                height: 42,
+                borderRadius: 21,
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: uploading || sending ? 0.5 : 1,
@@ -2362,7 +2434,7 @@ export default function ChatScreen({ route, navigation }) {
           <Animated.View
             style={{
               width: sideAccessoryWidth,
-              height: 36,
+              height: 42,
               marginLeft: composerFocused ? 0 : 2,
               opacity: accessoryOpacity,
               overflow: 'hidden',
@@ -2372,9 +2444,9 @@ export default function ChatScreen({ route, navigation }) {
               onPress={pickDocumentFile}
               disabled={uploading || sending || composerFocused}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 42,
+                height: 42,
+                borderRadius: 21,
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: uploading || sending ? 0.5 : 1,
@@ -2406,30 +2478,112 @@ export default function ChatScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              onPress={toggleRecording}
-              disabled={uploading}
+            <View
               style={{
                 width: 42,
                 height: 42,
-                borderRadius: 21,
+                marginLeft: 8,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: recorderState?.isRecording ? '#dc2626' : activeColorPreset.accent,
-                marginLeft: 8,
-                opacity: uploading ? 0.55 : 1,
+                overflow: 'visible',
+                zIndex: recorderState?.isRecording ? 20 : 1,
+                elevation: recorderState?.isRecording ? 20 : 0,
               }}
             >
-              {uploading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Ionicons
-                  name={recorderState?.isRecording ? 'stop' : 'mic'}
-                  size={20}
-                  color="#fff"
-                />
-              )}
-            </TouchableOpacity>
+              {recorderState?.isRecording
+                ? Array.from({ length: 10 }).map((_, index) => {
+                  const active = index < recordingAuraCount
+                  const size = recordingAuraMinSize + index * recordingAuraStep
+                  const opacityBase = active
+                    ? Math.max(0.08, currentRecordingLevel * (0.85 - index * 0.055))
+                    : 0.03
+                  const rotation = `${(index % 4) * 90}deg`
+
+                  return (
+                    <Animated.View
+                      key={`recording-aura-${index}`}
+                      pointerEvents="none"
+                      style={{
+                        position: 'absolute',
+                        left: 21 - size / 2,
+                        top: 21 - size / 2,
+                        width: size,
+                        height: size,
+                        borderTopWidth: 4,
+                        borderRightWidth: 4,
+                        borderTopColor: hexToRgba(activeColorPreset.accent, opacityBase),
+                        borderRightColor: hexToRgba(activeColorPreset.accent, opacityBase),
+                        borderLeftColor: 'transparent',
+                        borderBottomColor: 'transparent',
+                        borderTopLeftRadius: size / 2,
+                        borderTopRightRadius: size / 2,
+                        borderBottomRightRadius: size / 2,
+                        borderBottomLeftRadius: size / 2,
+                        transform: [
+                          { rotate: rotation },
+                          {
+                            scale: recordingPulseAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.96, 1.03 + currentRecordingLevel * 0.06],
+                            }),
+                          },
+                        ],
+                      }}
+                    />
+                  )
+                })
+                : null}
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (skipNextMicTapRef.current) {
+                    skipNextMicTapRef.current = false
+                    return
+                  }
+
+                  toggleRecording()
+                }}
+                onLongPress={async () => {
+                  skipNextMicTapRef.current = true
+                  longPressRecordingRef.current = true
+
+                  if (!recorderState?.isRecording) {
+                    const didStart = await startRecording()
+
+                    if (!didStart) {
+                      longPressRecordingRef.current = false
+                      skipNextMicTapRef.current = false
+                    }
+                  }
+                }}
+                onPressOut={() => {
+                  if (longPressRecordingRef.current && recorderState?.isRecording) {
+                    stopAndSendRecordingDirectly()
+                  }
+                }}
+                delayLongPress={160}
+                disabled={uploading}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: activeColorPreset.accent,
+                  opacity: uploading ? 0.55 : 1,
+                }}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons
+                    name={recorderState?.isRecording ? 'stop' : 'mic'}
+                    size={20}
+                    color="#fff"
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
           )}
           </View>
         </View>
