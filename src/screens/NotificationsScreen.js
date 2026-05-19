@@ -34,6 +34,9 @@ function getActorName(notification) {
 }
 
 function getNotificationIcon(type) {
+  if (type === 'saved_search_match') {
+    return 'notifications-circle'
+  }
   if (type === 'visit_request_created' || type === 'visit_request_cancelled') {
     return 'calendar-outline'
   }
@@ -69,6 +72,9 @@ function getNotificationIcon(type) {
 }
 
 function getNotificationColor(type) {
+  if (type === 'saved_search_match') {
+    return '#2563eb'
+  }
   if (type === 'visit_request_created') {
     return '#b45309'
   }
@@ -318,6 +324,16 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
       || notification.type === 'visit_request_rejected'
       || notification.type === 'visit_request_rescheduled'
     ) {
+      if (notification.property) {
+        navigation.navigate('Property', { property: notification.property })
+        return
+      }
+
+      navigation.navigate('MainTabs', { screen: 'Home' })
+      return
+    }
+
+    if (notification.type === 'saved_search_match') {
       if (notification.property) {
         navigation.navigate('Property', { property: notification.property })
         return

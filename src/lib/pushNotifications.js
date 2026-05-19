@@ -20,6 +20,7 @@ const ADMIN_NOTIFICATION_TYPES = new Set([
   'user_report_submitted',
   'property_report_submitted',
 ])
+const SAVED_SEARCH_NOTIFICATION_TYPES = new Set(['saved_search_match'])
 const VISIT_REQUEST_OWNER_TYPES = new Set([
   'visit_request_created',
   'visit_request_cancelled',
@@ -33,6 +34,7 @@ const VISIT_REQUEST_RENTER_TYPES = new Set([
 function getNotificationChannelId(type) {
   if (CHAT_NOTIFICATION_TYPES.has(type)) return 'messages'
   if (OFFER_NOTIFICATION_TYPES.has(type)) return 'offers'
+  if (SAVED_SEARCH_NOTIFICATION_TYPES.has(type)) return 'activity'
   if (ADMIN_NOTIFICATION_TYPES.has(type)) return 'admin'
   return 'activity'
 }
@@ -317,6 +319,16 @@ export function routeFromNotificationData(navigation, payload = {}) {
   }
 
   if (VISIT_REQUEST_RENTER_TYPES.has(type)) {
+    if (property?.id) {
+      navigation.navigate('Property', { property })
+      return
+    }
+
+    navigation.navigate('MainTabs', { screen: 'Home' })
+    return
+  }
+
+  if (type === 'saved_search_match') {
     if (property?.id) {
       navigation.navigate('Property', { property })
       return

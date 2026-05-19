@@ -60,6 +60,12 @@ import {
 import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
 import { ensureUserProfileRecord } from '../lib/profileSync'
+import {
+  buildSavedSearchName,
+  createSavedSearch,
+  deleteSavedSearch,
+  fetchSavedSearches,
+} from '../lib/savedSearches'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { getOwnerVerificationStatus } from '../lib/verification'
@@ -258,6 +264,10 @@ function createDefaultFilters(maxPrice) {
     location: '',
     minPrice: 0,
     maxPrice,
+    minBeds: 0,
+    minBaths: 0,
+    furnishing: 'any',
+    petFriendly: false,
     status: 'all',
     media: 'all',
     sort: 'smart',
@@ -276,6 +286,10 @@ function normalizeFilters(filters, maxPrice) {
     location: (filters.location || '').trim(),
     minPrice: nextMin,
     maxPrice: nextMax,
+    minBeds: Math.max(0, Number(filters.minBeds || 0)),
+    minBaths: Math.max(0, Number(filters.minBaths || 0)),
+    furnishing: filters.furnishing || 'any',
+    petFriendly: Boolean(filters.petFriendly),
   }
 }
 
@@ -284,6 +298,10 @@ function countActiveFilters(filters, maxPrice) {
     Boolean(filters.location?.trim()),
     Number(filters.minPrice) > 0,
     Number(filters.maxPrice) < Number(maxPrice || 0),
+    Number(filters.minBeds) > 0,
+    Number(filters.minBaths) > 0,
+    filters.furnishing !== 'any',
+    Boolean(filters.petFriendly),
     filters.status !== 'all',
     filters.media !== 'all',
     filters.sort !== 'smart',
@@ -367,6 +385,11 @@ function getSearchTextForPost(post) {
     post.description,
     post.location,
     ownerName,
+    Number(post.beds || 0) > 0 ? `${post.beds} bed bedroom` : '',
+    Number(post.baths || 0) > 0 ? `${post.baths} bath bathroom` : '',
+    post.furnishing_status === 'furnished' ? 'furnished' : '',
+    post.furnishing_status === 'unfurnished' ? 'unfurnished' : '',
+    post.pet_friendly ? 'pet friendly pets allowed' : '',
     ...getPriceSearchTokens(post.price),
     post.status === 'rented' ? 'rented rented out unavailable' : 'open for rent available',
   ]
@@ -393,6 +416,11 @@ function getSearchTermsForPost(post) {
   return [...new Set([
     post.title,
     ownerName,
+    Number(post.beds || 0) > 0 ? `${post.beds} bed` : '',
+    Number(post.baths || 0) > 0 ? `${post.baths} bath` : '',
+    post.furnishing_status === 'furnished' ? 'Furnished' : '',
+    post.furnishing_status === 'unfurnished' ? 'Unfurnished' : '',
+    post.pet_friendly ? 'Pet friendly' : '',
     ...locationParts,
   ].filter(Boolean))]
 }
@@ -516,6 +544,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
   const [draftSearchQuery, setDraftSearchQuery] = useState('')
   const [recentSearches, setRecentSearches] = useState([])
+  const [savedSearches, setSavedSearches] = useState([])
+  const [savingSearch, setSavingSearch] = useState(false)
   const [seenPostIds, setSeenPostIds] = useState([])
   const [feedSignalProfile, setFeedSignalProfile] = useState({ tokens: {}, updatedAt: null })
   const [feedRefreshTick, setFeedRefreshTick] = useState(0)
@@ -579,6 +609,9 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       .filter((post) => {
         const price = getPropertyPrice(post)
         const status = post.status || 'open'
+        const beds = Number(post.beds || 0)
+        const baths = Number(post.baths || 0)
+        const furnishing = post.furnishing_status || 'unknown'
         const postMedia = normalizeMediaList(post.media?.length ? post.media : post.image_url ? [post.image_url] : [])
         const hasVideo = postMedia.some((item) => item.type === 'video')
         const hasImage = postMedia.some((item) => item.type === 'image')
@@ -593,6 +626,26 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         }
 
         if (price > Number(appliedFilters.maxPrice || priceCeiling)) {
+          return false
+        }
+
+        if (Number(appliedFilters.minBeds || 0) > 0 && beds < Number(appliedFilters.minBeds)) {
+          return false
+        }
+
+        if (Number(appliedFilters.minBaths || 0) > 0 && baths < Number(appliedFilters.minBaths)) {
+          return false
+        }
+
+        if (appliedFilters.furnishing === 'furnished' && furnishing !== 'furnished') {
+          return false
+        }
+
+        if (appliedFilters.furnishing === 'unfurnished' && furnishing !== 'unfurnished') {
+          return false
+        }
+
+        if (appliedFilters.petFriendly && !post.pet_friendly) {
           return false
         }
 
@@ -756,6 +809,37 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   useEffect(() => {
     let isMounted = true
 
+    async function hydrateSavedSearches() {
+      if (!currentUser?.id) {
+        if (isMounted) {
+          setSavedSearches([])
+        }
+        return
+      }
+
+      try {
+        const nextSavedSearches = await fetchSavedSearches(currentUser.id, priceCeiling)
+
+        if (isMounted) {
+          setSavedSearches(nextSavedSearches)
+        }
+      } catch (_error) {
+        if (isMounted) {
+          setSavedSearches([])
+        }
+      }
+    }
+
+    hydrateSavedSearches()
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentUser?.id, priceCeiling])
+
+  useEffect(() => {
+    let isMounted = true
+
     async function hydrateFeedSignals() {
       if (!currentUser?.id) {
         if (isMounted) {
@@ -844,6 +928,34 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       supabase.removeChannel(channel)
     }
   }, [loadProperties])
+
+  useEffect(() => {
+    if (!currentUser?.id) return undefined
+
+    const channel = supabase
+      .channel(`saved-searches-${currentUser.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'saved_searches',
+          filter: `user_id=eq.${currentUser.id}`,
+        },
+        async () => {
+          try {
+            setSavedSearches(await fetchSavedSearches(currentUser.id, priceCeiling))
+          } catch {
+            // keep current list if the table is not ready yet
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser?.id, priceCeiling])
 
   useEffect(() => {
     const selectedLocation = route?.params?.selectedLocation
@@ -1217,6 +1329,91 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   function applyFilters() {
     setAppliedFilters(normalizeFilters(draftFilters, priceCeiling))
     setFilterModalVisible(false)
+  }
+
+  async function saveCurrentSearchAlert() {
+    if (!currentUser?.id) {
+      Alert.alert('Login required', 'Please log in to save a rental alert.')
+      return
+    }
+
+    const nextFilters = normalizeFilters(draftFilters, priceCeiling)
+
+    const hasUsefulAlertCriteria = Boolean(
+      nextFilters.location
+      || Number(nextFilters.minPrice || 0) > 0
+      || Number(nextFilters.maxPrice || 0) < Number(priceCeiling || 0)
+      || Number(nextFilters.minBeds || 0) > 0
+      || Number(nextFilters.minBaths || 0) > 0
+      || nextFilters.furnishing !== 'any'
+      || nextFilters.petFriendly
+      || nextFilters.verifiedOnly
+    )
+
+    if (!hasUsefulAlertCriteria) {
+      Alert.alert(
+        'Add a few filter details',
+        'Choose an area, budget, beds, baths, furnishing, pets, or verified owners before saving an alert.'
+      )
+      return
+    }
+
+    const nextAlertName = buildSavedSearchName(nextFilters)
+    const duplicateSearch = savedSearches.find((item) => item.display_name === nextAlertName)
+
+    if (duplicateSearch) {
+      Alert.alert('Already saved', 'You already have this saved rental alert.')
+      return
+    }
+
+    try {
+      setSavingSearch(true)
+      const createdSearch = await createSavedSearch({
+        userId: currentUser.id,
+        filters: nextFilters,
+        maxPrice: priceCeiling,
+      })
+
+      setSavedSearches((current) => [createdSearch, ...current].slice(0, 8))
+      setAppliedFilters(nextFilters)
+      setDraftFilters(nextFilters)
+      setFilterModalVisible(false)
+      Alert.alert('Alert saved', 'We will notify you when a matching rental appears.')
+    } catch (error) {
+      Alert.alert(
+        'Saved alerts setup needed',
+        error?.message || 'Run supabase-saved-search-features.sql in Supabase, then try again.'
+      )
+    } finally {
+      setSavingSearch(false)
+    }
+  }
+
+  async function removeSavedSearch(searchId) {
+    try {
+      await deleteSavedSearch(searchId)
+      setSavedSearches((current) => current.filter((item) => item.id !== searchId))
+    } catch (error) {
+      Alert.alert('Delete failed', error?.message || 'Could not remove this saved alert.')
+    }
+  }
+
+  function applySavedSearch(search) {
+    if (!search?.filters) return
+
+    const nextFilters = normalizeFilters(
+      {
+        ...createDefaultFilters(priceCeiling),
+        ...search.filters,
+        sort: appliedFilters.sort,
+      },
+      priceCeiling
+    )
+
+    setDraftFilters(nextFilters)
+    setAppliedFilters(nextFilters)
+    setAppliedSearchQuery('')
+    postListRef.current?.scrollToOffset?.({ animated: true, offset: 0 })
   }
 
   async function useAutoLocationFilter() {
@@ -2171,6 +2368,80 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         </View>
       ) : null}
 
+      {savedSearches.length > 0 ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: '#eee',
+          }}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+          >
+            {savedSearches.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  minWidth: 154,
+                  maxWidth: 220,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#dbe4ee',
+                  backgroundColor: '#f8fafc',
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() => applySavedSearch(item)}
+                    activeOpacity={0.88}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                  >
+                    <View
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        backgroundColor: '#eff6ff',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 8,
+                      }}
+                    >
+                      <Ionicons name="notifications-outline" size={14} color="#2563eb" />
+                    </View>
+
+                    <Text
+                      numberOfLines={2}
+                      style={{ flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '900', lineHeight: 16 }}
+                    >
+                      {item.display_name}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => removeSavedSearch(item.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ marginLeft: 6 }}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                </View>
+
+                <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 10, marginTop: 8 }}>
+                  Tap to apply this alert
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <FlatList
         ref={postListRef}
         data={visibleProperties}
@@ -2443,7 +2714,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   Advanced Filters
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>
-                  Narrow rentals by budget, place, media, and availability.
+                  Narrow rentals by budget, layout, pets, and trusted owners.
                 </Text>
               </View>
 
@@ -2552,6 +2823,77 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 </View>
               </FilterSection>
 
+              <FilterSection title="Bedrooms">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="Any"
+                    active={draftFilters.minBeds === 0}
+                    onPress={() => updateDraftFilter('minBeds', 0)}
+                  />
+                  {[1, 2, 3, 4].map((value) => (
+                    <FilterChip
+                      key={`beds-${value}`}
+                      label={`${value}+ bed`}
+                      active={draftFilters.minBeds === value}
+                      onPress={() => updateDraftFilter('minBeds', value)}
+                    />
+                  ))}
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Bathrooms">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="Any"
+                    active={draftFilters.minBaths === 0}
+                    onPress={() => updateDraftFilter('minBaths', 0)}
+                  />
+                  {[1, 2, 3].map((value) => (
+                    <FilterChip
+                      key={`baths-${value}`}
+                      label={`${value}+ bath`}
+                      active={draftFilters.minBaths === value}
+                      onPress={() => updateDraftFilter('minBaths', value)}
+                    />
+                  ))}
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Furnishing">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="Any"
+                    active={draftFilters.furnishing === 'any'}
+                    onPress={() => updateDraftFilter('furnishing', 'any')}
+                  />
+                  <FilterChip
+                    label="Furnished"
+                    active={draftFilters.furnishing === 'furnished'}
+                    onPress={() => updateDraftFilter('furnishing', 'furnished')}
+                  />
+                  <FilterChip
+                    label="Unfurnished"
+                    active={draftFilters.furnishing === 'unfurnished'}
+                    onPress={() => updateDraftFilter('furnishing', 'unfurnished')}
+                  />
+                </View>
+              </FilterSection>
+
+              <FilterSection title="Pets">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <FilterChip
+                    label="Any"
+                    active={!draftFilters.petFriendly}
+                    onPress={() => updateDraftFilter('petFriendly', false)}
+                  />
+                  <FilterChip
+                    label="Pet friendly"
+                    active={draftFilters.petFriendly}
+                    onPress={() => updateDraftFilter('petFriendly', true)}
+                  />
+                </View>
+              </FilterSection>
+
               <FilterSection title="Availability">
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   <FilterChip
@@ -2640,9 +2982,29 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
               <TouchableOpacity
+                onPress={saveCurrentSearchAlert}
+                disabled={savingSearch}
+                style={{
+                  flex: 1.15,
+                  height: 46,
+                  borderRadius: 15,
+                  backgroundColor: '#eff6ff',
+                  borderWidth: 1,
+                  borderColor: '#bfdbfe',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: savingSearch ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>
+                  {savingSearch ? 'Saving...' : 'Save Alert'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 onPress={resetDraftFilters}
                 style={{
-                  flex: 1,
+                  flex: 0.9,
                   height: 46,
                   borderRadius: 15,
                   backgroundColor: '#f8fafc',
@@ -2660,7 +3022,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               <TouchableOpacity
                 onPress={applyFilters}
                 style={{
-                  flex: 1.4,
+                  flex: 1.15,
                   height: 46,
                   borderRadius: 15,
                   backgroundColor: '#2563eb',

@@ -135,6 +135,10 @@ export default function CreatePostScreen({ navigation, route }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
+  const [beds, setBeds] = useState('')
+  const [baths, setBaths] = useState('')
+  const [furnishingStatus, setFurnishingStatus] = useState('unfurnished')
+  const [petFriendly, setPetFriendly] = useState(false)
   const [location, setLocation] = useState('')
   const [loading, setLoading] = useState(false)
   const [media, setMedia] = useState([])
@@ -156,6 +160,10 @@ export default function CreatePostScreen({ navigation, route }) {
     setTitle(editingPost.title || '')
     setDescription(editingPost.description || '')
     setPrice(editingPost.price ? String(editingPost.price) : '')
+    setBeds(editingPost.beds ? String(editingPost.beds) : '')
+    setBaths(editingPost.baths ? String(editingPost.baths) : '')
+    setFurnishingStatus(editingPost.furnishing_status || 'unfurnished')
+    setPetFriendly(Boolean(editingPost.pet_friendly))
     setLocation(editingPost.location || '')
     setSelectedLocationMeta(
       editingPost.location
@@ -341,6 +349,10 @@ export default function CreatePostScreen({ navigation, route }) {
       title,
       description,
       price,
+      beds: beds ? Number(beds) : null,
+      baths: baths ? Number(baths) : null,
+      furnishing_status: furnishingStatus || null,
+      pet_friendly: petFriendly,
       location,
       owner_id: ownerId,
       owner_email: ownerEmail,
@@ -481,6 +493,158 @@ export default function CreatePostScreen({ navigation, route }) {
             onChangeText={setPrice}
             keyboardType="numeric"
           />
+
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Bedrooms"
+                placeholder="2"
+                value={beds}
+                onChangeText={setBeds}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Bathrooms"
+                placeholder="1"
+                value={baths}
+                onChangeText={setBaths}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          <View style={{ marginBottom: 16 }}>
+            <Text
+              style={{
+                color: '#334155',
+                fontSize: 13,
+                fontWeight: '800',
+                marginBottom: 8,
+              }}
+            >
+              Furnishing
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setFurnishingStatus('unfurnished')}
+                activeOpacity={0.86}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: furnishingStatus === 'unfurnished' ? '#bfdbfe' : '#dbe4ee',
+                  backgroundColor: furnishingStatus === 'unfurnished' ? '#eff6ff' : '#fff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    color: furnishingStatus === 'unfurnished' ? '#2563eb' : '#475569',
+                    fontSize: 12,
+                    fontWeight: '900',
+                  }}
+                >
+                  Unfurnished
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setFurnishingStatus('furnished')}
+                activeOpacity={0.86}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: furnishingStatus === 'furnished' ? '#bfdbfe' : '#dbe4ee',
+                  backgroundColor: furnishingStatus === 'furnished' ? '#eff6ff' : '#fff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    color: furnishingStatus === 'furnished' ? '#2563eb' : '#475569',
+                    fontSize: 12,
+                    fontWeight: '900',
+                  }}
+                >
+                  Furnished
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={{ marginBottom: 16 }}>
+            <Text
+              style={{
+                color: '#334155',
+                fontSize: 13,
+                fontWeight: '800',
+                marginBottom: 8,
+              }}
+            >
+              Pets
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setPetFriendly(false)}
+                activeOpacity={0.86}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: !petFriendly ? '#bfdbfe' : '#dbe4ee',
+                  backgroundColor: !petFriendly ? '#eff6ff' : '#fff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    color: !petFriendly ? '#2563eb' : '#475569',
+                    fontSize: 12,
+                    fontWeight: '900',
+                  }}
+                >
+                  Not pet friendly
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setPetFriendly(true)}
+                activeOpacity={0.86}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: petFriendly ? '#bfdbfe' : '#dbe4ee',
+                  backgroundColor: petFriendly ? '#eff6ff' : '#fff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    color: petFriendly ? '#2563eb' : '#475569',
+                    fontSize: 12,
+                    fontWeight: '900',
+                  }}
+                >
+                  Pet friendly
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           <View style={{ marginBottom: 16 }}>
             <Text

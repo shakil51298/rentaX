@@ -73,6 +73,30 @@ function getPostMedia(post) {
   return media.map(normalizeMediaItem).filter(Boolean)
 }
 
+function getPropertyMetaChips(post) {
+  const chips = []
+
+  if (Number(post?.beds || 0) > 0) {
+    chips.push(`${post.beds} bedroom${Number(post.beds) === 1 ? '' : 's'}`)
+  }
+
+  if (Number(post?.baths || 0) > 0) {
+    chips.push(`${post.baths} bathroom${Number(post.baths) === 1 ? '' : 's'}`)
+  }
+
+  if (post?.furnishing_status === 'furnished') {
+    chips.push('Furnished')
+  } else if (post?.furnishing_status === 'unfurnished') {
+    chips.push('Unfurnished')
+  }
+
+  if (post?.pet_friendly) {
+    chips.push('Pet friendly')
+  }
+
+  return chips
+}
+
 function distanceBetweenTouches(touches) {
   if (touches.length < 2) return 0
 
@@ -793,6 +817,7 @@ export default function PropertyScreen({ route, navigation }) {
   const isVerifiedProperty = getPropertyVerificationStatus(post) === 'verified'
   const isOwnProperty = String(post.owner_id) === String(currentUser?.id)
   const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
+  const propertyMetaChips = getPropertyMetaChips(post)
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
@@ -869,6 +894,26 @@ export default function PropertyScreen({ route, navigation }) {
             {'\n\n'}Rent: ৳ {post.price}
             {'\n'}Location: {post.location || 'Location not added'}
           </Text>
+
+          {propertyMetaChips.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, marginTop: 12 }}>
+              {propertyMetaChips.map((chip) => (
+                <View
+                  key={chip}
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: '#475569', fontSize: 11, fontWeight: '800' }}>{chip}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {media.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, paddingHorizontal: 8 }}>

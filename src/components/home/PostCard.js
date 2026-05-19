@@ -32,6 +32,30 @@ function getShortLocationLabel(location) {
     .filter(Boolean)[0]
 }
 
+function getPropertyMetaChips(item) {
+  const chips = []
+
+  if (Number(item?.beds || 0) > 0) {
+    chips.push(`${item.beds} bed`)
+  }
+
+  if (Number(item?.baths || 0) > 0) {
+    chips.push(`${item.baths} bath`)
+  }
+
+  if (item?.furnishing_status === 'furnished') {
+    chips.push('Furnished')
+  } else if (item?.furnishing_status === 'unfurnished') {
+    chips.push('Unfurnished')
+  }
+
+  if (item?.pet_friendly) {
+    chips.push('Pet friendly')
+  }
+
+  return chips
+}
+
 export default function PostCard({
   item,
   currentUser,
@@ -70,6 +94,7 @@ export default function PostCard({
   const locationLabel = getShortLocationLabel(item.location)
   const rentLabel = item.price ? `৳ ${item.price}` : ''
   const isAdminBanned = Boolean(item.admin_is_banned)
+  const metaChips = getPropertyMetaChips(item)
   const contentText = useMemo(
     () =>
       `${item.title || ''}\n${item.description || 'No description added'}`,
@@ -249,6 +274,26 @@ export default function PostCard({
           {contentText}
         </Text>
       </TouchableOpacity>
+
+      {metaChips.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 14, marginTop: 10 }}>
+          {metaChips.map((chip) => (
+            <View
+              key={chip}
+              style={{
+                backgroundColor: '#f8fafc',
+                borderRadius: 999,
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+              }}
+            >
+              <Text style={{ color: '#475569', fontSize: 11, fontWeight: '800' }}>{chip}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {showMoreToggle ? (
         <TouchableOpacity
