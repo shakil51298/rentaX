@@ -157,7 +157,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
     }
 
     setProfile(profileData || null)
-    setPosts((postData || []).filter((item) => !item.admin_is_banned))
+    setPosts((postData || []).filter((item) => !item.admin_is_banned && item.status !== 'paused'))
     const counts = await fetchUserSocialCounts(ownerId)
     const quality = await fetchOwnerResponseQuality(ownerId).catch(() =>
       getEmptyOwnerResponseQuality()

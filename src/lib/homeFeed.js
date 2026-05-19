@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { scorePostAgainstSignals } from './feedSignals'
+import { getFeedFreshnessTimestamp, isUrgentProperty } from './propertyLifecycle'
 
 const HOME_SEEN_POSTS_KEY = 'rental-x:home-seen-posts'
 const HOME_SEEN_POSTS_LIMIT = 600
@@ -69,7 +70,9 @@ function getStableHash(value) {
 }
 
 function getRecencyBucket(createdAt) {
-  const timestamp = new Date(createdAt || 0).getTime()
+  const timestamp = typeof createdAt === 'object' && createdAt !== null
+    ? getFeedFreshnessTimestamp(createdAt)
+    : new Date(createdAt || 0).getTime()
   const ageHours = Math.max(0, (Date.now() - timestamp) / (1000 * 60 * 60))
 
   if (ageHours <= 6) return 0
@@ -111,9 +114,10 @@ export function rankHomePosts(posts, {
     const matchesArea = effectiveArea
       ? isPostRelevantToArea(post.location, effectiveArea)
       : false
-    const recencyBucket = getRecencyBucket(post.created_at)
+    const recencyBucket = getRecencyBucket(post)
     const isOwnPost = Boolean(userId && String(post.owner_id) === String(userId))
-    const groupKey = `${isSeen ? 1 : 0}-${matchesArea ? 0 : 1}-${recencyBucket}-${isOwnPost ? 0 : 1}`
+    const isUrgent = isUrgentProperty(post)
+    const groupKey = `${isSeen ? 1 : 0}-${matchesArea ? 0 : 1}-${isUrgent ? 0 : 1}-${recencyBucket}-${isOwnPost ? 0 : 1}`
     const currentGroup = groups.get(groupKey) || []
 
     currentGroup.push(post)
@@ -121,11 +125,12 @@ export function rankHomePosts(posts, {
   }
 
   const orderedGroupKeys = [...groups.keys()].sort((leftKey, rightKey) => {
-    const [leftSeen, leftAreaMatch, leftRecency, leftOwnPost] = leftKey.split('-').map(Number)
-    const [rightSeen, rightAreaMatch, rightRecency, rightOwnPost] = rightKey.split('-').map(Number)
+    const [leftSeen, leftAreaMatch, leftUrgent, leftRecency, leftOwnPost] = leftKey.split('-').map(Number)
+    const [rightSeen, rightAreaMatch, rightUrgent, rightRecency, rightOwnPost] = rightKey.split('-').map(Number)
 
     if (leftSeen !== rightSeen) return leftSeen - rightSeen
     if (leftAreaMatch !== rightAreaMatch) return leftAreaMatch - rightAreaMatch
+    if (leftUrgent !== rightUrgent) return leftUrgent - rightUrgent
 
     if (leftRecency !== rightRecency) return leftRecency - rightRecency
 
@@ -141,8 +146,14 @@ export function rankHomePosts(posts, {
         return rightSignalScore - leftSignalScore
       }
 
-      const leftDate = new Date(leftPost.created_at || 0).getTime()
-      const rightDate = new Date(rightPost.created_at || 0).getTime()
+      const urgentDelta = Number(isUrgentProperty(rightPost)) - Number(isUrgentProperty(leftPost))
+
+      if (urgentDelta !== 0) {
+        return urgentDelta
+      }
+
+      const leftDate = getFeedFreshnessTimestamp(leftPost)
+      const rightDate = getFeedFreshnessTimestamp(rightPost)
 
       if (leftDate !== rightDate) {
         return rightDate - leftDate

@@ -1,8 +1,27 @@
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
-function ActionItem({ icon, title, subtitle, danger, disabled, onPress }) {
-  const tint = danger ? '#dc2626' : '#2563eb'
+const ACTION_TONES = [
+  { tint: '#2563eb', background: '#dbeafe' },
+  { tint: '#7c3aed', background: '#ede9fe' },
+  { tint: '#0891b2', background: '#cffafe' },
+  { tint: '#ea580c', background: '#ffedd5' },
+  { tint: '#16a34a', background: '#dcfce7' },
+]
+
+function getActionTone(index, danger) {
+  if (danger) {
+    return {
+      tint: '#dc2626',
+      background: '#fee2e2',
+    }
+  }
+
+  return ACTION_TONES[index % ACTION_TONES.length]
+}
+
+function ActionItem({ icon, title, subtitle, danger, disabled, onPress, index }) {
+  const tone = getActionTone(index, danger)
 
   return (
     <TouchableOpacity
@@ -12,30 +31,30 @@ function ActionItem({ icon, title, subtitle, danger, disabled, onPress }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
+        paddingVertical: 9,
         opacity: disabled ? 0.45 : 1,
       }}
     >
       <View
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          backgroundColor: danger ? '#fef2f2' : '#eff6ff',
+          width: 34,
+          height: 34,
+          borderRadius: 11,
+          backgroundColor: tone.background,
           alignItems: 'center',
           justifyContent: 'center',
-          marginRight: 12,
+          marginRight: 10,
         }}
       >
-        <Ionicons name={icon} size={18} color={tint} />
+        <Ionicons name={icon} size={16} color={tone.tint} />
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ color: danger ? '#dc2626' : '#0f172a', fontWeight: '800', fontSize: 15 }}>
+        <Text style={{ color: danger ? '#dc2626' : '#0f172a', fontWeight: '800', fontSize: 13.5 }}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#64748b', marginTop: 2, fontSize: 11, lineHeight: 15 }}>
             {subtitle}
           </Text>
         ) : null}
@@ -74,10 +93,10 @@ export default function ActionSheetModal({
           onPress={(event) => event.stopPropagation()}
           style={{
             backgroundColor: '#fff',
-            borderRadius: 24,
+            borderRadius: 20,
             borderWidth: 1,
             borderColor: '#e2e8f0',
-            maxHeight: '78%',
+            maxHeight: '72%',
             overflow: 'hidden',
           }}
         >
@@ -88,35 +107,35 @@ export default function ActionSheetModal({
               flexGrow: 0,
             }}
             contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingTop: 12,
-              paddingBottom: 10,
+              paddingHorizontal: 14,
+              paddingTop: 10,
+              paddingBottom: 8,
             }}
           >
             <View
               style={{
                 alignSelf: 'center',
-                width: 42,
-                height: 5,
+                width: 38,
+                height: 4,
                 borderRadius: 999,
                 backgroundColor: '#cbd5e1',
-                marginBottom: 12,
+                marginBottom: 10,
               }}
             />
 
-            <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>
+            <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
               {title}
             </Text>
             {subtitle ? (
-              <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+              <Text style={{ color: '#64748b', marginTop: 3, fontSize: 11.5, lineHeight: 17 }}>
                 {subtitle}
               </Text>
             ) : null}
 
-            <View style={{ marginTop: 12 }}>
+            <View style={{ marginTop: 10 }}>
               {actions.map((action, index) => (
                 <View key={`${action.title}-${index}`}>
-                  <ActionItem {...action} />
+                  <ActionItem {...action} index={index} />
                   {index < actions.length - 1 ? (
                     <View style={{ height: 1, backgroundColor: '#f1f5f9' }} />
                   ) : null}
@@ -128,16 +147,16 @@ export default function ActionSheetModal({
               onPress={onClose}
               activeOpacity={0.86}
               style={{
-                marginTop: 8,
-                borderRadius: 16,
+                marginTop: 6,
+                borderRadius: 14,
                 backgroundColor: '#f8fafc',
                 borderWidth: 1,
                 borderColor: '#e2e8f0',
-                paddingVertical: 13,
+                paddingVertical: 11,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#334155', fontWeight: '800' }}>{closeLabel}</Text>
+              <Text style={{ color: '#334155', fontWeight: '800', fontSize: 12.5 }}>{closeLabel}</Text>
             </TouchableOpacity>
           </ScrollView>
         </Pressable>

@@ -16,6 +16,7 @@ import ActionSheetModal from '../components/common/ActionSheetModal'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
+import { isUrgentProperty } from '../lib/propertyLifecycle'
 import { getPropertyVerificationStatus } from '../lib/verification'
 
 export default function AdsManagementScreen({ navigation }) {
@@ -73,7 +74,7 @@ export default function AdsManagementScreen({ navigation }) {
           .select('id', { count: 'exact', head: true })
           .eq('owner_id', user.id)
           .eq('status', 'pending'),
-        fetchPropertiesWithProfiles({ ownerId: user.id, includeBanned: true }),
+        fetchPropertiesWithProfiles({ ownerId: user.id, includeBanned: true, includePaused: true }),
       ])
 
       setPendingVisitCount(count || 0)
@@ -317,17 +318,19 @@ export default function AdsManagementScreen({ navigation }) {
     setActionPost(post)
   }
 
-  async function updatePostStatus(post, nextStatus) {
+  async function updatePostLifecycle(post, updates, options = {}) {
     if (!currentUser?.id || !post?.id) return
 
     const previousPosts = posts
+    const nextPostState = {
+      ...post,
+      ...updates,
+    }
+
     setPosts((currentPosts) =>
       currentPosts.map((item) =>
         item.id === post.id
-          ? {
-            ...item,
-            status: nextStatus,
-          }
+          ? nextPostState
           : item
       )
     )
@@ -336,18 +339,110 @@ export default function AdsManagementScreen({ navigation }) {
 
     const { error } = await supabase
       .from('properties')
-      .update({ status: nextStatus })
+      .update(updates)
       .eq('id', post.id)
       .eq('owner_id', currentUser.id)
 
     if (error) {
       setPosts(previousPosts)
       Alert.alert(
-        'Status update failed',
+        options.errorTitle || 'Update failed',
+        options.errorMessage || 'Run supabase-property-status-features.sql in Supabase, then try again.'
+      )
+      return
+    }
+
+    if (options.successTitle || options.successMessage) {
+      Alert.alert(options.successTitle || 'Updated', options.successMessage || 'Post updated.')
+    }
+  }
+
+  async function refreshListing(post) {
+    await updatePostLifecycle(
+      post,
+      {
+        refreshed_at: new Date().toISOString(),
+      },
+      {
+        successTitle: 'Listing refreshed',
+        successMessage: 'This ad now gets a fresh boost in the feed.',
+      }
+    )
+  }
+
+  async function toggleUrgent(post) {
+    const isUrgent = isUrgentProperty(post)
+    const urgentUntil = isUrgent
+      ? null
+      : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+
+    await updatePostLifecycle(
+      post,
+      {
+        urgent_until: urgentUntil,
+        refreshed_at: isUrgent ? post.refreshed_at || post.created_at : new Date().toISOString(),
+      },
+      {
+        successTitle: isUrgent ? 'Urgent removed' : 'Marked urgent',
+        successMessage: isUrgent
+          ? 'This ad is back to normal feed priority.'
+          : 'Renters will see this listing treated as urgent for the next 3 days.',
+      }
+    )
+  }
+
+  async function duplicateListing(post) {
+    if (!currentUser?.id) return
+
+    closeActionSheet()
+
+    const payload = {
+      title: post.title ? `${post.title} (Copy)` : 'Copied listing',
+      description: post.description || '',
+      price: post.price || '',
+      beds: post.beds ?? null,
+      baths: post.baths ?? null,
+      size_sqft: post.size_sqft ?? null,
+      floor_no: post.floor_no ?? null,
+      furnishing_status: post.furnishing_status || null,
+      tenant_type: post.tenant_type || null,
+      parking: Boolean(post.parking),
+      lift_available: Boolean(post.lift_available),
+      generator_backup: Boolean(post.generator_backup),
+      gas_available: Boolean(post.gas_available),
+      pet_friendly: Boolean(post.pet_friendly),
+      available_from: post.available_from || null,
+      facing_direction: post.facing_direction || null,
+      has_balcony: Boolean(post.has_balcony),
+      service_charge_included: Boolean(post.service_charge_included),
+      location: post.location || '',
+      owner_id: currentUser.id,
+      owner_email: post.owner_email || currentUser.email,
+      owner_name: post.owner_name || currentUser.user_metadata?.name || currentUser.email,
+      image_url: post.image_url || null,
+      media: Array.isArray(post.media) ? post.media : [],
+      status: 'open',
+      refreshed_at: new Date().toISOString(),
+      urgent_until: null,
+      duplicated_from_id: String(post.id),
+      verification_status: 'unverified',
+      verification_requested_at: null,
+      verification_rejection_reason: null,
+      admin_is_banned: false,
+    }
+
+    const { data, error } = await supabase.from('properties').insert(payload).select('*').single()
+
+    if (error) {
+      Alert.alert(
+        'Duplicate failed',
         'Run supabase-property-status-features.sql in Supabase, then try again.'
       )
       return
     }
+
+    await loadAds()
+    Alert.alert('Listing duplicated', 'A copied ad was created and is ready to edit or publish.')
   }
 
   async function requestPostVerification(post) {
@@ -458,6 +553,53 @@ export default function AdsManagementScreen({ navigation }) {
               </TouchableOpacity>
             ) : null}
           </View>
+
+          {userType === 'property_owner' ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {[
+                {
+                  label: 'Open',
+                  value: posts.filter((item) => (item.status || 'open') === 'open').length,
+                  backgroundColor: '#ecfdf5',
+                  textColor: '#059669',
+                },
+                {
+                  label: 'Urgent',
+                  value: posts.filter((item) => isUrgentProperty(item)).length,
+                  backgroundColor: '#fff7ed',
+                  textColor: '#ea580c',
+                },
+                {
+                  label: 'Paused',
+                  value: posts.filter((item) => item.status === 'paused').length,
+                  backgroundColor: '#fff7ed',
+                  textColor: '#b45309',
+                },
+                {
+                  label: 'Rented',
+                  value: posts.filter((item) => item.status === 'rented').length,
+                  backgroundColor: '#fef2f2',
+                  textColor: '#dc2626',
+                },
+              ].map((chip) => (
+                <View
+                  key={chip.label}
+                  style={{
+                    backgroundColor: chip.backgroundColor,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: chip.textColor, fontSize: 11, fontWeight: '900' }}>
+                    {chip.label}: {chip.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {userType === 'property_owner' ? (
             <TouchableOpacity
@@ -597,14 +739,88 @@ export default function AdsManagementScreen({ navigation }) {
             },
           },
           {
-            icon: actionPost?.status === 'rented' ? 'checkmark-done-outline' : 'home-outline',
-            title: actionPost?.status === 'rented' ? 'Mark as open for rent' : 'Mark as rented out',
+            icon: 'refresh-outline',
+            title: 'Refresh listing',
+            subtitle: 'Boost this live ad like a fresh listing.',
+            disabled: actionPost?.status !== 'open',
+            onPress: () =>
+              refreshListing(actionPost),
+          },
+          {
+            icon: isUrgentProperty(actionPost) ? 'flash-off-outline' : 'flash-outline',
+            title: isUrgentProperty(actionPost) ? 'Remove urgent mark' : 'Mark urgent',
+            subtitle: isUrgentProperty(actionPost)
+              ? 'Return this ad to normal ranking.'
+              : 'Highlight this listing as urgent for 3 days.',
+            disabled: actionPost?.status !== 'open' && !isUrgentProperty(actionPost),
+            onPress: () => toggleUrgent(actionPost),
+          },
+          {
+            icon:
+              actionPost?.status === 'rented'
+                ? 'checkmark-done-outline'
+                : actionPost?.status === 'paused'
+                  ? 'play-circle-outline'
+                  : 'home-outline',
+            title:
+              actionPost?.status === 'rented'
+                ? 'Reopen listing'
+                : actionPost?.status === 'paused'
+                  ? 'Reopen listing'
+                  : 'Mark as rented out',
             subtitle:
               actionPost?.status === 'rented'
                 ? 'Show renters this property is available again.'
-                : 'Show renters this ad is no longer available.',
+                : actionPost?.status === 'paused'
+                  ? 'Put this listing back into the live feed.'
+                  : 'Show renters this ad is no longer available.',
             onPress: () =>
-              updatePostStatus(actionPost, actionPost?.status === 'rented' ? 'open' : 'rented'),
+              updatePostLifecycle(
+                actionPost,
+                {
+                  status: actionPost?.status === 'open' ? 'rented' : 'open',
+                  urgent_until: actionPost?.status === 'open' ? null : actionPost?.urgent_until,
+                  refreshed_at:
+                    actionPost?.status === 'open'
+                      ? actionPost?.refreshed_at || actionPost?.created_at
+                      : new Date().toISOString(),
+                },
+                {
+                  successTitle:
+                    actionPost?.status === 'open' ? 'Marked rented' : 'Listing reopened',
+                  successMessage:
+                    actionPost?.status === 'open'
+                      ? 'Renters will now see this ad as rented out.'
+                      : 'This ad is live again and has a fresh feed boost.',
+                }
+              ),
+          },
+          {
+            icon: actionPost?.status === 'paused' ? 'pause-circle-outline' : 'pause-outline',
+            title: actionPost?.status === 'paused' ? 'Keep paused' : 'Pause listing temporarily',
+            subtitle:
+              actionPost?.status === 'paused'
+                ? 'This ad is already hidden from public browsing.'
+                : 'Hide this ad from the feed without deleting it.',
+            disabled: actionPost?.status === 'paused',
+            onPress: () =>
+              updatePostLifecycle(
+                actionPost,
+                {
+                  status: 'paused',
+                  urgent_until: null,
+                },
+                {
+                  successTitle: 'Listing paused',
+                  successMessage: 'This ad is now hidden from public browsing until you reopen it.',
+                }
+              ),
+          },
+          {
+            icon: 'copy-outline',
+            title: 'Duplicate listing',
+            subtitle: 'Create a new copy you can reuse or tweak quickly.',
+            onPress: () => duplicateListing(actionPost),
           },
           {
             icon:

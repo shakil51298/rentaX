@@ -1,8 +1,14 @@
 import { supabase } from './supabase'
 import { fetchPropertyViewCounts } from './propertyViews'
 import { fetchHiddenContentState } from './reporting'
+import { sortPropertiesForFeed } from './propertyLifecycle'
 
-export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = false, currentUserId } = {}) {
+export async function fetchPropertiesWithProfiles({
+  ownerId,
+  includeBanned = false,
+  includePaused = false,
+  currentUserId,
+} = {}) {
   let query = supabase
     .from('properties')
     .select(`
@@ -26,6 +32,10 @@ export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = fal
   const hiddenState = currentUserId ? await fetchHiddenContentState(currentUserId) : null
   const posts = (data || []).filter((post) => {
     if (!includeBanned && post.admin_is_banned) {
+      return false
+    }
+
+    if (!includePaused && post.status === 'paused') {
       return false
     }
 
@@ -76,9 +86,11 @@ export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = fal
   }), {})
   viewCountsByPropertyId = viewCountsResponse || {}
 
-  return posts.map((post) => ({
+  const enrichedPosts = posts.map((post) => ({
     ...post,
     view_count: viewCountsByPropertyId[String(post.id)] || post.view_count || 0,
     owner_profile: profilesByUserId[post.owner_id] || null,
   }))
+
+  return sortPropertiesForFeed(enrichedPosts)
 }

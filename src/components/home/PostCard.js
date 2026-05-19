@@ -6,6 +6,7 @@ import { normalizeMediaList } from '../../lib/media'
 import { timeAgo } from '../../lib/time'
 import { getProfileName } from '../../lib/userDisplay'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../../lib/verification'
+import { isUrgentProperty } from '../../lib/propertyLifecycle'
 
 function getStatusMeta(status) {
   if (status === 'rented') {
@@ -13,6 +14,14 @@ function getStatusMeta(status) {
       label: 'Rented out',
       backgroundColor: '#fef2f2',
       textColor: '#dc2626',
+    }
+  }
+
+  if (status === 'paused') {
+    return {
+      label: 'Paused',
+      backgroundColor: '#fff7ed',
+      textColor: '#ea580c',
     }
   }
 
@@ -105,6 +114,7 @@ export default function PostCard({
   const rentLabel = item.price ? `৳ ${item.price}` : ''
   const isAdminBanned = Boolean(item.admin_is_banned)
   const metaChips = getPropertyMetaChips(item)
+  const isUrgent = isUrgentProperty(item)
   const contentText = useMemo(
     () =>
       `${item.title || ''}\n${item.description || 'No description added'}`,
@@ -183,6 +193,30 @@ export default function PostCard({
                   />
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#2563eb' }}>
                     Verified
+                  </Text>
+                </View>
+              ) : null}
+
+              {isUrgent ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#fff7ed',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                  }}
+                >
+                  <Ionicons
+                    name="flash"
+                    size={11}
+                    color="#ea580c"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#ea580c' }}>
+                    Urgent
                   </Text>
                 </View>
               ) : null}

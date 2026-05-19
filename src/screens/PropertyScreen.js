@@ -29,6 +29,7 @@ import {
   fetchOwnerResponseQuality,
   getEmptyOwnerResponseQuality,
 } from '../lib/ownerResponseQuality'
+import { isUrgentProperty } from '../lib/propertyLifecycle'
 import {
   addComparedProperty,
   loadComparedProperties,
@@ -1072,6 +1073,25 @@ export default function PropertyScreen({ route, navigation }) {
                       </Text>
                     </View>
                   ) : null}
+
+                  {isUrgentProperty(post) ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: '#fff7ed',
+                        borderRadius: 999,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        marginLeft: 8,
+                      }}
+                    >
+                      <Ionicons name="flash" size={12} color="#ea580c" />
+                      <Text style={{ color: '#ea580c', fontSize: 11, fontWeight: '800', marginLeft: 4 }}>
+                        Urgent
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
@@ -1116,7 +1136,7 @@ export default function PropertyScreen({ route, navigation }) {
                     }}
                   >
                     <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
-                      {activeOwnerListingsCount} active listing{activeOwnerListingsCount === 1 ? '' : 's'}
+                      {ownerActiveListingsCount} active listing{ownerActiveListingsCount === 1 ? '' : 's'}
                     </Text>
                   </View>
                 </View>
