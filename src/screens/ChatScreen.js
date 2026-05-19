@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   BackHandler,
   FlatList,
   Image,
@@ -209,6 +210,7 @@ export default function ChatScreen({ route, navigation }) {
   const highlightTimerRef = useRef(null)
   const suppressAutoScrollUntilRef = useRef(0)
   const handledCapturedAssetNonceRef = useRef(null)
+  const composerFocusAnim = useRef(new Animated.Value(0)).current
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
   const recorderState = useAudioRecorderState(audioRecorder)
   const insets = useSafeAreaInsets()
@@ -227,6 +229,7 @@ export default function ChatScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [composerFocused, setComposerFocused] = useState(false)
   const [openedFromList, setOpenedFromList] = useState(false)
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [replyTarget, setReplyTarget] = useState(null)
@@ -540,6 +543,14 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     initializeChat()
   }, [initializeChat])
+
+  useEffect(() => {
+    Animated.timing(composerFocusAnim, {
+      toValue: composerFocused ? 1 : 0,
+      duration: composerFocused ? 220 : 180,
+      useNativeDriver: false,
+    }).start()
+  }, [composerFocusAnim, composerFocused])
 
   useEffect(() => {
     const capturedAsset = route?.params?.capturedChatAsset
@@ -1098,6 +1109,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   function focusMessageInput() {
+    setComposerFocused(true)
     requestAnimationFrame(() => {
       messageInputRef.current?.focus()
     })
@@ -1450,6 +1462,30 @@ export default function ChatScreen({ route, navigation }) {
   }, [currentUser?.id, messageActionTarget])
 
   const chatStatusText = getChatStatusText()
+  const leftAccessoryWidth = composerFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [42, 0],
+  })
+  const sideAccessoryWidth = composerFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [36, 0],
+  })
+  const accessoryOpacity = composerFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  })
+  const accessorySpacing = composerFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [8, 0],
+  })
+  const inputRadius = composerFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [21, 16],
+  })
+  const inputBackground = composerFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#f1f5f9', '#eaf3ff'],
+  })
 
   if (loading && !conversation && conversationRows.length === 0) {
     return (
@@ -1960,92 +1996,127 @@ export default function ChatScreen({ route, navigation }) {
               alignItems: 'flex-end',
             }}
           >
-          <TouchableOpacity
-            onPress={capturePhoto}
-            disabled={uploading || sending}
+          <Animated.View
             style={{
-              width: 42,
+              width: leftAccessoryWidth,
               height: 42,
-              borderRadius: 21,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#eef6ff',
-              borderColor: activeColorPreset.accent,
-              borderWidth: 1,
-              marginRight: 8,
-              opacity: uploading || sending ? 0.5 : 1,
+              marginRight: accessorySpacing,
+              opacity: accessoryOpacity,
+              overflow: 'hidden',
             }}
           >
-            <Ionicons name="camera-outline" size={22} color={activeColorPreset.accent} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={capturePhoto}
+              disabled={uploading || sending || composerFocused}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#eef6ff',
+                borderColor: activeColorPreset.accent,
+                borderWidth: 1,
+                opacity: uploading || sending ? 0.5 : 1,
+              }}
+            >
+              <Ionicons name="camera-outline" size={22} color={activeColorPreset.accent} />
+            </TouchableOpacity>
+          </Animated.View>
 
-          <TextInput
-            ref={messageInputRef}
-            value={messageText}
-            onChangeText={(text) => {
-              setMessageText(text)
-
-              if (!conversation?.id || !otherUser?.id) return
-
-              updateMyPresence({ online: true, typing: text.trim().length > 0 })
-
-              if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current)
-              }
-
-              typingTimeoutRef.current = setTimeout(() => {
-                updateMyPresence({ online: true, typing: false })
-              }, 2500)
-            }}
-            placeholder="Message"
-            placeholderTextColor="#94a3b8"
-            multiline
+          <Animated.View
             style={{
               flex: 1,
               minHeight: 42,
-              maxHeight: 116,
-              borderRadius: 21,
-              backgroundColor: '#f1f5f9',
-              paddingHorizontal: 15,
-              paddingTop: 10,
-              paddingBottom: 10,
-              textAlignVertical: 'top',
-              color: '#111827',
-              fontSize: 15,
-            }}
-          />
-
-          <TouchableOpacity
-            onPress={pickMedia}
-            disabled={uploading || sending}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: 8,
-              opacity: uploading || sending ? 0.5 : 1,
+              borderRadius: inputRadius,
+              backgroundColor: inputBackground,
             }}
           >
-            <Ionicons name="image-outline" size={20} color={activeColorPreset.accent} />
-          </TouchableOpacity>
+            <TextInput
+              ref={messageInputRef}
+              value={messageText}
+              onFocus={() => setComposerFocused(true)}
+              onBlur={() => setComposerFocused(false)}
+              onChangeText={(text) => {
+                setMessageText(text)
 
-          <TouchableOpacity
-            onPress={pickDocumentFile}
-            disabled={uploading || sending}
+                if (!conversation?.id || !otherUser?.id) return
+
+                updateMyPresence({ online: true, typing: text.trim().length > 0 })
+
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current)
+                }
+
+                typingTimeoutRef.current = setTimeout(() => {
+                  updateMyPresence({ online: true, typing: false })
+                }, 2500)
+              }}
+              placeholder="Type a message"
+              placeholderTextColor="#94a3b8"
+              multiline
+              style={{
+                minHeight: 42,
+                maxHeight: 116,
+                paddingHorizontal: 15,
+                paddingTop: 10,
+                paddingBottom: 10,
+                textAlignVertical: 'top',
+                color: '#111827',
+                fontSize: 15,
+              }}
+            />
+          </Animated.View>
+
+          <Animated.View
             style={{
-              width: 36,
+              width: sideAccessoryWidth,
               height: 36,
-              borderRadius: 18,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: 2,
-              opacity: uploading || sending ? 0.5 : 1,
+              marginLeft: accessorySpacing,
+              opacity: accessoryOpacity,
+              overflow: 'hidden',
             }}
           >
-            <Ionicons name="document-outline" size={20} color={activeColorPreset.accent} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={pickMedia}
+              disabled={uploading || sending || composerFocused}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: uploading || sending ? 0.5 : 1,
+              }}
+            >
+              <Ionicons name="image-outline" size={20} color={activeColorPreset.accent} />
+            </TouchableOpacity>
+          </Animated.View>
+
+          <Animated.View
+            style={{
+              width: sideAccessoryWidth,
+              height: 36,
+              marginLeft: composerFocused ? 0 : 2,
+              opacity: accessoryOpacity,
+              overflow: 'hidden',
+            }}
+          >
+            <TouchableOpacity
+              onPress={pickDocumentFile}
+              disabled={uploading || sending || composerFocused}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: uploading || sending ? 0.5 : 1,
+              }}
+            >
+              <Ionicons name="document-outline" size={20} color={activeColorPreset.accent} />
+            </TouchableOpacity>
+          </Animated.View>
 
           {messageText.trim() ? (
             <TouchableOpacity
