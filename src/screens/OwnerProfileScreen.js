@@ -15,6 +15,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
 import { createNotification } from '../lib/notifications'
 import { blockUser, fetchUserSocialCounts } from '../lib/social'
+import {
+  fetchOwnerResponseQuality,
+  formatJoinedDate,
+  getEmptyOwnerResponseQuality,
+} from '../lib/ownerResponseQuality'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 
 function displayNameFromEmail(email) {
@@ -66,6 +71,28 @@ function Avatar({ name, uri, size = 96 }) {
   )
 }
 
+function TrustMetric({ label, value, accent = '#111827' }) {
+  return (
+    <View
+      style={{
+        width: '48.5%',
+        backgroundColor: '#f8fafc',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+        marginBottom: 10,
+      }}
+    >
+      <Text style={{ color: accent, fontSize: 16, fontWeight: '900' }}>{value}</Text>
+      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+        {label}
+      </Text>
+    </View>
+  )
+}
+
 export default function OwnerProfileScreen({ route, navigation }) {
   const owner = route.params?.owner || {}
   const ownerId = owner.id
@@ -75,6 +102,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const [followers, setFollowers] = useState(0)
   const [following, setFollowing] = useState(0)
   const [isFollowing, setIsFollowing] = useState(false)
+  const [responseQuality, setResponseQuality] = useState(getEmptyOwnerResponseQuality())
   const [loading, setLoading] = useState(true)
   const [imageViewer, setImageViewer] = useState({
     visible: false,
@@ -131,9 +159,13 @@ export default function OwnerProfileScreen({ route, navigation }) {
     setProfile(profileData || null)
     setPosts((postData || []).filter((item) => !item.admin_is_banned))
     const counts = await fetchUserSocialCounts(ownerId)
+    const quality = await fetchOwnerResponseQuality(ownerId).catch(() =>
+      getEmptyOwnerResponseQuality()
+    )
 
     setFollowers(followersCount || counts.followers || 0)
     setFollowing(counts.following || 0)
+    setResponseQuality(quality)
     setLoading(false)
   }, [ownerId])
 
@@ -293,6 +325,12 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const ownerName = getOwnerName(owner, profile)
   const isOwnProfile = currentUser?.id && currentUser.id === ownerId
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
+  const activeListingsCount = posts.filter(
+    (item) => !item.admin_is_banned && (item.status || 'open') === 'open'
+  ).length
+  const joinedDateLabel = formatJoinedDate(profile?.created_at)
+  const responseRateLabel =
+    responseQuality.responseRate == null ? 'New owner' : `${responseQuality.responseRate}%`
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
@@ -461,9 +499,96 @@ export default function OwnerProfileScreen({ route, navigation }) {
                 backgroundColor: '#fff',
                 padding: 16,
                 marginBottom: 12,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#e5e7eb',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>
+                    Owner response quality
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                    Based on recent chat replies and currently active rental listings.
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    backgroundColor: isVerifiedOwner ? '#eff6ff' : '#f8fafc',
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: isVerifiedOwner ? '#bfdbfe' : '#e2e8f0',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={isVerifiedOwner ? 'checkmark-circle' : 'shield-outline'}
+                    size={13}
+                    color={isVerifiedOwner ? '#2563eb' : '#64748b'}
+                  />
+                  <Text
+                    style={{
+                      color: isVerifiedOwner ? '#2563eb' : '#475569',
+                      fontSize: 11,
+                      fontWeight: '900',
+                      marginLeft: 5,
+                    }}
+                  >
+                    {isVerifiedOwner ? 'Verified owner' : 'Unverified owner'}
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  marginTop: 14,
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <TrustMetric label="Response rate" value={responseRateLabel} accent="#1877F2" />
+                <TrustMetric label="Average reply time" value={responseQuality.averageReplyLabel} accent="#0f766e" />
+                <TrustMetric label="Active listings" value={String(activeListingsCount)} accent="#7c3aed" />
+                <TrustMetric label="Joined" value={joinedDateLabel} accent="#111827" />
+              </View>
+
+              <View
+                style={{
+                  marginTop: 2,
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+                  {responseQuality.usuallyRepliesLabel}
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4, lineHeight: 16 }}>
+                  {responseQuality.respondedCount
+                    ? `Built from ${responseQuality.respondedCount} answered renter conversation${responseQuality.respondedCount === 1 ? '' : 's'}.`
+                    : 'This owner has not answered enough renter chats yet to build a reply pattern.'}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                backgroundColor: '#fff',
+                padding: 16,
+                marginBottom: 12,
                 borderTopWidth: 1,
                 borderBottomWidth: 1,
                 borderColor: '#e5e7eb',
+                borderRadius: 16,
               }}
             >
               <Text style={{ fontSize: 18, fontWeight: '900', color: '#111827' }}>

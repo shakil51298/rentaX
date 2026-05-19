@@ -26,6 +26,10 @@ import { saveMediaToLibrary } from '../lib/mediaSave'
 import { createNotification } from '../lib/notifications'
 import { applyLessLikeThis, hideOwnerFromFeed, hidePropertyFromFeed } from '../lib/feedControls'
 import {
+  fetchOwnerResponseQuality,
+  getEmptyOwnerResponseQuality,
+} from '../lib/ownerResponseQuality'
+import {
   addComparedProperty,
   loadComparedProperties,
   rememberRecentlyViewedProperty,
@@ -451,6 +455,8 @@ export default function PropertyScreen({ route, navigation }) {
   const [visitTime, setVisitTime] = useState('')
   const [visitNote, setVisitNote] = useState('')
   const [visitSaving, setVisitSaving] = useState(false)
+  const [ownerResponseQuality, setOwnerResponseQuality] = useState(getEmptyOwnerResponseQuality())
+  const [ownerActiveListingsCount, setOwnerActiveListingsCount] = useState(0)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -586,6 +592,21 @@ export default function PropertyScreen({ route, navigation }) {
       ownerProfile = profile || null
     }
 
+    const { count: activeListingsCount } = nextPost.owner_id
+      ? await supabase
+          .from('properties')
+          .select('*', { count: 'exact', head: true })
+          .eq('owner_id', nextPost.owner_id)
+          .eq('status', 'open')
+          .or('admin_is_banned.is.null,admin_is_banned.eq.false')
+      : { count: 0 }
+
+    const nextOwnerResponseQuality = nextPost.owner_id
+      ? await fetchOwnerResponseQuality(nextPost.owner_id).catch(() =>
+          getEmptyOwnerResponseQuality()
+        )
+      : getEmptyOwnerResponseQuality()
+
     let viewCount = nextPost.view_count || 0
     let nextVisitRequest = null
 
@@ -619,6 +640,8 @@ export default function PropertyScreen({ route, navigation }) {
       view_count: viewCount,
       owner_profile: ownerProfile,
     })
+    setOwnerResponseQuality(nextOwnerResponseQuality)
+    setOwnerActiveListingsCount(activeListingsCount || 0)
     await rememberRecentlyViewedProperty(user?.id || user?.email || 'guest', {
       ...nextPost,
       owner_profile: ownerProfile,
@@ -985,6 +1008,10 @@ export default function PropertyScreen({ route, navigation }) {
   const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
   const propertyMetaChips = getPropertyMetaChips(post)
   const propertyDetailRows = getPropertyDetailRows(post)
+  const ownerResponseRateLabel =
+    ownerResponseQuality.responseRate == null
+      ? 'New owner'
+      : `${ownerResponseQuality.responseRate}% response`
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
@@ -1045,6 +1072,53 @@ export default function PropertyScreen({ route, navigation }) {
                       </Text>
                     </View>
                   ) : null}
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  <View
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
+                      {ownerResponseRateLabel}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
+                      {ownerResponseQuality.usuallyRepliesLabel}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
+                      {activeOwnerListingsCount} active listing{activeOwnerListingsCount === 1 ? '' : 's'}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </TouchableOpacity>
