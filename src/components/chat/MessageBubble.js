@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Animated,
@@ -67,12 +67,37 @@ function VoiceMessage({ message, isMine }) {
   const positionMillis = Math.floor((status?.currentTime || 0) * 1000)
   const durationMillis =
     message.audio_duration_ms || Math.floor((status?.duration || 0) * 1000)
+  const playbackRates = [0.5, 1, 2]
+  const [playbackRateIndex, setPlaybackRateIndex] = useState(1)
+  const playbackRate = playbackRates[playbackRateIndex]
+  const waveformHeights = useMemo(
+    () => [10, 16, 13, 22, 15, 26, 18, 24, 14, 21, 12, 25, 17, 20, 11, 19, 14, 16],
+    []
+  )
+  const progressRatio =
+    durationMillis > 0 ? Math.min(positionMillis / durationMillis, 1) : 0
+  const hasFinishedPlayback = durationMillis > 0 && progressRatio >= 0.985 && !isPlaying
 
-  function togglePlayback() {
+  useEffect(() => {
+    try {
+      player.playbackRate = playbackRate
+    } catch {
+      try {
+        player.setPlaybackRate(playbackRate)
+      } catch {
+        // keep default playback speed if the platform rejects a rate change
+      }
+    }
+  }, [playbackRate, player])
+
+  async function togglePlayback() {
     try {
       if (isPlaying) {
         player.pause()
       } else {
+        if (hasFinishedPlayback) {
+          await player.seekTo(0)
+        }
         player.play()
       }
     } catch {
@@ -80,18 +105,22 @@ function VoiceMessage({ message, isMine }) {
     }
   }
 
+  function cyclePlaybackRate() {
+    setPlaybackRateIndex((current) => (current + 1) % playbackRates.length)
+  }
+
   return (
-    <TouchableOpacity
-      onPress={togglePlayback}
-      activeOpacity={0.82}
+    <View
       style={{
-        width: 220,
+        width: 238,
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 4,
       }}
     >
-      <View
+      <TouchableOpacity
+        onPress={togglePlayback}
+        activeOpacity={0.82}
         style={{
           width: 36,
           height: 36,
@@ -102,44 +131,82 @@ function VoiceMessage({ message, isMine }) {
         }}
       >
         <Ionicons
-          name={isPlaying ? 'pause' : 'play'}
+          name={isPlaying ? 'pause' : hasFinishedPlayback ? 'refresh' : 'play'}
           size={18}
           color={isMine ? '#fff' : '#1877F2'}
         />
-      </View>
+      </TouchableOpacity>
 
       <View style={{ flex: 1, marginLeft: 10 }}>
         <View
           style={{
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: isMine ? 'rgba(255,255,255,0.28)' : '#cbd5e1',
-            overflow: 'hidden',
+            height: 30,
+            flexDirection: 'row',
+            alignItems: 'flex-end',
           }}
         >
-          <View
-            style={{
-              width: durationMillis
-                ? `${Math.min((positionMillis / durationMillis) * 100, 100)}%`
-                : '0%',
-              height: '100%',
-              backgroundColor: isMine ? '#fff' : '#1877F2',
-            }}
-          />
+          {waveformHeights.map((barHeight, index) => {
+            const threshold = (index + 1) / waveformHeights.length
+            const active = progressRatio >= threshold
+
+            return (
+              <View
+                key={`${message.id}-bar-${index}`}
+                style={{
+                  width: 6,
+                  height: barHeight,
+                  borderRadius: 999,
+                  marginRight: index === waveformHeights.length - 1 ? 0 : 3,
+                  backgroundColor: active
+                    ? isMine
+                      ? '#fff'
+                      : '#1877F2'
+                    : isMine
+                      ? 'rgba(255,255,255,0.28)'
+                      : '#cbd5e1',
+                  opacity: isPlaying && !active ? 0.82 : 1,
+                }}
+              />
+            )
+          })}
         </View>
 
-        <Text
-          style={{
-            color: isMine ? 'rgba(255,255,255,0.86)' : '#64748b',
-            fontSize: 11,
-            fontWeight: '700',
-            marginTop: 5,
-          }}
-        >
-          {formatDuration(durationMillis || positionMillis)}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
+          <Text
+            style={{
+              color: isMine ? 'rgba(255,255,255,0.86)' : '#64748b',
+              fontSize: 11,
+              fontWeight: '700',
+            }}
+          >
+            {formatDuration(positionMillis)} / {formatDuration(durationMillis || positionMillis)}
+          </Text>
+
+          <TouchableOpacity
+            onPress={cyclePlaybackRate}
+            style={{
+              marginLeft: 'auto',
+              minWidth: 34,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 999,
+              backgroundColor: isMine ? 'rgba(255,255,255,0.16)' : '#e0ecff',
+              alignItems: 'center',
+            }}
+          >
+            <Text
+              style={{
+                color: isMine ? '#fff' : '#1d4ed8',
+                fontSize: 10,
+                fontWeight: '900',
+              }}
+            >
+              {playbackRate}x
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </TouchableOpacity>
+    </View>
   )
 }
 
