@@ -757,6 +757,40 @@ export default function ChatScreen({ route, navigation }) {
     setSelectedMediaAssets(nextAssets)
   }
 
+  async function capturePhoto() {
+    if (!currentUser?.id || uploading || sending) return
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+
+    if (!permission.granted) {
+      Alert.alert('Camera needed', 'Please allow camera access to take a photo in chat.')
+      return
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 1,
+      cameraType: ImagePicker.CameraType.back,
+    })
+
+    if (result.canceled || !result.assets?.length) return
+
+    const capturedAssets = result.assets.slice(0, 1).map((asset, index) => ({
+      ...asset,
+      composerKey:
+        asset.assetId ||
+        asset.id ||
+        `${asset.uri}-${Date.now()}-${index}`,
+      type: 'image',
+    }))
+
+    setSelectedMediaAssets((current) => {
+      const merged = [...current, ...capturedAssets]
+      return merged.slice(0, 5)
+    })
+  }
+
   async function sendSelectedMediaBatch() {
     if (!currentUser?.id || !conversation?.id || !otherUser?.id || selectedMediaAssets.length === 0 || uploading || sending) {
       return
@@ -1849,6 +1883,25 @@ export default function ChatScreen({ route, navigation }) {
               alignItems: 'flex-end',
             }}
           >
+          <TouchableOpacity
+            onPress={capturePhoto}
+            disabled={uploading || sending}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#eef6ff',
+              borderColor: activeColorPreset.accent,
+              borderWidth: 1,
+              marginRight: 8,
+              opacity: uploading || sending ? 0.5 : 1,
+            }}
+          >
+            <Ionicons name="camera-outline" size={22} color={activeColorPreset.accent} />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={pickMedia}
             disabled={uploading || sending}
