@@ -332,6 +332,8 @@ function renderMessageContent(item, isMine, onOpenMedia) {
 
   return (
     <Text
+      selectable
+      selectionColor={isMine ? 'rgba(255,255,255,0.45)' : '#93c5fd'}
       style={{
         color: isMine ? '#fff' : '#111827',
         fontSize: 15,

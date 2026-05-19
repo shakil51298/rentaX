@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -25,6 +26,7 @@ import {
 } from 'expo-audio'
 import { supabase } from '../lib/supabase'
 import Avatar from '../components/common/Avatar'
+import ActionSheetModal from '../components/common/ActionSheetModal'
 import MediaViewer from '../components/common/MediaViewer'
 import ConversationRow from '../components/chat/ConversationRow'
 import MessageBubble from '../components/chat/MessageBubble'
@@ -218,6 +220,7 @@ export default function ChatScreen({ route, navigation }) {
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [replyTarget, setReplyTarget] = useState(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState(null)
+  const [messageActionTarget, setMessageActionTarget] = useState(null)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -837,8 +840,23 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   function handleReplyToMessage(message) {
+    setMessageActionTarget(null)
     setReplyTarget(message)
     focusMessageInput()
+  }
+
+  async function copyMessageText(message) {
+    const text = String(message?.body || '').trim()
+
+    if (!text) return
+
+    try {
+      await Clipboard.setStringAsync(text)
+      setMessageActionTarget(null)
+      Alert.alert('Copied', 'Message text copied.')
+    } catch (error) {
+      Alert.alert('Copy failed', error?.message || 'Unable to copy this message right now.')
+    }
   }
 
   async function toggleMessageReaction(message) {
@@ -891,6 +909,8 @@ export default function ChatScreen({ route, navigation }) {
   async function deleteMessageForMe(message) {
     if (!currentUser?.id || !message?.id) return
 
+    setMessageActionTarget(null)
+
     const deletionField = getMessageDeletionField(message, currentUser.id)
 
     if (!deletionField) return
@@ -918,6 +938,8 @@ export default function ChatScreen({ route, navigation }) {
 
   async function deleteMessageForEveryone(message) {
     if (!currentUser?.id || !message?.id) return
+
+    setMessageActionTarget(null)
 
     const deletedAt = new Date().toISOString()
     const payload = {
@@ -960,33 +982,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   function openMessageActions(message) {
-    const buttons = [
-      {
-        text: 'Reply',
-        onPress: () => handleReplyToMessage(message),
-      },
-      {
-        text: message[getMessageReactionField(message, currentUser?.id)] ? 'Remove love' : 'Love',
-        onPress: () => toggleMessageReaction(message),
-      },
-      {
-        text: 'Delete for me',
-        style: 'destructive',
-        onPress: () => deleteMessageForMe(message),
-      },
-    ]
-
-    if (message.sender_id === currentUser?.id && !message.deleted_for_everyone_at) {
-      buttons.push({
-        text: 'Delete for everyone',
-        style: 'destructive',
-        onPress: () => deleteMessageForEveryone(message),
-      })
-    }
-
-    buttons.push({ text: 'Cancel', style: 'cancel' })
-
-    Alert.alert('Message options', getReplySnippet(message), buttons)
+    setMessageActionTarget(message)
   }
 
   const goBackFromChat = useCallback(() => {
@@ -1096,6 +1092,11 @@ export default function ChatScreen({ route, navigation }) {
     if (mode !== 'chat') return undefined
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (messageActionTarget) {
+        setMessageActionTarget(null)
+        return true
+      }
+
       goBackFromChat()
       return true
     })
@@ -1103,7 +1104,7 @@ export default function ChatScreen({ route, navigation }) {
     return () => {
       subscription.remove()
     }
-  }, [goBackFromChat, mode])
+  }, [goBackFromChat, messageActionTarget, mode])
 
   useEffect(() => {
     if (mode !== 'list' || !selectionMode) return undefined
@@ -1132,6 +1133,57 @@ export default function ChatScreen({ route, navigation }) {
       visible: false,
     }))
   }, [])
+
+  const messageActionItems = useMemo(() => {
+    if (!messageActionTarget) return []
+
+    const actions = [
+      {
+        icon: 'return-down-forward-outline',
+        title: 'Reply',
+        subtitle: 'Quote this message in your reply.',
+        onPress: () => handleReplyToMessage(messageActionTarget),
+      },
+      {
+        icon: messageActionTarget[getMessageReactionField(messageActionTarget, currentUser?.id)] ? 'heart-dislike-outline' : 'heart-outline',
+        title: messageActionTarget[getMessageReactionField(messageActionTarget, currentUser?.id)] ? 'Remove love' : 'Love',
+        subtitle: 'React to this message quickly.',
+        onPress: () => {
+          setMessageActionTarget(null)
+          toggleMessageReaction(messageActionTarget)
+        },
+      },
+    ]
+
+    if (String(messageActionTarget.body || '').trim()) {
+      actions.push({
+        icon: 'copy-outline',
+        title: 'Copy text',
+        subtitle: 'Copy this message to your clipboard.',
+        onPress: () => copyMessageText(messageActionTarget),
+      })
+    }
+
+    actions.push({
+      icon: 'trash-outline',
+      title: 'Delete for me',
+      subtitle: 'Remove this message from your chat only.',
+      danger: true,
+      onPress: () => deleteMessageForMe(messageActionTarget),
+    })
+
+    if (messageActionTarget.sender_id === currentUser?.id && !messageActionTarget.deleted_for_everyone_at) {
+      actions.push({
+        icon: 'trash-bin-outline',
+        title: 'Delete for everyone',
+        subtitle: 'Remove this message for both people.',
+        danger: true,
+        onPress: () => deleteMessageForEveryone(messageActionTarget),
+      })
+    }
+
+    return actions
+  }, [currentUser?.id, messageActionTarget])
 
   const chatStatusText = getChatStatusText()
 
@@ -1696,6 +1748,15 @@ export default function ChatScreen({ route, navigation }) {
         media={mediaViewer.media}
         initialIndex={mediaViewer.index}
         onClose={closeMediaViewer}
+      />
+
+      <ActionSheetModal
+        visible={Boolean(messageActionTarget)}
+        title="Message options"
+        subtitle={messageActionTarget ? getReplySnippet(messageActionTarget) : ''}
+        actions={messageActionItems}
+        onClose={() => setMessageActionTarget(null)}
+        closeLabel="Done"
       />
 
       <BottomNavBar navigation={navigation} activeTab="chat" />
