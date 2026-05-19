@@ -95,7 +95,56 @@ function getPropertyMetaChips(post) {
     chips.push('Pet friendly')
   }
 
+  if (Number(post?.size_sqft || 0) > 0) {
+    chips.push(`${post.size_sqft} sq ft`)
+  }
+
+  if (post?.tenant_type === 'family') {
+    chips.push('Family')
+  } else if (post?.tenant_type === 'bachelor') {
+    chips.push('Bachelor')
+  } else if (post?.tenant_type === 'any') {
+    chips.push('Family / Bachelor')
+  }
+
+  if (post?.has_balcony) {
+    chips.push('Balcony')
+  }
+
   return chips
+}
+
+function getBooleanLabel(value) {
+  return value ? 'Yes' : 'No'
+}
+
+function formatTenantType(value) {
+  if (value === 'family') return 'Family'
+  if (value === 'bachelor') return 'Bachelor'
+  if (value === 'any') return 'Family / Bachelor'
+  return 'Not specified'
+}
+
+function getPropertyDetailRows(post) {
+  return [
+    { label: 'Monthly rent', value: post?.price ? `৳ ${post.price}` : 'Not added' },
+    { label: 'Location', value: post?.location || 'Not added' },
+    { label: 'Bedrooms', value: post?.beds ? String(post.beds) : 'Not added' },
+    { label: 'Bathrooms', value: post?.baths ? String(post.baths) : 'Not added' },
+    { label: 'Size', value: post?.size_sqft ? `${post.size_sqft} sq ft` : 'Not added' },
+    { label: 'Furnishing', value: post?.furnishing_status === 'furnished' ? 'Furnished' : post?.furnishing_status === 'unfurnished' ? 'Unfurnished' : 'Not specified' },
+    { label: 'Preferred tenant', value: formatTenantType(post?.tenant_type) },
+    { label: 'Parking', value: getBooleanLabel(post?.parking) },
+    { label: 'Lift', value: getBooleanLabel(post?.lift_available) },
+    { label: 'Generator', value: getBooleanLabel(post?.generator_backup) },
+    { label: 'Gas', value: getBooleanLabel(post?.gas_available) },
+    { label: 'Pet friendly', value: getBooleanLabel(post?.pet_friendly) },
+    { label: 'Available from', value: post?.available_from || 'Not added' },
+    { label: 'Floor', value: post?.floor_no ? String(post.floor_no) : 'Not added' },
+    { label: 'Facing', value: post?.facing_direction || 'Not added' },
+    { label: 'Balcony', value: getBooleanLabel(post?.has_balcony) },
+    { label: 'Service charge', value: post?.service_charge_included ? 'Included' : 'Separate / not included' },
+  ]
 }
 
 function distanceBetweenTouches(touches) {
@@ -879,6 +928,7 @@ export default function PropertyScreen({ route, navigation }) {
   const isOwnProperty = String(post.owner_id) === String(currentUser?.id)
   const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
   const propertyMetaChips = getPropertyMetaChips(post)
+  const propertyDetailRows = getPropertyDetailRows(post)
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
@@ -948,13 +998,14 @@ export default function PropertyScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          <Text style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}>
-            {post.title}
-            {'\n'}
-            {post.description || 'No description added'}
-            {'\n\n'}Rent: ৳ {post.price}
-            {'\n'}Location: {post.location || 'Location not added'}
-          </Text>
+          <View style={{ paddingHorizontal: 14, marginTop: 10 }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#0f172a', lineHeight: 26 }}>
+              {post.title}
+            </Text>
+            <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 23, color: '#334155' }}>
+              {post.description || 'No description added'}
+            </Text>
+          </View>
 
           {propertyMetaChips.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, marginTop: 12 }}>
@@ -975,6 +1026,54 @@ export default function PropertyScreen({ route, navigation }) {
               ))}
             </View>
           ) : null}
+
+          <View
+            style={{
+              marginTop: 14,
+              marginHorizontal: 14,
+              backgroundColor: '#f8fafc',
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900', marginBottom: 10 }}>
+              Property details
+            </Text>
+
+            {propertyDetailRows.map((row, index) => (
+              <View key={row.label}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    paddingVertical: 9,
+                  }}
+                >
+                  <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '700', flex: 1 }}>
+                    {row.label}
+                  </Text>
+                  <Text
+                    style={{
+                      color: '#0f172a',
+                      fontSize: 13,
+                      fontWeight: '800',
+                      flex: 1.35,
+                      textAlign: 'right',
+                    }}
+                  >
+                    {row.value}
+                  </Text>
+                </View>
+                {index < propertyDetailRows.length - 1 ? (
+                  <View style={{ height: 1, backgroundColor: '#e2e8f0' }} />
+                ) : null}
+              </View>
+            ))}
+          </View>
 
           {media.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, paddingHorizontal: 8 }}>

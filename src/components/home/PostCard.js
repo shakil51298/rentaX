@@ -53,6 +53,16 @@ function getPropertyMetaChips(item) {
     chips.push('Pet friendly')
   }
 
+  if (Number(item?.size_sqft || 0) > 0) {
+    chips.push(`${item.size_sqft} sq ft`)
+  }
+
+  if (item?.tenant_type === 'family') {
+    chips.push('Family')
+  } else if (item?.tenant_type === 'bachelor') {
+    chips.push('Bachelor')
+  }
+
   return chips
 }
 

@@ -3,7 +3,9 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -22,13 +24,13 @@ import { isPrimaryAdmin } from '../lib/admin'
 
 function Field({ label, placeholder, multiline, keyboardType, value, onChangeText }) {
   return (
-    <View style={{ marginBottom: 14 }}>
+    <View style={{ marginBottom: 11 }}>
       <Text
         style={{
           color: '#334155',
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: '800',
-          marginBottom: 8,
+          marginBottom: 6,
         }}
       >
         {label}
@@ -43,17 +45,381 @@ function Field({ label, placeholder, multiline, keyboardType, value, onChangeTex
         keyboardType={keyboardType}
         style={{
           backgroundColor: '#f8fafc',
-          borderRadius: 16,
+          borderRadius: 14,
           borderWidth: 1,
           borderColor: '#e2e8f0',
-          paddingHorizontal: 14,
-          paddingVertical: 14,
-          minHeight: multiline ? 120 : undefined,
+          paddingHorizontal: 12,
+          paddingVertical: multiline ? 11 : 10,
+          minHeight: multiline ? 96 : 42,
           textAlignVertical: multiline ? 'top' : 'center',
           color: '#0f172a',
+          fontSize: 13,
         }}
       />
     </View>
+  )
+}
+
+function OptionField({ label, value, onChange, options }) {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text
+        style={{
+          color: '#334155',
+          fontSize: 11,
+          fontWeight: '800',
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {options.map((option) => {
+          const selected = value === option.value
+
+          return (
+            <TouchableOpacity
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              activeOpacity={0.86}
+              style={{
+                minHeight: 38,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: selected ? '#bfdbfe' : '#dbe4ee',
+                backgroundColor: selected ? '#eff6ff' : '#fff',
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                minWidth: 96,
+              }}
+            >
+              <Text
+                style={{
+                  color: selected ? '#2563eb' : '#475569',
+                  fontSize: 11,
+                  fontWeight: '900',
+                }}
+              >
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+function BooleanField({
+  label,
+  value,
+  onChange,
+  trueLabel = 'Yes',
+  falseLabel = 'No',
+}) {
+  return (
+    <OptionField
+      label={label}
+      value={value ? 'yes' : 'no'}
+      onChange={(nextValue) => onChange(nextValue === 'yes')}
+      options={[
+        { value: 'no', label: falseLabel },
+        { value: 'yes', label: trueLabel },
+      ]}
+    />
+  )
+}
+
+const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const CALENDAR_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+function formatDateValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDateValue(value) {
+  if (!value) return null
+
+  const parts = String(value).split('-').map((part) => Number(part))
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null
+
+  const [year, month, day] = parts
+  const date = new Date(year, month - 1, day)
+
+  if (
+    date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) {
+    return null
+  }
+
+  return date
+}
+
+function buildCalendarDays(monthDate) {
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+  const firstWeekday = firstDay.getDay()
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate()
+  const cells = []
+
+  for (let index = 0; index < firstWeekday; index += 1) {
+    cells.push(null)
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day))
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null)
+  }
+
+  return cells
+}
+
+function CalendarField({ label, value, helperText, onPress }) {
+  return (
+    <View style={{ marginBottom: 11 }}>
+      <Text
+        style={{
+          color: '#334155',
+          fontSize: 11,
+          fontWeight: '800',
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </Text>
+
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.88}
+        style={{
+          backgroundColor: '#f8fafc',
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: '#e2e8f0',
+          paddingHorizontal: 12,
+          minHeight: 42,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Text style={{ color: value ? '#0f172a' : '#94a3b8', fontSize: 13 }}>
+          {value || helperText}
+        </Text>
+        <Ionicons name="calendar-outline" size={16} color="#2563eb" />
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+function CalendarModal({
+  visible,
+  value,
+  onClose,
+  onSelect,
+}) {
+  const initialDate = parseDateValue(value) || new Date()
+  const [visibleMonth, setVisibleMonth] = useState(
+    new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
+  )
+
+  useEffect(() => {
+    if (visible) {
+      const nextDate = parseDateValue(value) || new Date()
+      setVisibleMonth(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1))
+    }
+  }, [value, visible])
+
+  const selectedDate = parseDateValue(value)
+  const calendarDays = buildCalendarDays(visibleMonth)
+
+  function moveMonth(offset) {
+    setVisibleMonth((currentMonth) => (
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1)
+    ))
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable
+        onPress={onClose}
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(15,23,42,0.34)',
+          justifyContent: 'center',
+          paddingHorizontal: 20,
+        }}
+      >
+        <Pressable
+          onPress={(event) => event.stopPropagation()}
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: '#dbe4ee',
+            padding: 14,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <TouchableOpacity
+              onPress={() => moveMonth(-1)}
+              activeOpacity={0.86}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: '#eff6ff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chevron-back" size={18} color="#2563eb" />
+            </TouchableOpacity>
+
+            <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
+              {CALENDAR_MONTHS[visibleMonth.getMonth()]} {visibleMonth.getFullYear()}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => moveMonth(1)}
+              activeOpacity={0.86}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: '#eff6ff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginTop: 14 }}>
+            {CALENDAR_WEEKDAYS.map((day) => (
+              <View key={day} style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={{ color: '#64748b', fontSize: 10, fontWeight: '800' }}>{day}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={{ marginTop: 10, gap: 8 }}>
+            {Array.from({ length: calendarDays.length / 7 }).map((_, rowIndex) => (
+              <View key={`row-${rowIndex}`} style={{ flexDirection: 'row' }}>
+                {calendarDays.slice(rowIndex * 7, rowIndex * 7 + 7).map((date, columnIndex) => {
+                  const dateKey = date ? formatDateValue(date) : `blank-${rowIndex}-${columnIndex}`
+                  const isSelected = date && selectedDate && formatDateValue(date) === formatDateValue(selectedDate)
+                  const isToday = date && formatDateValue(date) === formatDateValue(new Date())
+
+                  return (
+                    <View key={dateKey} style={{ flex: 1, alignItems: 'center' }}>
+                      {date ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            onSelect(formatDateValue(date))
+                            onClose()
+                          }}
+                          activeOpacity={0.88}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: isSelected ? '#2563eb' : isToday ? '#eff6ff' : 'transparent',
+                            borderWidth: isToday && !isSelected ? 1 : 0,
+                            borderColor: isToday ? '#bfdbfe' : 'transparent',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: isSelected ? '#fff' : '#0f172a',
+                              fontSize: 12,
+                              fontWeight: isSelected ? '900' : '700',
+                            }}
+                          >
+                            {date.getDate()}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={{ width: 34, height: 34 }} />
+                      )}
+                    </View>
+                  )
+                })}
+              </View>
+            ))}
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => {
+                onSelect(formatDateValue(new Date()))
+                onClose()
+              }}
+              activeOpacity={0.86}
+              style={{
+                flex: 1,
+                minHeight: 40,
+                borderRadius: 13,
+                backgroundColor: '#eff6ff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>Today</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={onClose}
+              activeOpacity={0.86}
+              style={{
+                flex: 1,
+                minHeight: 40,
+                borderRadius: 13,
+                backgroundColor: '#f8fafc',
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#475569', fontSize: 11, fontWeight: '900' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   )
 }
 
@@ -70,9 +436,9 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
       {item.type === 'video' ? (
         <View
           style={{
-            width: 92,
-            height: 92,
-            borderRadius: 16,
+            width: 78,
+            height: 78,
+            borderRadius: 14,
             overflow: 'hidden',
             backgroundColor: '#0f172a',
             borderWidth: selected ? 2 : 1,
@@ -81,13 +447,13 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
             justifyContent: 'center',
           }}
         >
-          <Ionicons name="videocam" size={28} color="#fff" />
+          <Ionicons name="videocam" size={22} color="#fff" />
           <Text
             style={{
               color: '#cbd5e1',
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: '800',
-              marginTop: 6,
+              marginTop: 4,
             }}
           >
             Video
@@ -97,9 +463,9 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
         <Image
           source={{ uri: item.uri }}
           style={{
-            width: 92,
-            height: 92,
-            borderRadius: 16,
+            width: 78,
+            height: 78,
+            borderRadius: 14,
             backgroundColor: '#e2e8f0',
             borderWidth: selected ? 2 : 1,
             borderColor: selected ? '#1877F2' : '#dbe4ee',
@@ -138,8 +504,20 @@ export default function CreatePostScreen({ navigation, route }) {
   const [price, setPrice] = useState('')
   const [beds, setBeds] = useState('')
   const [baths, setBaths] = useState('')
+  const [sizeSqft, setSizeSqft] = useState('')
+  const [floorNo, setFloorNo] = useState('')
   const [furnishingStatus, setFurnishingStatus] = useState('unfurnished')
+  const [tenantType, setTenantType] = useState('family')
+  const [parking, setParking] = useState(false)
+  const [liftAvailable, setLiftAvailable] = useState(false)
+  const [generatorBackup, setGeneratorBackup] = useState(false)
+  const [gasAvailable, setGasAvailable] = useState(false)
   const [petFriendly, setPetFriendly] = useState(false)
+  const [availableFrom, setAvailableFrom] = useState('')
+  const [facingDirection, setFacingDirection] = useState('')
+  const [hasBalcony, setHasBalcony] = useState(false)
+  const [serviceChargeIncluded, setServiceChargeIncluded] = useState(false)
+  const [availableFromPickerVisible, setAvailableFromPickerVisible] = useState(false)
   const [location, setLocation] = useState('')
   const [loading, setLoading] = useState(false)
   const [media, setMedia] = useState([])
@@ -163,8 +541,19 @@ export default function CreatePostScreen({ navigation, route }) {
     setPrice(editingPost.price ? String(editingPost.price) : '')
     setBeds(editingPost.beds ? String(editingPost.beds) : '')
     setBaths(editingPost.baths ? String(editingPost.baths) : '')
+    setSizeSqft(editingPost.size_sqft ? String(editingPost.size_sqft) : '')
+    setFloorNo(editingPost.floor_no ? String(editingPost.floor_no) : '')
     setFurnishingStatus(editingPost.furnishing_status || 'unfurnished')
+    setTenantType(editingPost.tenant_type || 'family')
+    setParking(Boolean(editingPost.parking))
+    setLiftAvailable(Boolean(editingPost.lift_available))
+    setGeneratorBackup(Boolean(editingPost.generator_backup))
+    setGasAvailable(Boolean(editingPost.gas_available))
     setPetFriendly(Boolean(editingPost.pet_friendly))
+    setAvailableFrom(editingPost.available_from || '')
+    setFacingDirection(editingPost.facing_direction || '')
+    setHasBalcony(Boolean(editingPost.has_balcony))
+    setServiceChargeIncluded(Boolean(editingPost.service_charge_included))
     setLocation(editingPost.location || '')
     setSelectedLocationMeta(
       editingPost.location
@@ -276,8 +665,11 @@ export default function CreatePostScreen({ navigation, route }) {
   }
 
   async function savePost() {
-    if (!title || !price) {
-      Alert.alert('Required', 'Please enter title and price')
+    if (!title || !price || !beds || !baths || !sizeSqft || !availableFrom) {
+      Alert.alert(
+        'Required',
+        'Please enter title, rent, bedrooms, bathrooms, size, and available from date.'
+      )
       return
     }
 
@@ -352,8 +744,19 @@ export default function CreatePostScreen({ navigation, route }) {
       price,
       beds: beds ? Number(beds) : null,
       baths: baths ? Number(baths) : null,
+      size_sqft: sizeSqft ? Number(sizeSqft) : null,
+      floor_no: floorNo ? Number(floorNo) : null,
       furnishing_status: furnishingStatus || null,
+      tenant_type: tenantType || null,
+      parking,
+      lift_available: liftAvailable,
+      generator_backup: generatorBackup,
+      gas_available: gasAvailable,
       pet_friendly: petFriendly,
+      available_from: availableFrom || null,
+      facing_direction: facingDirection.trim() || null,
+      has_balcony: hasBalcony,
+      service_charge_included: serviceChargeIncluded,
       location,
       owner_id: ownerId,
       owner_email: ownerEmail,
@@ -434,14 +837,14 @@ export default function CreatePostScreen({ navigation, route }) {
     >
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled"
       >
         <View
           style={{
             backgroundColor: '#fff',
-            borderRadius: 24,
-            padding: 18,
+            borderRadius: 20,
+            padding: 14,
             borderWidth: 1,
             borderColor: '#dbe4ee',
           }}
@@ -450,7 +853,7 @@ export default function CreatePostScreen({ navigation, route }) {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              marginBottom: 18,
+              marginBottom: 14,
             }}
           >
             <Avatar
@@ -461,10 +864,10 @@ export default function CreatePostScreen({ navigation, route }) {
             />
 
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>
+              <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
                 {composerName}
               </Text>
-              <Text style={{ color: '#64748b', marginTop: 4 }}>
+              <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
                 {composerSubtitle}
               </Text>
             </View>
@@ -472,12 +875,12 @@ export default function CreatePostScreen({ navigation, route }) {
             <View
               style={{
                 paddingHorizontal: 10,
-                paddingVertical: 7,
+                paddingVertical: 6,
                 borderRadius: 999,
                 backgroundColor: '#eff6ff',
               }}
             >
-              <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '800' }}>
+              <Text style={{ color: '#2563eb', fontSize: 10, fontWeight: '800' }}>
                 {isEditing ? 'Editing' : 'New post'}
               </Text>
             </View>
@@ -506,7 +909,7 @@ export default function CreatePostScreen({ navigation, route }) {
             keyboardType="numeric"
           />
 
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
             <View style={{ flex: 1 }}>
               <Field
                 label="Bedrooms"
@@ -528,143 +931,126 @@ export default function CreatePostScreen({ navigation, route }) {
             </View>
           </View>
 
-          <View style={{ marginBottom: 16 }}>
-            <Text
-              style={{
-                color: '#334155',
-                fontSize: 13,
-                fontWeight: '800',
-                marginBottom: 8,
-              }}
-            >
-              Furnishing
-            </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 0 }}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Size (sq ft)"
+                placeholder="1200"
+                value={sizeSqft}
+                onChangeText={setSizeSqft}
+                keyboardType="numeric"
+              />
+            </View>
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                onPress={() => setFurnishingStatus('unfurnished')}
-                activeOpacity={0.86}
-                style={{
-                  flex: 1,
-                  minHeight: 42,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: furnishingStatus === 'unfurnished' ? '#bfdbfe' : '#dbe4ee',
-                  backgroundColor: furnishingStatus === 'unfurnished' ? '#eff6ff' : '#fff',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: furnishingStatus === 'unfurnished' ? '#2563eb' : '#475569',
-                    fontSize: 12,
-                    fontWeight: '900',
-                  }}
-                >
-                  Unfurnished
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFurnishingStatus('furnished')}
-                activeOpacity={0.86}
-                style={{
-                  flex: 1,
-                  minHeight: 42,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: furnishingStatus === 'furnished' ? '#bfdbfe' : '#dbe4ee',
-                  backgroundColor: furnishingStatus === 'furnished' ? '#eff6ff' : '#fff',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: furnishingStatus === 'furnished' ? '#2563eb' : '#475569',
-                    fontSize: 12,
-                    fontWeight: '900',
-                  }}
-                >
-                  Furnished
-                </Text>
-              </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Floor"
+                placeholder="3"
+                value={floorNo}
+                onChangeText={setFloorNo}
+                keyboardType="numeric"
+              />
             </View>
           </View>
 
+          <CalendarField
+            label="Available from"
+            value={availableFrom}
+            helperText="Choose move-in date"
+            onPress={() => setAvailableFromPickerVisible(true)}
+          />
+
+          <Field
+            label="Facing direction"
+            placeholder="South facing"
+            value={facingDirection}
+            onChangeText={setFacingDirection}
+          />
+
+          <OptionField
+            label="Furnishing"
+            value={furnishingStatus}
+            onChange={setFurnishingStatus}
+            options={[
+              { value: 'unfurnished', label: 'Unfurnished' },
+              { value: 'furnished', label: 'Furnished' },
+            ]}
+          />
+
+          <OptionField
+            label="Preferred tenant"
+            value={tenantType}
+            onChange={setTenantType}
+            options={[
+              { value: 'family', label: 'Family' },
+              { value: 'bachelor', label: 'Bachelor' },
+              { value: 'any', label: 'Both okay' },
+            ]}
+          />
+
+          <BooleanField
+            label="Parking"
+            value={parking}
+            onChange={setParking}
+            trueLabel="Parking available"
+            falseLabel="No parking"
+          />
+
+          <BooleanField
+            label="Lift"
+            value={liftAvailable}
+            onChange={setLiftAvailable}
+            trueLabel="Lift available"
+            falseLabel="No lift"
+          />
+
+          <BooleanField
+            label="Generator backup"
+            value={generatorBackup}
+            onChange={setGeneratorBackup}
+            trueLabel="Generator available"
+            falseLabel="No generator"
+          />
+
+          <BooleanField
+            label="Gas"
+            value={gasAvailable}
+            onChange={setGasAvailable}
+            trueLabel="Gas available"
+            falseLabel="No gas"
+          />
+
+          <BooleanField
+            label="Balcony"
+            value={hasBalcony}
+            onChange={setHasBalcony}
+            trueLabel="Has balcony"
+            falseLabel="No balcony"
+          />
+
+          <BooleanField
+            label="Service charge"
+            value={serviceChargeIncluded}
+            onChange={setServiceChargeIncluded}
+            trueLabel="Included"
+            falseLabel="Separate"
+          />
+
+          <BooleanField
+            label="Pets"
+            value={petFriendly}
+            onChange={setPetFriendly}
+            trueLabel="Pet friendly"
+            falseLabel="Not pet friendly"
+          />
+
           <View style={{ marginBottom: 16 }}>
             <Text
               style={{
                 color: '#334155',
-                fontSize: 13,
+                fontSize: 11,
                 fontWeight: '800',
-                marginBottom: 8,
-              }}
-            >
-              Pets
-            </Text>
-
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                onPress={() => setPetFriendly(false)}
-                activeOpacity={0.86}
-                style={{
-                  flex: 1,
-                  minHeight: 42,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: !petFriendly ? '#bfdbfe' : '#dbe4ee',
-                  backgroundColor: !petFriendly ? '#eff6ff' : '#fff',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: !petFriendly ? '#2563eb' : '#475569',
-                    fontSize: 12,
-                    fontWeight: '900',
-                  }}
-                >
-                  Not pet friendly
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setPetFriendly(true)}
-                activeOpacity={0.86}
-                style={{
-                  flex: 1,
-                  minHeight: 42,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: petFriendly ? '#bfdbfe' : '#dbe4ee',
-                  backgroundColor: petFriendly ? '#eff6ff' : '#fff',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text
-                  style={{
-                    color: petFriendly ? '#2563eb' : '#475569',
-                    fontSize: 12,
-                    fontWeight: '900',
-                  }}
-                >
-                  Pet friendly
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={{ marginBottom: 16 }}>
-            <Text
-              style={{
-                color: '#334155',
-                fontSize: 13,
-                fontWeight: '800',
-                marginBottom: 8,
+                marginBottom: 6,
               }}
             >
               Location
@@ -673,10 +1059,10 @@ export default function CreatePostScreen({ navigation, route }) {
             <View
               style={{
                 backgroundColor: '#f8fafc',
-                borderRadius: 16,
+                borderRadius: 14,
                 borderWidth: 1,
                 borderColor: '#e2e8f0',
-                padding: 12,
+                padding: 10,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -699,9 +1085,9 @@ export default function CreatePostScreen({ navigation, route }) {
                   style={{
                     flex: 1,
                     color: '#0f172a',
-                    fontSize: 15,
+                    fontSize: 13,
                     minHeight: 22,
-                    paddingVertical: 6,
+                    paddingVertical: 4,
                   }}
                 />
 
@@ -718,23 +1104,23 @@ export default function CreatePostScreen({ navigation, route }) {
                   activeOpacity={0.88}
                   style={{
                     marginLeft: 10,
-                    height: 38,
-                    paddingHorizontal: 12,
-                    borderRadius: 13,
+                    height: 34,
+                    paddingHorizontal: 10,
+                    borderRadius: 12,
                     backgroundColor: '#eff6ff',
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Ionicons name="map-outline" size={16} color="#2563eb" />
-                  <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                  <Ionicons name="map-outline" size={14} color="#2563eb" />
+                  <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900', marginLeft: 5 }}>
                     Pick map
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={{ color: '#64748b', fontSize: 11, marginTop: 8, lineHeight: 16 }}>
+              <Text style={{ color: '#64748b', fontSize: 10, marginTop: 7, lineHeight: 14 }}>
                 {locationHelperText}
               </Text>
             </View>
@@ -743,11 +1129,11 @@ export default function CreatePostScreen({ navigation, route }) {
           <View
             style={{
               backgroundColor: '#f8fafc',
-              borderRadius: 18,
+              borderRadius: 16,
               borderWidth: 1,
               borderColor: '#e2e8f0',
-              padding: 14,
-              marginBottom: 18,
+              padding: 12,
+              marginBottom: 14,
             }}
           >
             <View
@@ -759,10 +1145,10 @@ export default function CreatePostScreen({ navigation, route }) {
               }}
             >
               <View>
-                <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
+                <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
                   Photos and videos
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 4 }}>
+                <Text style={{ color: '#64748b', marginTop: 3, fontSize: 11, lineHeight: 16 }}>
                   Add clear media so renters can understand the property fast.
                 </Text>
               </View>
@@ -772,15 +1158,15 @@ export default function CreatePostScreen({ navigation, route }) {
                 activeOpacity={0.86}
                 style={{
                   backgroundColor: '#1877F2',
-                  borderRadius: 14,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
                   flexDirection: 'row',
                   alignItems: 'center',
                 }}
               >
-                <Ionicons name="images-outline" size={18} color="#fff" />
-                <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 6 }}>
+                <Ionicons name="images-outline" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '800', marginLeft: 5, fontSize: 11 }}>
                   Add
                 </Text>
               </TouchableOpacity>
@@ -790,8 +1176,8 @@ export default function CreatePostScreen({ navigation, route }) {
               <>
                 <View
                   style={{
-                    height: 208,
-                    borderRadius: 20,
+                    height: 176,
+                    borderRadius: 16,
                     overflow: 'hidden',
                     backgroundColor: '#dbeafe',
                     marginBottom: 12,
@@ -809,8 +1195,8 @@ export default function CreatePostScreen({ navigation, route }) {
                         justifyContent: 'center',
                       }}
                     >
-                      <Ionicons name="play-circle" size={54} color="#fff" />
-                      <Text style={{ color: '#e2e8f0', fontWeight: '800', marginTop: 10 }}>
+                      <Ionicons name="play-circle" size={44} color="#fff" />
+                      <Text style={{ color: '#e2e8f0', fontWeight: '800', fontSize: 12, marginTop: 8 }}>
                         Video ready to upload
                       </Text>
                     </View>
@@ -825,15 +1211,15 @@ export default function CreatePostScreen({ navigation, route }) {
                   <View
                     style={{
                       position: 'absolute',
-                      left: 12,
-                      bottom: 12,
+                      left: 10,
+                      bottom: 10,
                       backgroundColor: 'rgba(15, 23, 42, 0.72)',
                       borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
+                      paddingHorizontal: 9,
+                      paddingVertical: 5,
                     }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 10 }}>
                       {media.length} {media.length === 1 ? 'item' : 'items'}
                     </Text>
                   </View>
@@ -860,30 +1246,30 @@ export default function CreatePostScreen({ navigation, route }) {
                   borderWidth: 1.5,
                   borderColor: '#cbd5e1',
                   borderStyle: 'dashed',
-                  borderRadius: 18,
-                  paddingVertical: 28,
+                  borderRadius: 16,
+                  paddingVertical: 22,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
                 <View
                   style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
+                    width: 46,
+                    height: 46,
+                    borderRadius: 23,
                     backgroundColor: '#e0edff',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 12,
+                    marginBottom: 10,
                   }}
                 >
-                  <Ionicons name="camera-outline" size={24} color="#2563eb" />
+                  <Ionicons name="camera-outline" size={20} color="#2563eb" />
                 </View>
 
-                <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
+                <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
                   Add property media
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 6, textAlign: 'center' }}>
+                <Text style={{ color: '#64748b', marginTop: 5, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
                   Photos, room videos, washroom, balcony, parking, or surroundings.
                 </Text>
               </TouchableOpacity>
@@ -896,20 +1282,20 @@ export default function CreatePostScreen({ navigation, route }) {
             activeOpacity={0.9}
             style={{
               backgroundColor: loading ? '#94a3b8' : '#1877F2',
-              borderRadius: 16,
-              paddingVertical: 16,
+              borderRadius: 14,
+              paddingVertical: 13,
               alignItems: 'center',
               flexDirection: 'row',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="send" size={18} color="#fff" />
+            <Ionicons name="send" size={16} color="#fff" />
             <Text
               style={{
                 color: '#fff',
                 fontWeight: '900',
-                fontSize: 16,
-                marginLeft: 8,
+                fontSize: 14,
+                marginLeft: 7,
               }}
             >
               {loading
@@ -923,6 +1309,13 @@ export default function CreatePostScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <CalendarModal
+        visible={availableFromPickerVisible}
+        value={availableFrom}
+        onClose={() => setAvailableFromPickerVisible(false)}
+        onSelect={setAvailableFrom}
+      />
     </KeyboardAvoidingView>
   )
 }

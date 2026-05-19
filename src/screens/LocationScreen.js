@@ -245,15 +245,33 @@ export default function LocationScreen({ navigation, route }) {
     }
 
     if (returnKey) {
-      navigation.dispatch(
-        CommonActions.navigate({
-          key: returnKey,
-          name: returnScreen,
-          params,
-          merge: true,
-        })
-      )
-      return
+      const navigationState = navigation.getState()
+      const targetIndex = navigationState.routes.findIndex((screenRoute) => screenRoute.key === returnKey)
+
+      if (targetIndex >= 0) {
+        const nextRoutes = navigationState.routes
+          .slice(0, targetIndex + 1)
+          .map((screenRoute, index) => (
+            index === targetIndex
+              ? {
+                  ...screenRoute,
+                  params: {
+                    ...(screenRoute.params || {}),
+                    ...params,
+                  },
+                }
+              : screenRoute
+          ))
+
+        navigation.dispatch(
+          CommonActions.reset({
+            ...navigationState,
+            routes: nextRoutes,
+            index: nextRoutes.length - 1,
+          })
+        )
+        return
+      }
     }
 
     navigation.navigate(returnScreen, params)
