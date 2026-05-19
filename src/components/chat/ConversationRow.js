@@ -20,6 +20,7 @@ export default function ConversationRow({
   const isLastCall = item.last_message_type === 'call'
   const lastMessageText = String(item.last_message || '')
   const isVideoCall = isLastCall && /video call/i.test(lastMessageText)
+  const isVerified = Boolean(profile?.is_verified)
 
   return (
     <TouchableOpacity
@@ -59,12 +60,23 @@ export default function ConversationRow({
 
       <View style={{ flex: 1, marginLeft: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text
-            style={{ flex: 1, color: '#111827', fontSize: 16, fontWeight: '900' }}
-            numberOfLines={1}
-          >
-            {name}
-          </Text>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
+            <Text
+              style={{ color: '#111827', fontSize: 16, fontWeight: '900', flexShrink: 1 }}
+              numberOfLines={1}
+            >
+              {name}
+            </Text>
+
+            {isVerified ? (
+              <Ionicons
+                name="checkmark-circle"
+                size={14}
+                color="#1877F2"
+                style={{ marginLeft: 5, flexShrink: 0 }}
+              />
+            ) : null}
+          </View>
 
           <Text style={{ color: '#64748b', fontSize: 12, marginLeft: 8 }}>
             {formatClock(item.last_message_at || item.created_at)}
