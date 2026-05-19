@@ -9,6 +9,7 @@ import HomeScreen from '../screens/HomeScreen'
 import PropertyScreen from '../screens/PropertyScreen'
 import CreatePostScreen from '../screens/CreatePostScreen'
 import ChatScreen from '../screens/ChatScreen'
+import ChatSettingsScreen from '../screens/ChatSettingsScreen'
 import ProfileScreen from '../screens/ProfileScreen'
 import FavoriteScreen from '../screens/FavoriteScreen'
 import OwnerProfileScreen from '../screens/OwnerProfileScreen'
@@ -189,6 +190,11 @@ export default function AppNavigator() {
           name="Chat"
           component={ChatScreen}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="ChatSettings"
+          component={ChatSettingsScreen}
+          options={{ title: 'Chat settings' }}
         />
         <Stack.Screen
           name="AudioCall"

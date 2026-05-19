@@ -360,6 +360,7 @@ export default function MessageBubble({
   onPressCallHistory,
   onToggleReaction,
   onLongPressMessage,
+  outgoingBubbleColor = '#1877F2',
   highlighted = false,
 }) {
   const shouldShowDay = !isSameDay(item.created_at, previousMessage?.created_at)
@@ -484,7 +485,7 @@ export default function MessageBubble({
             onLongPress={() => onLongPressMessage?.(item)}
             delayLongPress={220}
             style={{
-              backgroundColor: isMine ? '#1877F2' : '#fff',
+              backgroundColor: isMine ? outgoingBubbleColor : '#fff',
               borderRadius: 18,
               borderBottomRightRadius: isMine ? 5 : 18,
               borderBottomLeftRadius: isMine ? 18 : 5,

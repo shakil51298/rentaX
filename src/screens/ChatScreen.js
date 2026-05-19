@@ -8,11 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import * as Clipboard from 'expo-clipboard'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -36,6 +38,11 @@ import SwipeTabView from '../components/navigation/SwipeTabView'
 import useChatPresence from '../hooks/useChatPresence'
 import { CHAT_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { sendPushToUser } from '../lib/pushNotifications'
+import {
+  getChatAppearance,
+  resolveChatColorPreset,
+  resolveChatWallpaperPreset,
+} from '../lib/chatAppearance'
 import {
   formatDuration,
   getDirectTarget,
@@ -228,6 +235,7 @@ export default function ChatScreen({ route, navigation }) {
     index: 0,
   })
   const [selectedMediaAssets, setSelectedMediaAssets] = useState([])
+  const [chatAppearance, setChatAppearance] = useState(null)
   const typingTimeoutRef = useRef(null)
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
@@ -260,6 +268,9 @@ export default function ChatScreen({ route, navigation }) {
     conversationId: conversation?.id,
     otherUserId: otherUser?.id,
   })
+
+  const activeColorPreset = resolveChatColorPreset(chatAppearance?.colorPresetId)
+  const activeWallpaperPreset = resolveChatWallpaperPreset(chatAppearance?.wallpaperPresetId)
 
   function shouldSuppressAutoScroll() {
     return Date.now() < suppressAutoScrollUntilRef.current
@@ -526,6 +537,26 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     initializeChat()
   }, [initializeChat])
+
+  const loadAppearance = useCallback(async () => {
+    if (!conversation?.id) {
+      setChatAppearance(null)
+      return
+    }
+
+    const nextAppearance = await getChatAppearance(conversation.id)
+    setChatAppearance(nextAppearance)
+  }, [conversation?.id])
+
+  useEffect(() => {
+    loadAppearance()
+  }, [loadAppearance])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAppearance()
+    }, [loadAppearance])
+  )
 
   useEffect(() => {
     if (mode !== 'chat' || !conversation?.id || !currentUser?.id) return undefined
@@ -897,6 +928,16 @@ export default function ChatScreen({ route, navigation }) {
       participant: otherUser,
       property: conversationProperty,
       conversationId: conversation?.id || null,
+    })
+  }
+
+  function openChatSettings() {
+    if (!conversation?.id || !otherUser?.id) return
+
+    navigation.navigate('ChatSettings', {
+      conversationId: conversation.id,
+      participant: otherUser,
+      property: conversationProperty || null,
     })
   }
 
@@ -1427,7 +1468,7 @@ export default function ChatScreen({ route, navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#e9eef5' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: activeWallpaperPreset.backgroundColor }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
@@ -1528,6 +1569,19 @@ export default function ChatScreen({ route, navigation }) {
           >
             <Ionicons name="videocam-outline" size={23} color="#1877F2" />
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={openChatSettings}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="information-circle-outline" size={23} color="#1877F2" />
+          </TouchableOpacity>
         </View>
 
         {conversationProperty?.title ? (
@@ -1549,50 +1603,87 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         ) : null}
 
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => (
-            <MessageBubble
-              item={item}
-              previousMessage={messages[index - 1]}
-              currentUserId={currentUser?.id}
-              repliedMessage={item.reply_to_message_id ? messageLookup[item.reply_to_message_id] : null}
-              onOpenMedia={openMediaViewer}
-              onReply={handleReplyToMessage}
-              onJumpToMessage={jumpToMessage}
-              onPressCallHistory={startVoiceCall}
-              onToggleReaction={toggleMessageReaction}
-              onLongPressMessage={openMessageActions}
-              highlighted={highlightedMessageId === item.id}
-            />
-          )}
-          contentContainerStyle={{ paddingTop: 10, paddingBottom: 16 }}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scrollToBottom(true)}
-          onScrollToIndexFailed={(info) => {
-            setTimeout(() => {
-              flatListRef.current?.scrollToIndex({
-                index: info.index,
-                animated: true,
-                viewPosition: 0.35,
-              })
-            }, 350)
-          }}
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingHorizontal: 32, paddingTop: 80 }}>
-              <Ionicons name="chatbubble-ellipses-outline" size={48} color="#94a3b8" />
-              <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
-                Start chatting
-              </Text>
-              <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
-                Send a message, photo, video, or voice note.
-              </Text>
-            </View>
-          }
-        />
+        <View style={{ flex: 1 }}>
+          <View
+            pointerEvents="none"
+            style={{
+              ...StyleSheet.absoluteFillObject,
+              backgroundColor: activeWallpaperPreset.backgroundColor,
+            }}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 28,
+              right: -40,
+              width: 220,
+              height: 220,
+              borderRadius: 999,
+              backgroundColor: activeWallpaperPreset.overlay,
+              opacity: activeWallpaperPreset.id === 'night' ? 0.22 : 0.45,
+            }}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              bottom: 40,
+              left: -30,
+              width: 170,
+              height: 170,
+              borderRadius: 999,
+              backgroundColor: activeWallpaperPreset.overlay,
+              opacity: activeWallpaperPreset.id === 'night' ? 0.16 : 0.28,
+            }}
+          />
+
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index }) => (
+              <MessageBubble
+                item={item}
+                previousMessage={messages[index - 1]}
+                currentUserId={currentUser?.id}
+                repliedMessage={item.reply_to_message_id ? messageLookup[item.reply_to_message_id] : null}
+                onOpenMedia={openMediaViewer}
+                onReply={handleReplyToMessage}
+                onJumpToMessage={jumpToMessage}
+                onPressCallHistory={startVoiceCall}
+                onToggleReaction={toggleMessageReaction}
+                onLongPressMessage={openMessageActions}
+                outgoingBubbleColor={activeColorPreset.bubble}
+                highlighted={highlightedMessageId === item.id}
+              />
+            )}
+            contentContainerStyle={{ paddingTop: 10, paddingBottom: 16 }}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() => scrollToBottom(true)}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                flatListRef.current?.scrollToIndex({
+                  index: info.index,
+                  animated: true,
+                  viewPosition: 0.35,
+                })
+              }, 350)
+            }}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', paddingHorizontal: 32, paddingTop: 80 }}>
+                <Ionicons name="chatbubble-ellipses-outline" size={48} color="#94a3b8" />
+                <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+                  Start chatting
+                </Text>
+                <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
+                  Send a message, photo, video, or voice note.
+                </Text>
+              </View>
+            }
+          />
+        </View>
 
         {recorderState?.isRecording ? (
           <View
@@ -1753,11 +1844,13 @@ export default function ChatScreen({ route, navigation }) {
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: '#eef6ff',
+              borderColor: activeColorPreset.accent,
+              borderWidth: 1,
               marginRight: 8,
               opacity: uploading || sending ? 0.5 : 1,
             }}
           >
-            <Ionicons name="attach-outline" size={24} color="#1877F2" />
+            <Ionicons name="attach-outline" size={24} color={activeColorPreset.accent} />
           </TouchableOpacity>
 
           <TextInput
@@ -1806,7 +1899,7 @@ export default function ChatScreen({ route, navigation }) {
                 borderRadius: 21,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: '#1877F2',
+                backgroundColor: activeColorPreset.accent,
                 marginLeft: 8,
                 opacity: sending ? 0.55 : 1,
               }}
@@ -1827,7 +1920,7 @@ export default function ChatScreen({ route, navigation }) {
                 borderRadius: 21,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: recorderState?.isRecording ? '#dc2626' : '#1877F2',
+                backgroundColor: recorderState?.isRecording ? '#dc2626' : activeColorPreset.accent,
                 marginLeft: 8,
                 opacity: uploading ? 0.55 : 1,
               }}
