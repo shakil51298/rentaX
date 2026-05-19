@@ -31,12 +31,12 @@ export async function createNotification({
   skipPush = false,
 }) {
   if (!recipientId || !actorId || String(recipientId) === String(actorId)) {
-    return
+    return { skipped: true }
   }
 
   const createdAt = new Date().toISOString()
 
-  await supabase.from('notifications').upsert(
+  const { error } = await supabase.from('notifications').upsert(
     {
       recipient_id: recipientId,
       actor_id: actorId,
@@ -54,6 +54,11 @@ export async function createNotification({
     { onConflict: 'event_key' }
   )
 
+  if (error) {
+    console.warn('Notification write failed:', error.message)
+    throw error
+  }
+
   if (!skipPush) {
     await sendPushToUser({
       recipientId,
@@ -69,4 +74,6 @@ export async function createNotification({
       },
     })
   }
+
+  return { skipped: false }
 }

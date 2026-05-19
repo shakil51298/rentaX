@@ -19,6 +19,7 @@ const ADMIN_NOTIFICATION_TYPES = new Set([
   'property_verification_review_requested',
   'user_report_submitted',
   'property_report_submitted',
+  'property_case_appealed',
 ])
 const SAVED_SEARCH_NOTIFICATION_TYPES = new Set(['saved_search_match'])
 const VISIT_REQUEST_OWNER_TYPES = new Set([
@@ -353,6 +354,11 @@ export function routeFromNotificationData(navigation, payload = {}) {
     return
   }
 
+  if (type === 'property_case_appealed') {
+    navigation.navigate('AdminReports')
+    return
+  }
+
   if (type === 'owner_verification_approved') {
     navigation.navigate('VerificationCenter')
     return
@@ -391,6 +397,24 @@ export function routeFromNotificationData(navigation, payload = {}) {
       notification: {
         title: payload.propertyTitle || 'Ad hidden by admin',
         body: payload.banReason || 'Your ad was hidden from live feeds.',
+      },
+    })
+    return
+  }
+
+  if (type === 'customer_care_case_updated') {
+    navigation.navigate('CustomerCare', {
+      property: property
+        ? {
+            ...property,
+            location: payload.propertyLocation || '',
+            price: payload.propertyPrice || '',
+            admin_ban_reason: payload.banReason || '',
+          }
+        : null,
+      notification: {
+        title: payload.propertyTitle || 'Customer care case updated',
+        body: payload.banReason || 'Admin replied to your customer care case.',
       },
     })
     return

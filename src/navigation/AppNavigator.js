@@ -42,6 +42,15 @@ import {
   routeFromNotificationData,
 } from '../lib/pushNotifications'
 
+const LIVE_ALERT_NOTIFICATION_TYPES = new Set([
+  'saved_search_match',
+  'user_report_submitted',
+  'property_report_submitted',
+  'property_case_appealed',
+  'owner_verification_review_requested',
+  'property_verification_review_requested',
+])
+
 const Stack = createNativeStackNavigator()
 const Tab = createBottomTabNavigator()
 const navigationRef = createNavigationContainerRef()
@@ -171,7 +180,7 @@ function NotificationCoordinator({ onOpenNotification }) {
           async (payload) => {
             const nextNotification = payload.new
 
-            if (nextNotification?.type !== 'saved_search_match') {
+            if (!LIVE_ALERT_NOTIFICATION_TYPES.has(nextNotification?.type)) {
               return
             }
 
@@ -185,12 +194,13 @@ function NotificationCoordinator({ onOpenNotification }) {
 
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: nextNotification.title || 'Saved search match',
-                body: nextNotification.body || 'A rental matches your saved alert.',
+                title: nextNotification.title || 'Rental X update',
+                body: nextNotification.body || 'You have a new admin update.',
                 sound: 'default',
                 data: {
                   type: nextNotification.type,
                   propertyId: nextNotification.property_id ? String(nextNotification.property_id) : null,
+                  actorId: nextNotification.actor_id || null,
                 },
               },
               trigger: null,

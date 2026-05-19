@@ -56,6 +56,8 @@ function getNotificationIcon(type) {
     return 'shield-checkmark'
   }
   if (type === 'property_banned_by_admin') return 'help-buoy'
+  if (type === 'property_case_appealed') return 'chatbubble-ellipses'
+  if (type === 'customer_care_case_updated') return 'checkmark-done-circle'
   if (type === 'property_comment') return 'chatbubble-ellipses'
   if (type === 'comment_reply') return 'return-down-forward'
   if (type === 'comment_like') return 'thumbs-up'
@@ -97,6 +99,8 @@ function getNotificationColor(type) {
     return '#7c3aed'
   }
   if (type === 'property_banned_by_admin') return '#dc2626'
+  if (type === 'property_case_appealed') return '#7c3aed'
+  if (type === 'customer_care_case_updated') return '#16a34a'
   if (type === 'property_favorite') return '#ef4444'
   if (type === 'user_follow') return '#16a34a'
   if (type === 'owner_verification_approved' || type === 'property_verification_approved') {
@@ -351,6 +355,11 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
       return
     }
 
+    if (notification.type === 'property_case_appealed') {
+      navigation.navigate('AdminReports')
+      return
+    }
+
     if (
       notification.type === 'owner_verification_review_requested'
       || notification.type === 'property_verification_review_requested'
@@ -390,6 +399,14 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
     }
 
     if (notification.type === 'property_banned_by_admin') {
+      navigation.navigate('CustomerCare', {
+        property: notification.property || null,
+        notification,
+      })
+      return
+    }
+
+    if (notification.type === 'customer_care_case_updated') {
       navigation.navigate('CustomerCare', {
         property: notification.property || null,
         notification,

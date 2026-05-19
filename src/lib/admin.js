@@ -14,10 +14,14 @@ export function isPrimaryAdmin(emailOrUser) {
 export async function getPrimaryAdminUserIds() {
   const normalizedEmails = PRIMARY_ADMIN_EMAILS.map((item) => item.trim().toLowerCase())
 
+  if (!normalizedEmails.length) {
+    return []
+  }
+
   const { data, error } = await supabase
     .from('user_profiles')
     .select('user_id, email')
-    .in('email', normalizedEmails)
+    .or(normalizedEmails.map((email) => `email.ilike.${email}`).join(','))
 
   if (error) {
     return []
