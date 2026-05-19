@@ -90,6 +90,21 @@ function VoiceMessage({ message, isMine }) {
     }
   }, [playbackRate, player])
 
+  async function seekToRatio(ratio) {
+    if (!durationMillis) return
+
+    try {
+      const nextSeconds = Math.max(0, Math.min(ratio, 1)) * (durationMillis / 1000)
+      await player.seekTo(nextSeconds)
+
+      if (!isPlaying) {
+        player.play()
+      }
+    } catch {
+      Alert.alert('Seek unavailable', 'Could not move playback to that part of the voice message.')
+    }
+  }
+
   async function togglePlayback() {
     try {
       if (isPlaying) {
@@ -150,8 +165,10 @@ function VoiceMessage({ message, isMine }) {
             const active = progressRatio >= threshold
 
             return (
-              <View
+              <TouchableOpacity
                 key={`${message.id}-bar-${index}`}
+                onPress={() => seekToRatio(index / Math.max(waveformHeights.length - 1, 1))}
+                activeOpacity={0.72}
                 style={{
                   width: 6,
                   height: barHeight,
