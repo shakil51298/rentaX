@@ -1643,6 +1643,13 @@ export default function ChatScreen({ route, navigation }) {
   }, [currentUser?.id, messageActionTarget])
 
   const chatStatusText = getChatStatusText()
+  const activeConversationRows = useMemo(
+    () =>
+      conversationRows.filter((item) =>
+        Boolean(item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online)
+      ),
+    [conversationRows, presenceByUserId]
+  )
   const currentRecordingLevel = recorderState?.isRecording
     ? (recordingWaveform[recordingWaveform.length - 1] ?? normalizeMeteringLevel(recorderState?.metering))
     : 0
@@ -1769,6 +1776,91 @@ export default function ChatScreen({ route, navigation }) {
               </>
             )}
           </View>
+
+          {activeConversationRows.length ? (
+            <View
+              style={{
+                backgroundColor: '#fff',
+                paddingTop: 10,
+                paddingBottom: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: '#e5e7eb',
+              }}
+            >
+              <Text
+                style={{
+                  color: '#64748b',
+                  fontSize: 12,
+                  fontWeight: '800',
+                  paddingHorizontal: 16,
+                  marginBottom: 8,
+                }}
+              >
+                Active now
+              </Text>
+
+              <FlatList
+                data={activeConversationRows}
+                keyExtractor={(item) => `active-${item.id}`}
+                horizontal
+                inverted
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 16 }}
+                renderItem={({ item }) => {
+                  const activeProfile = item.other_profile
+                  const activeName = getProfileName(activeProfile, 'User')
+                  const firstName = activeName.split(' ')[0] || activeName
+
+                  return (
+                    <TouchableOpacity
+                      onPress={() =>
+                        openConversation({
+                          item,
+                          profile: item.other_profile,
+                          fromList: true,
+                        })
+                      }
+                      style={{
+                        width: 68,
+                        marginRight: 12,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <View>
+                        <Avatar profile={activeProfile} name={activeName} size={52} />
+                        <View
+                          style={{
+                            position: 'absolute',
+                            right: 1,
+                            bottom: 1,
+                            width: 14,
+                            height: 14,
+                            borderRadius: 7,
+                            backgroundColor: '#22c55e',
+                            borderWidth: 2,
+                            borderColor: '#fff',
+                          }}
+                        />
+                      </View>
+
+                      <Text
+                        style={{
+                          color: '#111827',
+                          fontSize: 11,
+                          fontWeight: '700',
+                          marginTop: 6,
+                          textAlign: 'center',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {firstName}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                }}
+              />
+            </View>
+          ) : null}
 
           <FlatList
             data={conversationRows}
