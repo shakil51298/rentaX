@@ -27,6 +27,7 @@ import {
 import { supabase } from '../lib/supabase'
 import Avatar from '../components/common/Avatar'
 import ActionSheetModal from '../components/common/ActionSheetModal'
+import MediaComposerModal from '../components/chat/MediaComposerModal'
 import MediaViewer from '../components/common/MediaViewer'
 import ConversationRow from '../components/chat/ConversationRow'
 import MessageBubble from '../components/chat/MessageBubble'
@@ -226,6 +227,7 @@ export default function ChatScreen({ route, navigation }) {
     media: [],
     index: 0,
   })
+  const [selectedMediaAssets, setSelectedMediaAssets] = useState([])
   const typingTimeoutRef = useRef(null)
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
@@ -691,33 +693,128 @@ export default function ChatScreen({ route, navigation }) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: false,
-      quality: 0.82,
+      allowsMultipleSelection: true,
+      selectionLimit: 5,
+      orderedSelection: true,
+      quality: 1,
     })
 
-    if (result.canceled || !result.assets?.[0]) return
+    if (result.canceled || !result.assets?.length) return
 
-    const asset = result.assets[0]
-    const messageType = asset.type === 'video' ? 'video' : 'image'
+    const nextAssets = result.assets.slice(0, 5).map((asset, index) => ({
+      ...asset,
+      composerKey:
+        asset.assetId ||
+        asset.id ||
+        `${asset.uri}-${Date.now()}-${index}`,
+      type: asset.type === 'video' ? 'video' : 'image',
+    }))
+
+    if (result.assets.length > 5) {
+      Alert.alert('Only 5 at a time', 'You can select up to 5 photos or videos in one batch.')
+    }
+
+    setSelectedMediaAssets(nextAssets)
+  }
+
+  async function sendSelectedMediaBatch() {
+    if (!currentUser?.id || !conversation?.id || !otherUser?.id || selectedMediaAssets.length === 0 || uploading || sending) {
+      return
+    }
 
     try {
       setUploading(true)
 
-      const uploadResult = await uploadMediaAsset({
-        uri: asset.uri,
-        type: messageType,
-        mimeType: asset.mimeType,
-        userId: currentUser.id,
-        bucket: CHAT_MEDIA_BUCKET,
+      const uploadedAssets = await Promise.all(
+        selectedMediaAssets.map(async (asset) => {
+          const messageType = asset.type === 'video' ? 'video' : 'image'
+          const uploadResult = await uploadMediaAsset({
+            uri: asset.uri,
+            type: messageType,
+            mimeType: asset.mimeType,
+            userId: currentUser.id,
+            bucket: CHAT_MEDIA_BUCKET,
+          })
+
+          return {
+            ...asset,
+            messageType,
+            mediaUrl: uploadResult.mediaUrl,
+            mediaMimeType: uploadResult.mediaMimeType,
+          }
+        })
+      )
+
+      const baseTime = Date.now()
+      const rows = uploadedAssets.map((asset, index) => {
+        const createdAt = new Date(baseTime + index * 1000).toISOString()
+
+        return {
+          conversation_id: conversation.id,
+          sender_id: currentUser.id,
+          receiver_id: otherUser.id,
+          body: null,
+          message_type: asset.messageType,
+          media_url: asset.mediaUrl,
+          media_mime_type: asset.mediaMimeType,
+          audio_duration_ms: null,
+          reply_to_message_id: replyTarget?.id || null,
+          created_at: createdAt,
+          updated_at: createdAt,
+        }
       })
 
-      await sendMessage({
-        messageType,
-        mediaUrl: uploadResult.mediaUrl,
-        mediaMimeType: uploadResult.mediaMimeType,
+      const { error } = await supabase.from('chat_messages').insert(rows)
+
+      if (error) {
+        throw error
+      }
+
+      const lastCreatedAt = rows[rows.length - 1]?.created_at || new Date().toISOString()
+      const summaryLabel =
+        uploadedAssets.length === 1
+          ? mediaLabel(uploadedAssets[0].messageType)
+          : `${uploadedAssets.length} attachments`
+
+      await supabase
+        .from('chat_conversations')
+        .update({
+          last_message: summaryLabel,
+          last_message_type: uploadedAssets.length === 1 ? uploadedAssets[0].messageType : 'image',
+          last_message_at: lastCreatedAt,
+          last_sender_id: currentUser.id,
+          updated_at: lastCreatedAt,
+          ...(getConversationDeletionField(conversation, currentUser.id)
+            ? { [getConversationDeletionField(conversation, currentUser.id)]: null }
+            : {}),
+        })
+        .eq('id', conversation.id)
+
+      await sendPushToUser({
+        recipientId: otherUser.id,
+        title: currentUserName,
+        body:
+          uploadedAssets.length === 1
+            ? `Sent a ${mediaLabel(uploadedAssets[0].messageType).toLowerCase()}`
+            : `Sent ${uploadedAssets.length} photos`,
+        data: {
+          type: 'chat_message',
+          actorId: currentUser.id,
+          actorName: currentUserName,
+          actorAvatarUrl: getUserAvatarUrl(currentUser),
+          propertyId: getPropertyId(conversationProperty) || conversation.property_id,
+          propertyTitle: conversationProperty?.title || '',
+          conversationId: conversation.id,
+          messageType: uploadedAssets.length === 1 ? uploadedAssets[0].messageType : 'image',
+          createdAt: lastCreatedAt,
+        },
       })
+
+      await updateMyPresence({ online: true, typing: false })
+      setSelectedMediaAssets([])
+      setReplyTarget(null)
     } catch (error) {
-      Alert.alert('Media upload failed', error.message)
+      Alert.alert('Media send failed', error?.message || 'Could not send these files right now.')
     } finally {
       setUploading(false)
     }
@@ -1755,6 +1852,15 @@ export default function ChatScreen({ route, navigation }) {
         media={mediaViewer.media}
         initialIndex={mediaViewer.index}
         onClose={closeMediaViewer}
+      />
+
+      <MediaComposerModal
+        visible={selectedMediaAssets.length > 0}
+        assets={selectedMediaAssets}
+        onClose={() => setSelectedMediaAssets([])}
+        onChangeAssets={setSelectedMediaAssets}
+        onSend={sendSelectedMediaBatch}
+        sending={uploading}
       />
 
       <ActionSheetModal
