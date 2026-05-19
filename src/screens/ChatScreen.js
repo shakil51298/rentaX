@@ -25,6 +25,8 @@ import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio'
@@ -211,6 +213,7 @@ export default function ChatScreen({ route, navigation }) {
   const suppressAutoScrollUntilRef = useRef(0)
   const handledCapturedAssetNonceRef = useRef(null)
   const composerFocusAnim = useRef(new Animated.Value(0)).current
+  const recordingPulseAnim = useRef(new Animated.Value(0)).current
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
   const recorderState = useAudioRecorderState(audioRecorder)
   const insets = useSafeAreaInsets()
@@ -230,6 +233,7 @@ export default function ChatScreen({ route, navigation }) {
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
+  const [pendingVoiceNote, setPendingVoiceNote] = useState(null)
   const [openedFromList, setOpenedFromList] = useState(false)
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [replyTarget, setReplyTarget] = useState(null)
@@ -243,6 +247,10 @@ export default function ChatScreen({ route, navigation }) {
   const [selectedMediaAssets, setSelectedMediaAssets] = useState([])
   const [chatAppearance, setChatAppearance] = useState(null)
   const typingTimeoutRef = useRef(null)
+  const voicePreviewPlayer = useAudioPlayer(pendingVoiceNote?.uri || null, {
+    updateInterval: 250,
+  })
+  const voicePreviewStatus = useAudioPlayerStatus(voicePreviewPlayer)
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const currentUserName = getUserDisplayName(currentUser) || 'Rental X member'
@@ -551,6 +559,36 @@ export default function ChatScreen({ route, navigation }) {
       useNativeDriver: false,
     }).start()
   }, [composerFocusAnim, composerFocused])
+
+  useEffect(() => {
+    if (!recorderState?.isRecording) {
+      recordingPulseAnim.stopAnimation()
+      recordingPulseAnim.setValue(0)
+      return undefined
+    }
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(recordingPulseAnim, {
+          toValue: 1,
+          duration: 760,
+          useNativeDriver: false,
+        }),
+        Animated.timing(recordingPulseAnim, {
+          toValue: 0,
+          duration: 760,
+          useNativeDriver: false,
+        }),
+      ])
+    )
+
+    pulseLoop.start()
+
+    return () => {
+      pulseLoop.stop()
+      recordingPulseAnim.setValue(0)
+    }
+  }, [recordingPulseAnim, recorderState?.isRecording])
 
   useEffect(() => {
     const capturedAsset = route?.params?.capturedChatAsset
@@ -984,6 +1022,12 @@ export default function ChatScreen({ route, navigation }) {
     }
 
     try {
+      try {
+        voicePreviewPlayer.pause()
+      } catch {
+        // ignore preview player pause issues
+      }
+      setPendingVoiceNote(null)
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
@@ -995,11 +1039,10 @@ export default function ChatScreen({ route, navigation }) {
     }
   }
 
-  async function stopAndSendRecording() {
+  async function stopRecordingForReview() {
     if (!recorderState?.isRecording || uploading) return
 
     try {
-      setUploading(true)
       await audioRecorder.stop()
 
       const uri = audioRecorder.uri
@@ -1013,9 +1056,23 @@ export default function ChatScreen({ route, navigation }) {
       if (!uri) {
         throw new Error('No recording file was created.')
       }
+      setPendingVoiceNote({
+        uri,
+        durationMillis,
+      })
+    } catch (error) {
+      Alert.alert('Voice message failed', error.message)
+    }
+  }
+
+  async function sendPendingVoiceNote() {
+    if (!pendingVoiceNote?.uri || uploading || !currentUser?.id) return
+
+    try {
+      setUploading(true)
 
       const uploadResult = await uploadMediaAsset({
-        uri,
+        uri: pendingVoiceNote.uri,
         type: 'voice',
         mimeType: 'audio/mp4',
         userId: currentUser.id,
@@ -1026,8 +1083,10 @@ export default function ChatScreen({ route, navigation }) {
         messageType: 'voice',
         mediaUrl: uploadResult.mediaUrl,
         mediaMimeType: uploadResult.mediaMimeType,
-        audioDurationMs: durationMillis,
+        audioDurationMs: pendingVoiceNote.durationMillis,
       })
+
+      setPendingVoiceNote(null)
     } catch (error) {
       Alert.alert('Voice message failed', error.message)
     } finally {
@@ -1035,9 +1094,41 @@ export default function ChatScreen({ route, navigation }) {
     }
   }
 
+  function discardPendingVoiceNote() {
+    try {
+      voicePreviewPlayer.pause()
+      voicePreviewPlayer.seekTo(0)
+    } catch {
+      // ignore preview reset issues
+    }
+
+    setPendingVoiceNote(null)
+  }
+
+  async function toggleVoicePreviewPlayback() {
+    if (!pendingVoiceNote?.uri) return
+
+    try {
+      const previewDuration = pendingVoiceNote.durationMillis || 0
+      const previewPositionMillis = Math.floor((voicePreviewStatus?.currentTime || 0) * 1000)
+      const finished = previewDuration > 0 && previewPositionMillis >= previewDuration - 120
+
+      if (voicePreviewStatus?.playing) {
+        voicePreviewPlayer.pause()
+      } else {
+        if (finished) {
+          await voicePreviewPlayer.seekTo(0)
+        }
+        voicePreviewPlayer.play()
+      }
+    } catch {
+      Alert.alert('Preview unavailable', 'This recording could not be reviewed right now.')
+    }
+  }
+
   function toggleRecording() {
     if (recorderState?.isRecording) {
-      stopAndSendRecording()
+      stopRecordingForReview()
     } else {
       startRecording()
     }
@@ -1860,13 +1951,168 @@ export default function ChatScreen({ route, navigation }) {
               alignItems: 'center',
             }}
           >
-            <Ionicons name="radio-button-on" size={18} color="#dc2626" />
-            <Text style={{ color: '#991b1b', fontWeight: '900', marginLeft: 8 }}>
-              Recording {formatDuration(recorderState.durationMillis)}
+            <Animated.View
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 7,
+                backgroundColor: '#dc2626',
+                transform: [
+                  {
+                    scale: recordingPulseAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 1.28],
+                    }),
+                  },
+                ],
+                opacity: recordingPulseAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.88, 0.36],
+                }),
+              }}
+            />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ color: '#991b1b', fontWeight: '900' }}>
+                Recording {formatDuration(recorderState.durationMillis)}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 5 }}>
+                {[9, 15, 11, 18, 13, 22, 14, 19, 12].map((barHeight, index) => (
+                  <Animated.View
+                    key={`recording-bar-${index}`}
+                    style={{
+                      width: 5,
+                      height: barHeight,
+                      borderRadius: 999,
+                      marginRight: index === 8 ? 0 : 3,
+                      backgroundColor: '#ef4444',
+                      opacity: recordingPulseAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.45 + (index % 3) * 0.08, 0.95],
+                      }),
+                      transform: [
+                        {
+                          scaleY: recordingPulseAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.72 + (index % 2) * 0.05, 1.08],
+                          }),
+                        },
+                      ],
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+            <Text style={{ color: '#991b1b', marginLeft: 10, fontWeight: '700' }}>
+              Tap stop to review
             </Text>
-            <Text style={{ color: '#991b1b', marginLeft: 'auto', fontWeight: '700' }}>
-              Tap stop to send
-            </Text>
+          </View>
+        ) : null}
+
+        {pendingVoiceNote?.uri && !recorderState?.isRecording ? (
+          <View
+            style={{
+              marginHorizontal: 12,
+              marginBottom: 8,
+              backgroundColor: '#eff6ff',
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity
+                onPress={toggleVoicePreviewPlayback}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: '#1877F2',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name={voicePreviewStatus?.playing ? 'pause' : 'play'}
+                  size={18}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                  Review your voice message
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
+                  {formatDuration(Math.floor((voicePreviewStatus?.currentTime || 0) * 1000))} / {formatDuration(pendingVoiceNote.durationMillis)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 10 }}>
+              {[10, 16, 12, 20, 14, 24, 17, 21, 13, 18].map((barHeight, index, items) => {
+                const ratio =
+                  pendingVoiceNote.durationMillis > 0
+                    ? Math.min(
+                      Math.floor((voicePreviewStatus?.currentTime || 0) * 1000) / pendingVoiceNote.durationMillis,
+                      1
+                    )
+                    : 0
+                const active = ratio >= (index + 1) / items.length
+
+                return (
+                  <View
+                    key={`preview-bar-${index}`}
+                    style={{
+                      width: 6,
+                      height: barHeight,
+                      borderRadius: 999,
+                      marginRight: index === items.length - 1 ? 0 : 4,
+                      backgroundColor: active ? '#1877F2' : '#bfdbfe',
+                    }}
+                  />
+                )
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', marginTop: 12 }}>
+              <TouchableOpacity
+                onPress={discardPendingVoiceNote}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  marginRight: 8,
+                }}
+              >
+                <Text style={{ color: '#475569', fontWeight: '800' }}>Delete</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={sendPendingVoiceNote}
+                disabled={uploading || sending}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  backgroundColor: activeColorPreset.accent,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: uploading || sending ? 0.6 : 1,
+                }}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>Send voice</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
