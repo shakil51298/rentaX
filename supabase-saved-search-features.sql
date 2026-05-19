@@ -138,7 +138,7 @@ begin
     )
   into owner_is_verified
   from public.user_profiles
-  where user_profiles.user_id = new.owner_id::text
+  where user_profiles.user_id = new.owner_id
   limit 1;
 
   with candidate_matches as (

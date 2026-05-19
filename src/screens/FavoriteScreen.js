@@ -50,6 +50,14 @@ export default function FavoriteScreen({ navigation, embeddedTabShell = false })
             return false
           }
 
+          if (hiddenState.hiddenOwnerIds.has(property.owner_id)) {
+            return false
+          }
+
+          if (hiddenState.hiddenPropertyIds.has(String(property.id))) {
+            return false
+          }
+
           if (hiddenState.reportedUserIds.has(property.owner_id)) {
             return false
           }

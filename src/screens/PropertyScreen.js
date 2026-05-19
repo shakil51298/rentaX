@@ -24,6 +24,7 @@ import { blockUser } from '../lib/social'
 import ActionSheetModal from '../components/common/ActionSheetModal'
 import { saveMediaToLibrary } from '../lib/mediaSave'
 import { createNotification } from '../lib/notifications'
+import { applyLessLikeThis, hideOwnerFromFeed, hidePropertyFromFeed } from '../lib/feedControls'
 import {
   buildVisitTimestamp,
   cancelVisitRequest,
@@ -669,6 +670,66 @@ export default function PropertyScreen({ route, navigation }) {
     )
   }
 
+  async function hideCurrentPost(reason, successTitle, successBody) {
+    if (!currentUser?.id || !post?.id) return
+
+    try {
+      await hidePropertyFromFeed({
+        userId: currentUser.id,
+        propertyId: post.id,
+        reason,
+      })
+
+      Alert.alert(successTitle, successBody, [{ text: 'OK', onPress: () => navigation.goBack() }])
+    } catch (error) {
+      Alert.alert('Could not update feed', error?.message || 'Please try again.')
+    }
+  }
+
+  async function hideCurrentOwner() {
+    if (!currentUser?.id || !post?.owner_id) return
+
+    try {
+      await hideOwnerFromFeed({
+        userId: currentUser.id,
+        ownerId: post.owner_id,
+        reason: 'hide_owner',
+      })
+
+      Alert.alert(
+        'Owner hidden',
+        'You will not see posts from this owner in your feed anymore.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      )
+    } catch (error) {
+      Alert.alert('Could not update feed', error?.message || 'Please try again.')
+    }
+  }
+
+  async function showLessLikeCurrentPost() {
+    if (!currentUser?.id || !post?.id) return
+
+    try {
+      await hidePropertyFromFeed({
+        userId: currentUser.id,
+        propertyId: post.id,
+        reason: 'less_like_this',
+      })
+      await applyLessLikeThis({
+        userId: currentUser.id,
+        post,
+      })
+
+      Alert.alert(
+        'Feed updated',
+        'We will show fewer posts like this from now on.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      )
+    } catch (error) {
+      Alert.alert('Could not update feed', error?.message || 'Please try again.')
+    }
+  }
+
   function openMoreActions() {
     setActionSheetVisible(true)
   }
@@ -1181,6 +1242,50 @@ export default function PropertyScreen({ route, navigation }) {
           ...(String(post.owner_id) === String(currentUser?.id)
             ? []
             : [
+                {
+                  icon: 'thumbs-down-outline',
+                  title: 'Not interested',
+                  subtitle: 'Hide just this post from your feed.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    hideCurrentPost(
+                      'not_interested',
+                      'Hidden from feed',
+                      'We will remove this post from your feed.'
+                    )
+                  },
+                },
+                {
+                  icon: 'person-remove-outline',
+                  title: 'Hide this owner',
+                  subtitle: 'Stop showing posts from this owner.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    hideCurrentOwner()
+                  },
+                },
+                {
+                  icon: 'options-outline',
+                  title: 'Show less like this',
+                  subtitle: 'Push similar posts lower in your feed.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    showLessLikeCurrentPost()
+                  },
+                },
+                {
+                  icon: 'checkmark-done-outline',
+                  title: 'Already rented / irrelevant',
+                  subtitle: 'Hide this post because it is no longer useful.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    hideCurrentPost(
+                      'already_rented_irrelevant',
+                      'Thanks',
+                      'We will hide this post from your feed.'
+                    )
+                  },
+                },
                 {
                   icon: 'flag-outline',
                   title: 'Report post',

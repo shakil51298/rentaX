@@ -20,16 +20,32 @@ export async function fetchHiddenContentState(currentUserId) {
   if (!currentUserId) {
     return {
       blockedUserIds: new Set(),
+      hiddenOwnerIds: new Set(),
+      hiddenPropertyIds: new Set(),
       reportedUserIds: new Set(),
       reportedPropertyIds: new Set(),
     }
   }
 
-  const [{ data: blockedRows }, { data: userReportRows }, { data: propertyReportRows }] = await Promise.all([
+  const [
+    { data: blockedRows },
+    { data: hiddenOwnerRows },
+    { data: hiddenPropertyRows },
+    { data: userReportRows },
+    { data: propertyReportRows },
+  ] = await Promise.all([
     supabase
       .from('user_blocks')
       .select('blocked_id')
       .eq('blocker_id', currentUserId),
+    supabase
+      .from('user_hidden_owners')
+      .select('owner_id')
+      .eq('user_id', currentUserId),
+    supabase
+      .from('user_hidden_properties')
+      .select('property_id')
+      .eq('user_id', currentUserId),
     supabase
       .from('user_reports')
       .select('target_user_id')
@@ -42,6 +58,8 @@ export async function fetchHiddenContentState(currentUserId) {
 
   return {
     blockedUserIds: new Set((blockedRows || []).map((item) => item.blocked_id).filter(Boolean)),
+    hiddenOwnerIds: new Set((hiddenOwnerRows || []).map((item) => item.owner_id).filter(Boolean)),
+    hiddenPropertyIds: new Set((hiddenPropertyRows || []).map((item) => String(item.property_id)).filter(Boolean)),
     reportedUserIds: new Set((userReportRows || []).map((item) => item.target_user_id).filter(Boolean)),
     reportedPropertyIds: new Set((propertyReportRows || []).map((item) => String(item.property_id)).filter(Boolean)),
   }

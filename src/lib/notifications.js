@@ -28,6 +28,7 @@ export async function createNotification({
   pushTitle,
   pushBody,
   pushData,
+  skipPush = false,
 }) {
   if (!recipientId || !actorId || String(recipientId) === String(actorId)) {
     return
@@ -53,17 +54,19 @@ export async function createNotification({
     { onConflict: 'event_key' }
   )
 
-  await sendPushToUser({
-    recipientId,
-    title: pushTitle || title || 'Rental X',
-    body: pushBody || body || 'You have a new update.',
-    data: {
-      type,
-      actorId,
-      propertyId: propertyId ? String(propertyId) : null,
-      commentId: commentId ? String(commentId) : null,
-      createdAt,
-      ...(pushData || {}),
-    },
-  })
+  if (!skipPush) {
+    await sendPushToUser({
+      recipientId,
+      title: pushTitle || title || 'Rental X',
+      body: pushBody || body || 'You have a new update.',
+      data: {
+        type,
+        actorId,
+        propertyId: propertyId ? String(propertyId) : null,
+        commentId: commentId ? String(commentId) : null,
+        createdAt,
+        ...(pushData || {}),
+      },
+    })
+  }
 }

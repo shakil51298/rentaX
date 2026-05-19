@@ -110,6 +110,7 @@ function MainTabsNavigator() {
 
 function NotificationCoordinator({ onOpenNotification }) {
   const handledResponseIds = useRef(new Set())
+  const activeNotificationKeys = useRef(new Set())
 
   useEffect(() => {
     async function syncPushToken() {
@@ -141,6 +142,69 @@ function NotificationCoordinator({ onOpenNotification }) {
     return () => {
       appStateSubscription.remove()
       subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+    let notificationChannel = null
+
+    async function subscribeSavedSearchAlerts() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!isMounted || !user?.id) return
+
+      notificationChannel = supabase
+        .channel(`app-live-notifications-${user.id}-${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `recipient_id=eq.${user.id}`,
+          },
+          async (payload) => {
+            const nextNotification = payload.new
+
+            if (nextNotification?.type !== 'saved_search_match') {
+              return
+            }
+
+            const dedupeKey = nextNotification.event_key || nextNotification.id
+
+            if (!dedupeKey || activeNotificationKeys.current.has(dedupeKey)) {
+              return
+            }
+
+            activeNotificationKeys.current.add(dedupeKey)
+
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: nextNotification.title || 'Saved search match',
+                body: nextNotification.body || 'A rental matches your saved alert.',
+                sound: 'default',
+                data: {
+                  type: nextNotification.type,
+                  propertyId: nextNotification.property_id ? String(nextNotification.property_id) : null,
+                },
+              },
+              trigger: null,
+            })
+          }
+        )
+        .subscribe()
+    }
+
+    subscribeSavedSearchAlerts()
+
+    return () => {
+      isMounted = false
+      if (notificationChannel) {
+        supabase.removeChannel(notificationChannel)
+      }
     }
   }, [])
 

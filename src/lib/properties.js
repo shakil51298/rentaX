@@ -37,6 +37,14 @@ export async function fetchPropertiesWithProfiles({ ownerId, includeBanned = fal
       return false
     }
 
+    if (hiddenState.hiddenOwnerIds.has(post.owner_id)) {
+      return false
+    }
+
+    if (hiddenState.hiddenPropertyIds.has(String(post.id))) {
+      return false
+    }
+
     if (hiddenState.reportedUserIds.has(post.owner_id)) {
       return false
     }

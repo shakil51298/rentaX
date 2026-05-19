@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { scorePostAgainstSignals } from './feedSignals'
 
 const HOME_SEEN_POSTS_KEY = 'rental-x:home-seen-posts'
 const HOME_SEEN_POSTS_LIMIT = 600
@@ -98,6 +99,7 @@ export function rankHomePosts(posts, {
   seenPostIds = [],
   userId = '',
   refreshTick = 0,
+  signalProfile = null,
 } = {}) {
   const seenIds = new Set((seenPostIds || []).map((id) => String(id)))
   const effectiveArea = getHomeLocationArea(userArea)
@@ -132,6 +134,13 @@ export function rankHomePosts(posts, {
 
   return orderedGroupKeys.flatMap((groupKey) => {
     const postsInGroup = [...(groups.get(groupKey) || [])].sort((leftPost, rightPost) => {
+      const leftSignalScore = scorePostAgainstSignals(leftPost, signalProfile)
+      const rightSignalScore = scorePostAgainstSignals(rightPost, signalProfile)
+
+      if (leftSignalScore !== rightSignalScore) {
+        return rightSignalScore - leftSignalScore
+      }
+
       const leftDate = new Date(leftPost.created_at || 0).getTime()
       const rightDate = new Date(rightPost.created_at || 0).getTime()
 

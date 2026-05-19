@@ -70,6 +70,11 @@ import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/use
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { blockUser } from '../lib/social'
+import {
+  applyLessLikeThis,
+  hideOwnerFromFeed,
+  hidePropertyFromFeed,
+} from '../lib/feedControls'
 
 function formatCurrency(value) {
   return `৳ ${Number(value || 0).toLocaleString()}`
@@ -1375,10 +1380,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       })
 
       setSavedSearches((current) => [createdSearch, ...current].slice(0, 8))
-      setAppliedFilters(nextFilters)
-      setDraftFilters(nextFilters)
       setFilterModalVisible(false)
-      Alert.alert('Alert saved', 'We will notify you when a matching rental appears.')
+      Alert.alert('Alert saved', 'We will notify you when a new matching rental appears.')
     } catch (error) {
       Alert.alert(
         'Saved alerts setup needed',
@@ -1396,24 +1399,6 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     } catch (error) {
       Alert.alert('Delete failed', error?.message || 'Could not remove this saved alert.')
     }
-  }
-
-  function applySavedSearch(search) {
-    if (!search?.filters) return
-
-    const nextFilters = normalizeFilters(
-      {
-        ...createDefaultFilters(priceCeiling),
-        ...search.filters,
-        sort: appliedFilters.sort,
-      },
-      priceCeiling
-    )
-
-    setDraftFilters(nextFilters)
-    setAppliedFilters(nextFilters)
-    setAppliedSearchQuery('')
-    postListRef.current?.scrollToOffset?.({ animated: true, offset: 0 })
   }
 
   async function useAutoLocationFilter() {
@@ -2039,6 +2024,66 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     Alert.alert('Blocked', 'This user was blocked and their posts are now hidden from your feed.')
   }
 
+  async function hideSinglePost(post, reason, successTitle, successBody) {
+    if (!currentUser?.id || !post?.id) return
+
+    try {
+      await hidePropertyFromFeed({
+        userId: currentUser.id,
+        propertyId: post.id,
+        reason,
+      })
+
+      setProperties((oldPosts) => oldPosts.filter((item) => String(item.id) !== String(post.id)))
+      Alert.alert(successTitle, successBody)
+    } catch (error) {
+      Alert.alert('Could not update feed', error?.message || 'Please try again.')
+    }
+  }
+
+  async function hideOwnerPosts(post) {
+    if (!currentUser?.id || !post?.owner_id) return
+
+    try {
+      await hideOwnerFromFeed({
+        userId: currentUser.id,
+        ownerId: post.owner_id,
+        reason: 'hide_owner',
+      })
+
+      setProperties((oldPosts) => oldPosts.filter((item) => String(item.owner_id) !== String(post.owner_id)))
+      Alert.alert('Owner hidden', 'You will not see posts from this owner in your feed anymore.')
+    } catch (error) {
+      Alert.alert('Could not update feed', error?.message || 'Please try again.')
+    }
+  }
+
+  async function showLessLikeThis(post) {
+    if (!currentUser?.id || !post?.id) return
+
+    try {
+      await hidePropertyFromFeed({
+        userId: currentUser.id,
+        propertyId: post.id,
+        reason: 'less_like_this',
+      })
+
+      const nextProfile = await applyLessLikeThis({
+        userId: currentUser.id,
+        post,
+      })
+
+      if (nextProfile) {
+        setFeedSignalProfile(nextProfile)
+      }
+
+      setProperties((oldPosts) => oldPosts.filter((item) => String(item.id) !== String(post.id)))
+      Alert.alert('Feed updated', 'We will show fewer posts like this from now on.')
+    } catch (error) {
+      Alert.alert('Could not update feed', error?.message || 'Please try again.')
+    }
+  }
+
   function openPostMoreActions(post) {
     if (!post) return
     setActionSheetPost(post)
@@ -2372,11 +2417,47 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         <View
           style={{
             backgroundColor: '#fff',
-            paddingBottom: 10,
+            paddingTop: 4,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: '#eee',
           }}
         >
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingBottom: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View>
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+                Active rental alerts
+              </Text>
+              <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+                These alerts watch quietly in the background while filters stay separate.
+              </Text>
+            </View>
+
+            <View
+              style={{
+                minWidth: 24,
+                height: 24,
+                borderRadius: 12,
+                paddingHorizontal: 7,
+                backgroundColor: '#eff6ff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+                {savedSearches.length}
+              </Text>
+            </View>
+          </View>
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -2397,32 +2478,26 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <TouchableOpacity
-                    onPress={() => applySavedSearch(item)}
-                    activeOpacity={0.88}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: '#eff6ff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 8,
+                    }}
                   >
-                    <View
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        backgroundColor: '#eff6ff',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 8,
-                      }}
-                    >
-                      <Ionicons name="notifications-outline" size={14} color="#2563eb" />
-                    </View>
+                    <Ionicons name="notifications-outline" size={14} color="#2563eb" />
+                  </View>
 
-                    <Text
-                      numberOfLines={2}
-                      style={{ flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '900', lineHeight: 16 }}
-                    >
-                      {item.display_name}
-                    </Text>
-                  </TouchableOpacity>
+                  <Text
+                    numberOfLines={2}
+                    style={{ flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '900', lineHeight: 16 }}
+                  >
+                    {item.display_name}
+                  </Text>
 
                   <TouchableOpacity
                     onPress={() => removeSavedSearch(item.id)}
@@ -2433,8 +2508,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   </TouchableOpacity>
                 </View>
 
-                <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 10, marginTop: 8 }}>
-                  Tap to apply this alert
+                <Text numberOfLines={2} style={{ color: '#64748b', fontSize: 10, marginTop: 8, lineHeight: 14 }}>
+                  Alert is on. You will only be notified when a new matching rental is posted.
                 </Text>
               </View>
             ))}
@@ -3173,7 +3248,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         subtitle={
           String(actionSheetPost?.owner_id) === String(currentUser?.id)
             ? 'Choose what you want to do with this post.'
-            : 'You can report or block unsafe content here.'
+            : 'Tune your feed here or report unsafe content if needed.'
         }
         actions={[
           {
@@ -3200,6 +3275,56 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             String(actionSheetPost?.owner_id) === String(currentUser?.id)
               ? []
               : [
+                  {
+                    icon: 'thumbs-down-outline',
+                    title: 'Not interested',
+                    subtitle: 'Hide just this post from your feed.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      hideSinglePost(
+                        post,
+                        'not_interested',
+                        'Hidden from feed',
+                        'We will remove this post from your feed.'
+                      )
+                    },
+                  },
+                  {
+                    icon: 'person-remove-outline',
+                    title: 'Hide this owner',
+                    subtitle: 'Stop showing posts from this owner.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      hideOwnerPosts(post)
+                    },
+                  },
+                  {
+                    icon: 'options-outline',
+                    title: 'Show less like this',
+                    subtitle: 'Push similar posts lower in your feed.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      showLessLikeThis(post)
+                    },
+                  },
+                  {
+                    icon: 'checkmark-done-outline',
+                    title: 'Already rented / irrelevant',
+                    subtitle: 'Hide this post because it is no longer useful.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      hideSinglePost(
+                        post,
+                        'already_rented_irrelevant',
+                        'Thanks',
+                        'We will hide this post from your feed.'
+                      )
+                    },
+                  },
                   {
                     icon: 'flag-outline',
                     title: 'Report post',

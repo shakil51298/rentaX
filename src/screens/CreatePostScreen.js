@@ -16,6 +16,7 @@ import Avatar from '../components/common/Avatar'
 import { supabase } from '../lib/supabase'
 import { normalizeMediaList, PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { ensureUserProfileRecord } from '../lib/profileSync'
+import { notifySavedSearchMatchesForProperty } from '../lib/savedSearches'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { isPrimaryAdmin } from '../lib/admin'
 
@@ -366,9 +367,9 @@ export default function CreatePostScreen({ navigation, route }) {
       ? canAdminEdit
         ? supabase.from('properties').update(payload).eq('id', editingPost.id)
         : supabase.from('properties').update(payload).eq('id', editingPost.id).eq('owner_id', user.id)
-      : supabase.from('properties').insert(payload)
+      : supabase.from('properties').insert(payload).select('*').single()
 
-    const { error } = await query
+    const { data: savedPost, error } = await query
 
     setLoading(false)
 
@@ -378,6 +379,17 @@ export default function CreatePostScreen({ navigation, route }) {
     }
 
     Alert.alert('Success', isEditing ? 'Property post updated' : 'Property post created')
+
+    if (!isEditing && savedPost) {
+      try {
+        await notifySavedSearchMatchesForProperty({
+          property: savedPost,
+          ownerProfile: composerProfile || null,
+        })
+      } catch (_error) {
+        // The post is already created. Saved-alert notification retries can stay soft.
+      }
+    }
 
     if (isEditing) {
       if (adminEditMode) {

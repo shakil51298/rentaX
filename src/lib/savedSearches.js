@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { createNotification } from './notifications'
 import { getOwnerVerificationStatus } from './verification'
 
 export function getSavedSearchFiltersFromRow(row, fallbackMaxPrice = 0) {
@@ -187,6 +188,183 @@ export async function createSavedSearch({ userId, filters, maxPrice }) {
     ...data,
     filters: getSavedSearchFiltersFromRow(data, maxPrice),
     display_name: data.name || name,
+  }
+}
+
+export async function notifyExistingMatchesForSavedSearch({ search, recipientId, maxMatches = 12 }) {
+  if (!search?.id || !recipientId) {
+    return {
+      matchedCount: 0,
+      notifiedCount: 0,
+    }
+  }
+
+  const { data: properties, error } = await supabase
+    .from('properties')
+    .select('*')
+    .eq('status', 'open')
+    .or('admin_is_banned.is.null,admin_is_banned.eq.false')
+    .order('created_at', { ascending: false })
+    .limit(120)
+
+  if (error) throw error
+
+  const candidateProperties = (properties || []).filter(
+    (property) => String(property.owner_id) !== String(recipientId)
+  )
+
+  const ownerIds = [...new Set(candidateProperties.map((property) => property.owner_id).filter(Boolean))]
+  let profilesByUserId = {}
+
+  if (ownerIds.length > 0) {
+    const { data: ownerProfiles } = await supabase
+      .from('user_profiles')
+      .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
+      .in('user_id', ownerIds)
+
+    profilesByUserId = (ownerProfiles || []).reduce((itemsById, profile) => {
+      itemsById[String(profile.user_id)] = profile
+      return itemsById
+    }, {})
+  }
+
+  const matchedProperties = candidateProperties
+    .map((property) => ({
+      ...property,
+      owner_profile: profilesByUserId[String(property.owner_id)] || null,
+    }))
+    .filter((property) => matchesSavedSearch(property, search.filters || getSavedSearchFiltersFromRow(search)))
+
+  if (!matchedProperties.length) {
+    return {
+      matchedCount: 0,
+      notifiedCount: 0,
+    }
+  }
+
+  const latestMatches = matchedProperties.slice(0, maxMatches)
+  const matchRows = matchedProperties.map((property) => ({
+    search_id: search.id,
+    user_id: String(recipientId),
+    property_id: String(property.id),
+  }))
+
+  await supabase
+    .from('saved_search_matches')
+    .upsert(matchRows, { onConflict: 'search_id,property_id' })
+
+  await Promise.all(
+    latestMatches.map((property) =>
+      createNotification({
+        recipientId,
+        actorId: property.owner_id,
+        type: 'saved_search_match',
+        propertyId: property.id,
+        title: 'New match for your saved alert',
+        body: `${property.title || 'A property'} already matches your saved alert${property.location ? ` in ${String(property.location).split(',')[0].trim()}` : ''}.`,
+        eventKey: `saved_search_match:${search.id}:${property.id}`,
+        pushTitle: 'Saved search match',
+        pushBody: `${property.title || 'A property'} matches your saved alert.`,
+        pushData: {
+          propertyTitle: property.title || '',
+          searchId: search.id,
+        },
+        skipPush: true,
+      })
+    )
+  )
+
+  return {
+    matchedCount: matchedProperties.length,
+    notifiedCount: latestMatches.length,
+  }
+}
+
+export async function notifySavedSearchMatchesForProperty({
+  property,
+  ownerProfile = null,
+  maxMatches = 24,
+}) {
+  if (!property?.id || !property?.owner_id) {
+    return {
+      matchedCount: 0,
+      notifiedCount: 0,
+    }
+  }
+
+  if (property.admin_is_banned || (property.status && property.status !== 'open')) {
+    return {
+      matchedCount: 0,
+      notifiedCount: 0,
+    }
+  }
+
+  const normalizedProperty = {
+    ...property,
+    owner_profile: ownerProfile,
+  }
+
+  const { data: candidateSearches, error } = await supabase
+    .from('saved_searches')
+    .select('*')
+    .eq('is_active', true)
+    .neq('user_id', String(property.owner_id))
+    .order('created_at', { ascending: false })
+    .limit(150)
+
+  if (error) throw error
+
+  const matchingSearches = (candidateSearches || [])
+    .map((row) => ({
+      ...row,
+      filters: getSavedSearchFiltersFromRow(row),
+    }))
+    .filter((row) => matchesSavedSearch(normalizedProperty, row.filters))
+
+  if (!matchingSearches.length) {
+    return {
+      matchedCount: 0,
+      notifiedCount: 0,
+    }
+  }
+
+  await supabase
+    .from('saved_search_matches')
+    .upsert(
+      matchingSearches.map((row) => ({
+        search_id: row.id,
+        user_id: String(row.user_id),
+        property_id: String(property.id),
+      })),
+      { onConflict: 'search_id,property_id' }
+    )
+
+  const searchesToNotify = matchingSearches.slice(0, maxMatches)
+
+  await Promise.all(
+    searchesToNotify.map((row) =>
+      createNotification({
+        recipientId: row.user_id,
+        actorId: property.owner_id,
+        type: 'saved_search_match',
+        propertyId: property.id,
+        title: 'New match for your saved alert',
+        body: `${property.title || 'A property'} matches your rental alert${property.location ? ` in ${String(property.location).split(',')[0].trim()}` : ''}.`,
+        eventKey: `saved_search_match:${row.id}:${property.id}`,
+        pushTitle: 'Saved search match',
+        pushBody: `${property.title || 'A property'} matches your saved alert.`,
+        pushData: {
+          propertyTitle: property.title || '',
+          searchId: row.id,
+          propertyLocation: property.location || '',
+        },
+      })
+    )
+  )
+
+  return {
+    matchedCount: matchingSearches.length,
+    notifiedCount: searchesToNotify.length,
   }
 }
 
