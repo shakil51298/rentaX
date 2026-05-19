@@ -568,6 +568,7 @@ export default function MessageBubble({
   const lastTapTimeRef = useRef(0)
   const reactionCount = [item.sender_reaction, item.receiver_reaction].filter(Boolean).length
   const isCallMessage = item.message_type === 'call'
+  const pendingLocal = Boolean(item.pending_local)
   const hasReplyBlock = Boolean(repliedMessage)
   const bubbleMaxWidth = hasReplyBlock
     ? '94%'
@@ -761,16 +762,25 @@ export default function MessageBubble({
               </Text>
 
               {isMine ? (
-                <Text
-                  style={{
-                    color: item.seen_at ? '#9be7ff' : 'rgba(255,255,255,0.78)',
-                    marginLeft: 4,
-                    fontSize: 12,
-                    fontWeight: '900',
-                  }}
-                >
-                  {item.seen_at ? '✓✓' : '✓'}
-                </Text>
+                pendingLocal ? (
+                  <Ionicons
+                    name="time-outline"
+                    size={12}
+                    color="rgba(255,255,255,0.78)"
+                    style={{ marginLeft: 4 }}
+                  />
+                ) : (
+                  <Text
+                    style={{
+                      color: item.seen_at ? '#9be7ff' : 'rgba(255,255,255,0.78)',
+                      marginLeft: 4,
+                      fontSize: 12,
+                      fontWeight: '900',
+                    }}
+                  >
+                    {item.seen_at ? '✓✓' : '✓'}
+                  </Text>
+                )
               ) : null}
             </View>
           </Pressable>

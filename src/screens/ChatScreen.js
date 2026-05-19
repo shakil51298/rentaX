@@ -6,6 +6,7 @@ import {
   BackHandler,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -214,6 +215,34 @@ function getReplySnippet(message) {
   return message.body || 'Message'
 }
 
+function getConversationSummaryFromMessage(message) {
+  if (!message || message.deleted_for_everyone_at) {
+    return {
+      last_message: null,
+      last_message_type: 'text',
+      last_message_at: null,
+      last_sender_id: null,
+    }
+  }
+
+  if (message.message_type === 'call') {
+    return {
+      last_message: getCallPresentation(message).summaryLabel,
+      last_message_type: 'call',
+      last_message_at: message.created_at,
+      last_sender_id: message.sender_id,
+    }
+  }
+
+  return {
+    last_message:
+      String(message.body || '').trim() || mediaLabel(message.message_type),
+    last_message_type: message.message_type || 'text',
+    last_message_at: message.created_at,
+    last_sender_id: message.sender_id,
+  }
+}
+
 async function fetchProfiles(userIds) {
   const uniqueIds = [...new Set(userIds.filter(Boolean))]
 
@@ -234,6 +263,7 @@ export default function ChatScreen({ route, navigation }) {
   const flatListRef = useRef(null)
   const messageInputRef = useRef(null)
   const highlightTimerRef = useRef(null)
+  const keyboardScrollTimerRef = useRef(null)
   const suppressAutoScrollUntilRef = useRef(0)
   const handledCapturedAssetNonceRef = useRef(null)
   const longPressRecordingRef = useRef(false)
@@ -329,6 +359,16 @@ export default function ChatScreen({ route, navigation }) {
 
   function suppressAutoScroll(durationMs = 1400) {
     suppressAutoScrollUntilRef.current = Date.now() + durationMs
+  }
+
+  function scheduleKeyboardAwareScroll(delayMs = 0) {
+    if (keyboardScrollTimerRef.current) {
+      clearTimeout(keyboardScrollTimerRef.current)
+    }
+
+    keyboardScrollTimerRef.current = setTimeout(() => {
+      scrollToBottom(true)
+    }, delayMs)
   }
 
   const loadMessages = useCallback(async (
@@ -750,7 +790,26 @@ export default function ChatScreen({ route, navigation }) {
   }, [messages.length, mode])
 
   useEffect(() => {
+    if (mode !== 'chat') return undefined
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      if (!composerFocused) return
+
+      scheduleKeyboardAwareScroll(Platform.OS === 'ios' ? 50 : 90)
+    })
+
     return () => {
+      showSubscription.remove()
+    }
+  }, [composerFocused, mode])
+
+  useEffect(() => {
+    return () => {
+      if (keyboardScrollTimerRef.current) {
+        clearTimeout(keyboardScrollTimerRef.current)
+      }
+
       if (highlightTimerRef.current) {
         clearTimeout(highlightTimerRef.current)
       }
@@ -771,13 +830,37 @@ export default function ChatScreen({ route, navigation }) {
 
     if (!cleanBody && !mediaUrl) return
 
+    const replySnapshot = replyTarget || null
+    const createdAt = new Date().toISOString()
+    const optimisticId = `local-${currentUser.id}-${Date.now()}`
+    const optimisticMessage = {
+      id: optimisticId,
+      conversation_id: conversation.id,
+      sender_id: currentUser.id,
+      receiver_id: otherUser.id,
+      body: cleanBody || null,
+      media_url: mediaUrl,
+      media_mime_type: mediaMimeType,
+      media_name: mediaName,
+      audio_duration_ms: audioDurationMs,
+      message_type: messageType,
+      reply_to_message_id: replySnapshot?.id || null,
+      created_at: createdAt,
+      updated_at: createdAt,
+      pending_local: true,
+    }
+
+    setMessages((current) => [...current, optimisticMessage])
+    setMessageText('')
+    setReplyTarget(null)
+    requestAnimationFrame(() => scrollToBottom(true))
     setSending(true)
 
-    const createdAt = new Date().toISOString()
     const lastMessage =
       messageType === 'text' ? cleanBody : mediaLabel(messageType)
 
     let insertError = null
+    let insertedMessage = null
     const basePayload = {
       conversation_id: conversation.id,
       sender_id: currentUser.id,
@@ -787,30 +870,56 @@ export default function ChatScreen({ route, navigation }) {
       media_mime_type: mediaMimeType,
       media_name: mediaName,
       audio_duration_ms: audioDurationMs,
-      reply_to_message_id: replyTarget?.id || null,
+      reply_to_message_id: replySnapshot?.id || null,
       created_at: createdAt,
       updated_at: createdAt,
     }
 
-    const { error } = await supabase.from('chat_messages').insert({
-      ...basePayload,
-      message_type: messageType,
-    })
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert({
+        ...basePayload,
+        message_type: messageType,
+      })
+      .select('*')
+      .single()
 
+    insertedMessage = data
     insertError = error
 
     if (insertError && messageType === 'file') {
-      const { error: fallbackError } = await supabase.from('chat_messages').insert({
-        ...basePayload,
-        message_type: 'text',
-      })
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('chat_messages')
+        .insert({
+          ...basePayload,
+          message_type: 'text',
+        })
+        .select('*')
+        .single()
+      insertedMessage = fallbackData
       insertError = fallbackError
     }
 
     if (insertError) {
+      setMessages((current) => current.filter((item) => item.id !== optimisticId))
+      setMessageText((current) => (current ? current : cleanBody))
+      setReplyTarget((current) => current || replySnapshot)
       Alert.alert('Message failed', insertError.message)
       setSending(false)
       return
+    }
+
+    if (insertedMessage) {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === optimisticId
+            ? {
+              ...insertedMessage,
+              pending_local: false,
+            }
+            : item
+        )
+      )
     }
 
     const conversationUpdate = {
@@ -852,8 +961,6 @@ export default function ChatScreen({ route, navigation }) {
     })
 
     await updateMyPresence({ online: true, typing: false })
-    setMessageText('')
-    setReplyTarget(null)
     setSending(false)
   }
 
@@ -1422,15 +1529,38 @@ export default function ChatScreen({ route, navigation }) {
       return
     }
 
-    setMessages((current) =>
-      current.map((item) =>
-        item.id === message.id
-          ? {
-            ...item,
-            ...payload,
-          }
-          : item
-      )
+    const nextMessages = messages.map((item) =>
+      item.id === message.id
+        ? {
+          ...item,
+          ...payload,
+        }
+        : item
+    )
+
+    setMessages(nextMessages)
+
+    const latestVisibleMessage = [...nextMessages]
+      .reverse()
+      .find((item) => !item.deleted_for_everyone_at)
+    const nextConversationSummary = getConversationSummaryFromMessage(latestVisibleMessage)
+
+    await supabase
+      .from('chat_conversations')
+      .update({
+        ...nextConversationSummary,
+        updated_at: deletedAt,
+      })
+      .eq('id', conversation.id)
+
+    setConversation((current) =>
+      current
+        ? {
+          ...current,
+          ...nextConversationSummary,
+          updated_at: deletedAt,
+        }
+        : current
     )
 
     if (replyTarget?.id === message.id) {
@@ -2465,7 +2595,10 @@ export default function ChatScreen({ route, navigation }) {
             <TextInput
               ref={messageInputRef}
               value={messageText}
-              onFocus={() => setComposerFocused(true)}
+              onFocus={() => {
+                setComposerFocused(true)
+                scheduleKeyboardAwareScroll(40)
+              }}
               onBlur={() => setComposerFocused(false)}
               onChangeText={(text) => {
                 setMessageText(text)
