@@ -31,6 +31,12 @@ function getFileExtension(uri, mimeType, type) {
   const uriExtension = uri?.split('?')?.[0]?.split('.')?.pop()?.toLowerCase()
 
   if (uriExtension && uriExtension.length <= 5) return uriExtension
+  if (mimeType?.includes('pdf')) return 'pdf'
+  if (mimeType?.includes('word')) return 'docx'
+  if (mimeType?.includes('msword')) return 'doc'
+  if (mimeType?.includes('sheet')) return 'xlsx'
+  if (mimeType?.includes('excel')) return 'xls'
+  if (mimeType?.includes('text/plain')) return 'txt'
   if (mimeType?.includes('png')) return 'png'
   if (mimeType?.includes('webp')) return 'webp'
   if (mimeType?.includes('jpeg')) return 'jpg'
@@ -40,11 +46,25 @@ function getFileExtension(uri, mimeType, type) {
   if (mimeType?.includes('mpeg')) return 'mp3'
   if (mimeType?.includes('webm')) return 'webm'
   if (type === 'voice') return 'm4a'
+  if (type === 'file') return 'bin'
 
   return 'jpg'
 }
 
 function fallbackMimeType(type, extension) {
+  if (type === 'file') {
+    if (extension === 'pdf') return 'application/pdf'
+    if (extension === 'doc') return 'application/msword'
+    if (extension === 'docx') {
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    }
+    if (extension === 'xls') return 'application/vnd.ms-excel'
+    if (extension === 'xlsx') {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+    if (extension === 'txt') return 'text/plain'
+    return 'application/octet-stream'
+  }
   if (type === 'video') return extension === 'mov' ? 'video/quicktime' : 'video/mp4'
   if (type === 'voice') return 'audio/mp4'
   if (extension === 'png') return 'image/png'

@@ -3,6 +3,7 @@ import {
   Alert,
   Animated,
   Image,
+  Linking,
   PanResponder,
   Pressable,
   Text,
@@ -47,6 +48,16 @@ function ChatVideo({ uri }) {
       />
     </View>
   )
+}
+
+function isDocumentMessage(message) {
+  if (!message?.media_url) return false
+
+  const type = String(message.message_type || '')
+
+  if (['image', 'video', 'voice', 'call'].includes(type)) return false
+
+  return true
 }
 
 function VoiceMessage({ message, isMine }) {
@@ -141,6 +152,7 @@ function getReplySnippet(message) {
   if (message.message_type === 'call') {
     return getCallPresentation(message).title
   }
+  if (isDocumentMessage(message)) return message.media_name || message.body || 'Document'
   return message.body || 'Message'
 }
 
@@ -235,6 +247,29 @@ function ReplyPreviewMedia({ message, isMine }) {
     )
   }
 
+  if (isDocumentMessage(message)) {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          flexShrink: 0,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="document-text-outline"
+          size={18}
+          color={isMine ? '#fff' : '#1877F2'}
+        />
+      </View>
+    )
+  }
+
   return null
 }
 
@@ -294,6 +329,79 @@ function CallMessage({ message, isMine }) {
   )
 }
 
+function DocumentMessage({ message, isMine }) {
+  async function openDocument() {
+    if (!message?.media_url) return
+
+    try {
+      await Linking.openURL(message.media_url)
+    } catch {
+      Alert.alert('Document unavailable', 'This file could not be opened right now.')
+    }
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={openDocument}
+      activeOpacity={0.82}
+      style={{
+        width: 228,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 10,
+        }}
+      >
+        <Ionicons
+          name="document-text-outline"
+          size={18}
+          color={isMine ? '#fff' : '#4f46e5'}
+        />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            color: isMine ? '#fff' : '#0f172a',
+            fontSize: 14,
+            fontWeight: '800',
+          }}
+          numberOfLines={1}
+        >
+          {message.media_name || message.body || 'Document'}
+        </Text>
+        <Text
+          style={{
+            color: isMine ? 'rgba(255,255,255,0.8)' : '#64748b',
+            fontSize: 12,
+            marginTop: 2,
+          }}
+          numberOfLines={1}
+        >
+          {message.media_mime_type || 'Shared file'}
+        </Text>
+      </View>
+
+      <Ionicons
+        name="download-outline"
+        size={18}
+        color={isMine ? 'rgba(255,255,255,0.82)' : '#64748b'}
+      />
+    </TouchableOpacity>
+  )
+}
+
 function renderMessageContent(item, isMine, onOpenMedia) {
   if (item.deleted_for_everyone_at) {
     return (
@@ -334,6 +442,10 @@ function renderMessageContent(item, isMine, onOpenMedia) {
 
   if (item.message_type === 'call') {
     return <CallMessage message={item} isMine={isMine} />
+  }
+
+  if (isDocumentMessage(item)) {
+    return <DocumentMessage message={item} isMine={isMine} />
   }
 
   return (

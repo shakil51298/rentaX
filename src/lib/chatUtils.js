@@ -52,6 +52,7 @@ export function mediaLabel(type) {
   if (type === 'video') return 'Video'
   if (type === 'voice') return 'Voice message'
   if (type === 'call') return 'Call'
+  if (type === 'file') return 'Document'
   return 'Message'
 }
 

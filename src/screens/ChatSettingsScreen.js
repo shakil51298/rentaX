@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -25,6 +26,7 @@ import {
 } from '../lib/chatAppearance'
 
 function getDocLabel(message) {
+  if (message.media_name) return message.media_name
   if (message.body) return message.body
   if (message.media_mime_type) return message.media_mime_type
   return 'Document'
@@ -169,6 +171,16 @@ export default function ChatSettingsScreen({ route }) {
     })
   }
 
+  async function openDocument(item) {
+    if (!item?.media_url) return
+
+    try {
+      await Linking.openURL(item.media_url)
+    } catch {
+      // keep this gentle inside settings
+    }
+  }
+
   const counts = useMemo(
     () => ({
       photos: filterMessagesByTab(messages, 'photos').length,
@@ -267,7 +279,8 @@ export default function ChatSettingsScreen({ route }) {
           ) : activeTab === 'docs' ? (
             filteredItems.length ? (
               filteredItems.map((item) => (
-                <View
+                <Pressable
+                  onPress={() => openDocument(item)}
                   key={item.id}
                   style={{
                     marginTop: 12,
@@ -301,7 +314,7 @@ export default function ChatSettingsScreen({ route }) {
                       {item.media_mime_type || 'Shared file'}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               ))
             ) : (
               <View style={{ marginTop: 14, paddingVertical: 18, alignItems: 'center' }}>

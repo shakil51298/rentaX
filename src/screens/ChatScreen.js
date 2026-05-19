@@ -16,6 +16,7 @@ import {
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import * as Clipboard from 'expo-clipboard'
+import * as DocumentPicker from 'expo-document-picker'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -207,6 +208,7 @@ export default function ChatScreen({ route, navigation }) {
   const messageInputRef = useRef(null)
   const highlightTimerRef = useRef(null)
   const suppressAutoScrollUntilRef = useRef(0)
+  const handledCapturedAssetNonceRef = useRef(null)
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
   const recorderState = useAudioRecorderState(audioRecorder)
   const insets = useSafeAreaInsets()
@@ -539,6 +541,30 @@ export default function ChatScreen({ route, navigation }) {
     initializeChat()
   }, [initializeChat])
 
+  useEffect(() => {
+    const capturedAsset = route?.params?.capturedChatAsset
+    const captureNonce = route?.params?.capturedChatAssetNonce
+
+    if (!capturedAsset?.uri || !captureNonce) return
+    if (handledCapturedAssetNonceRef.current === captureNonce) return
+
+    handledCapturedAssetNonceRef.current = captureNonce
+
+    setSelectedMediaAssets((current) => {
+      const nextAsset = {
+        ...capturedAsset,
+        composerKey:
+          capturedAsset.assetId ||
+          capturedAsset.id ||
+          `${capturedAsset.uri}-${captureNonce}`,
+        type: 'image',
+      }
+
+      const merged = [...current, nextAsset]
+      return merged.slice(0, 5)
+    })
+  }, [route?.params?.capturedChatAsset, route?.params?.capturedChatAssetNonce])
+
   const loadAppearance = useCallback(async () => {
     if (!conversation?.id) {
       setChatAppearance(null)
@@ -646,6 +672,7 @@ export default function ChatScreen({ route, navigation }) {
     messageType = 'text',
     mediaUrl = null,
     mediaMimeType = null,
+    mediaName = null,
     audioDurationMs = null,
   } = {}) {
     if (!canSend || sending) return
@@ -660,22 +687,38 @@ export default function ChatScreen({ route, navigation }) {
     const lastMessage =
       messageType === 'text' ? cleanBody : mediaLabel(messageType)
 
-    const { error } = await supabase.from('chat_messages').insert({
+    let insertError = null
+    const basePayload = {
       conversation_id: conversation.id,
       sender_id: currentUser.id,
       receiver_id: otherUser.id,
       body: cleanBody || null,
-      message_type: messageType,
       media_url: mediaUrl,
       media_mime_type: mediaMimeType,
+      media_name: mediaName,
       audio_duration_ms: audioDurationMs,
       reply_to_message_id: replyTarget?.id || null,
       created_at: createdAt,
       updated_at: createdAt,
+    }
+
+    const { error } = await supabase.from('chat_messages').insert({
+      ...basePayload,
+      message_type: messageType,
     })
 
-    if (error) {
-      Alert.alert('Message failed', error.message)
+    insertError = error
+
+    if (insertError && messageType === 'file') {
+      const { error: fallbackError } = await supabase.from('chat_messages').insert({
+        ...basePayload,
+        message_type: 'text',
+      })
+      insertError = fallbackError
+    }
+
+    if (insertError) {
+      Alert.alert('Message failed', insertError.message)
       setSending(false)
       return
     }
@@ -760,34 +803,13 @@ export default function ChatScreen({ route, navigation }) {
   async function capturePhoto() {
     if (!currentUser?.id || uploading || sending) return
 
-    const permission = await ImagePicker.requestCameraPermissionsAsync()
-
-    if (!permission.granted) {
-      Alert.alert('Camera needed', 'Please allow camera access to take a photo in chat.')
+    if (selectedMediaAssets.length >= 5) {
+      Alert.alert('Only 5 at a time', 'You can attach up to 5 photos or videos in one batch.')
       return
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 1,
-      cameraType: ImagePicker.CameraType.back,
-    })
-
-    if (result.canceled || !result.assets?.length) return
-
-    const capturedAssets = result.assets.slice(0, 1).map((asset, index) => ({
-      ...asset,
-      composerKey:
-        asset.assetId ||
-        asset.id ||
-        `${asset.uri}-${Date.now()}-${index}`,
-      type: 'image',
-    }))
-
-    setSelectedMediaAssets((current) => {
-      const merged = [...current, ...capturedAssets]
-      return merged.slice(0, 5)
+    navigation.navigate('ChatCamera', {
+      remainingSlots: Math.max(0, 5 - selectedMediaAssets.length),
     })
   }
 
@@ -894,6 +916,52 @@ export default function ChatScreen({ route, navigation }) {
     }
   }
 
+  async function pickDocumentFile() {
+    if (!currentUser?.id || uploading || sending || !conversation?.id) return
+
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: false,
+      copyToCacheDirectory: true,
+      type: [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain',
+        '*/*',
+      ],
+    })
+
+    if (result.canceled || !result.assets?.length) return
+
+    const file = result.assets[0]
+
+    try {
+      setUploading(true)
+
+      const uploadResult = await uploadMediaAsset({
+        uri: file.uri,
+        type: 'file',
+        mimeType: file.mimeType,
+        userId: currentUser.id,
+        bucket: CHAT_MEDIA_BUCKET,
+      })
+
+      await sendMessage({
+        body: file.name || 'Document',
+        messageType: 'file',
+        mediaUrl: uploadResult.mediaUrl,
+        mediaMimeType: uploadResult.mediaMimeType,
+        mediaName: file.name || 'Document',
+      })
+    } catch (error) {
+      Alert.alert('File send failed', error?.message || 'Could not send this file right now.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function startRecording() {
     if (!currentUser?.id || recorderState?.isRecording) return
 
@@ -982,6 +1050,15 @@ export default function ChatScreen({ route, navigation }) {
       property: conversationProperty,
       conversationId: conversation?.id || null,
     })
+  }
+
+  function handlePressCallHistory(message) {
+    if (getCallPresentation(message).isVideo) {
+      startVideoCall()
+      return
+    }
+
+    startVoiceCall()
   }
 
   function openChatSettings() {
@@ -1700,7 +1777,7 @@ export default function ChatScreen({ route, navigation }) {
                 onOpenMedia={openMediaViewer}
                 onReply={handleReplyToMessage}
                 onJumpToMessage={jumpToMessage}
-                onPressCallHistory={startVoiceCall}
+                onPressCallHistory={handlePressCallHistory}
                 onToggleReaction={toggleMessageReaction}
                 onLongPressMessage={openMessageActions}
                 outgoingBubbleColor={activeColorPreset.bubble}
@@ -1902,25 +1979,6 @@ export default function ChatScreen({ route, navigation }) {
             <Ionicons name="camera-outline" size={22} color={activeColorPreset.accent} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={pickMedia}
-            disabled={uploading || sending}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#eef6ff',
-              borderColor: activeColorPreset.accent,
-              borderWidth: 1,
-              marginRight: 8,
-              opacity: uploading || sending ? 0.5 : 1,
-            }}
-          >
-            <Ionicons name="attach-outline" size={24} color={activeColorPreset.accent} />
-          </TouchableOpacity>
-
           <TextInput
             ref={messageInputRef}
             value={messageText}
@@ -1956,6 +2014,38 @@ export default function ChatScreen({ route, navigation }) {
               fontSize: 15,
             }}
           />
+
+          <TouchableOpacity
+            onPress={pickMedia}
+            disabled={uploading || sending}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: 8,
+              opacity: uploading || sending ? 0.5 : 1,
+            }}
+          >
+            <Ionicons name="image-outline" size={20} color={activeColorPreset.accent} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={pickDocumentFile}
+            disabled={uploading || sending}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: 2,
+              opacity: uploading || sending ? 0.5 : 1,
+            }}
+          >
+            <Ionicons name="document-outline" size={20} color={activeColorPreset.accent} />
+          </TouchableOpacity>
 
           {messageText.trim() ? (
             <TouchableOpacity

@@ -47,11 +47,12 @@ create table if not exists public.chat_messages (
   seen_at timestamptz,
   created_at timestamptz not null default now(),
   check (sender_id <> receiver_id),
-  check (message_type in ('text', 'image', 'video', 'voice', 'call'))
+  check (message_type in ('text', 'image', 'video', 'voice', 'call', 'file'))
 );
 
 alter table public.chat_messages
   add column if not exists reply_to_message_id uuid references public.chat_messages(id) on delete set null,
+  add column if not exists media_name text,
   add column if not exists sender_reaction text,
   add column if not exists receiver_reaction text,
   add column if not exists deleted_for_sender_at timestamptz,
@@ -75,7 +76,7 @@ begin
   begin
     alter table public.chat_messages
       add constraint chat_messages_message_type_check
-      check (message_type in ('text', 'image', 'video', 'voice', 'call'));
+      check (message_type in ('text', 'image', 'video', 'voice', 'call', 'file'));
   exception
     when duplicate_object then null;
   end;
