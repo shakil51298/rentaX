@@ -18,6 +18,8 @@ export default function ConversationRow({
   const isLastMine = item.last_sender_id === currentUserId
   const isOnline = item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online
   const isLastCall = item.last_message_type === 'call'
+  const lastMessageText = String(item.last_message || '')
+  const isVideoCall = isLastCall && /video call/i.test(lastMessageText)
 
   return (
     <TouchableOpacity
@@ -81,7 +83,7 @@ export default function ConversationRow({
 
           {isLastCall ? (
             <Ionicons
-              name="call-outline"
+              name={isVideoCall ? 'videocam-outline' : 'call-outline'}
               size={14}
               color="#64748b"
               style={{ marginRight: 4 }}

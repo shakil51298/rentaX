@@ -17,6 +17,7 @@ import {
   formatDayLabel,
   formatDuration,
   formatDurationSeconds,
+  getCallPresentation,
   isSameDay,
 } from '../../lib/chatUtils'
 
@@ -137,7 +138,9 @@ function getReplySnippet(message) {
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
-  if (message.message_type === 'call') return message.body || 'Call'
+  if (message.message_type === 'call') {
+    return getCallPresentation(message).title
+  }
   return message.body || 'Message'
 }
 
@@ -208,6 +211,8 @@ function ReplyPreviewMedia({ message, isMine }) {
   }
 
   if (message.message_type === 'call') {
+    const { previewIconName } = getCallPresentation(message)
+
     return (
       <View
         style={{
@@ -222,7 +227,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         }}
       >
         <Ionicons
-          name="call"
+          name={previewIconName}
           size={17}
           color={isMine ? '#fff' : '#1877F2'}
         />
@@ -234,10 +239,7 @@ function ReplyPreviewMedia({ message, isMine }) {
 }
 
 function CallMessage({ message, isMine }) {
-  const isCompleted = message.call_status === 'completed'
-  const iconName = isCompleted ? 'call-outline' : 'close-circle-outline'
-  const iconColor = isCompleted ? '#16a34a' : '#dc2626'
-  const title = message.body || (isCompleted ? 'Audio call' : 'Call cancelled')
+  const { isCompleted, iconName, iconColor, title } = getCallPresentation(message)
   const detail = isCompleted
     ? `Duration ${formatDurationSeconds(message.call_duration_seconds || 0)}`
     : isMine

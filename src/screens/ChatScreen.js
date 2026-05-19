@@ -45,6 +45,7 @@ import {
 } from '../lib/chatAppearance'
 import {
   formatDuration,
+  getCallPresentation,
   getDirectTarget,
   getPropertyId,
   mediaLabel,
@@ -181,7 +182,7 @@ function getReplySnippet(message) {
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
-  if (message.message_type === 'call') return message.body || 'Call'
+  if (message.message_type === 'call') return getCallPresentation(message).title
   return message.body || 'Message'
 }
 
@@ -558,6 +559,14 @@ export default function ChatScreen({ route, navigation }) {
     }, [loadAppearance])
   )
 
+  useFocusEffect(
+    useCallback(() => {
+      if (mode === 'chat' && conversation?.id && currentUser?.id) {
+        loadMessages(conversation.id, currentUser.id, false, conversation)
+      }
+    }, [conversation, currentUser?.id, loadMessages, mode])
+  )
+
   useEffect(() => {
     if (mode !== 'chat' || !conversation?.id || !currentUser?.id) return undefined
 
@@ -931,6 +940,16 @@ export default function ChatScreen({ route, navigation }) {
     })
   }
 
+  function startVideoCall() {
+    if (!otherUser?.id) return
+
+    navigation.navigate('VideoCall', {
+      participant: otherUser,
+      property: conversationProperty,
+      conversationId: conversation?.id || null,
+    })
+  }
+
   function openChatSettings() {
     if (!conversation?.id || !otherUser?.id) return
 
@@ -965,10 +984,6 @@ export default function ChatScreen({ route, navigation }) {
     highlightTimerRef.current = setTimeout(() => {
       setHighlightedMessageId((current) => (current === messageId ? null : current))
     }, 1800)
-  }
-
-  function showComingSoon(type) {
-    Alert.alert('Coming soon', `${type} calling will be available soon.`)
   }
 
   function focusMessageInput() {
@@ -1558,7 +1573,7 @@ export default function ChatScreen({ route, navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => showComingSoon('Video')}
+            onPress={startVideoCall}
             style={{
               width: 38,
               height: 38,

@@ -55,6 +55,38 @@ export function mediaLabel(type) {
   return 'Message'
 }
 
+export function getCallPresentation(message = {}) {
+  const bodyText = String(message.body || message.last_message || '').toLowerCase()
+  const isVideo =
+    message.call_kind === 'video' ||
+    (message.call_kind == null && bodyText.includes('video call'))
+  const isCompleted = message.call_status === 'completed'
+
+  return {
+    isVideo,
+    isCompleted,
+    title:
+      message.body ||
+      (isCompleted
+        ? isVideo
+          ? 'Outgoing video call'
+          : 'Outgoing audio call'
+        : isVideo
+          ? 'Outgoing video call cancelled'
+          : 'Outgoing audio call cancelled'),
+    iconName: isCompleted
+      ? isVideo
+        ? 'videocam-outline'
+        : 'call-outline'
+      : isVideo
+        ? 'videocam-off-outline'
+        : 'close-circle-outline',
+    iconColor: isCompleted ? '#16a34a' : '#dc2626',
+    previewIconName: isVideo ? 'videocam' : 'call',
+    summaryLabel: isVideo ? 'Video call' : 'Audio call',
+  }
+}
+
 export function getPropertyId(property) {
   if (!property?.id) return null
 

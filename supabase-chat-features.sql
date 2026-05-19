@@ -90,7 +90,7 @@ begin
   begin
     alter table public.chat_messages
       add constraint chat_messages_call_kind_check
-      check (call_kind is null or call_kind in ('audio'));
+      check (call_kind is null or call_kind in ('audio', 'video'));
   exception
     when duplicate_object then null;
   end;

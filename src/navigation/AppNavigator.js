@@ -17,6 +17,7 @@ import NotificationsScreen from '../screens/NotificationsScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import AdsManagementScreen from '../screens/AdsManagementScreen'
 import AudioCallScreen from '../screens/AudioCallScreen'
+import VideoCallScreen from '../screens/VideoCallScreen'
 import LocationScreen from '../screens/LocationScreen'
 import ConnectionsScreen from '../screens/ConnectionsScreen'
 import BlockListScreen from '../screens/BlockListScreen'
@@ -199,6 +200,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="AudioCall"
           component={AudioCallScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="VideoCall"
+          component={VideoCallScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
