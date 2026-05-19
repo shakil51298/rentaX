@@ -138,7 +138,7 @@ begin
     )
   into owner_is_verified
   from public.user_profiles
-  where user_profiles.user_id = new.owner_id
+  where user_profiles.user_id = new.owner_id::text
   limit 1;
 
   with candidate_matches as (
@@ -147,7 +147,7 @@ begin
       searches.user_id
     from public.saved_searches searches
     where searches.is_active = true
-      and searches.user_id <> new.owner_id
+      and searches.user_id <> new.owner_id::text
       and (coalesce(searches.location, '') = '' or lower(
         concat(
           coalesce(new.location, ''),
@@ -195,7 +195,7 @@ begin
     created_at
   )
   select
-    inserted_matches.user_id,
+    inserted_matches.user_id::uuid,
     new.owner_id,
     'saved_search_match',
     new.id::text,
