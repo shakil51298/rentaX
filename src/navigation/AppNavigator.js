@@ -33,6 +33,8 @@ import CustomerCareScreen from '../screens/CustomerCareScreen'
 import AdminReportsScreen from '../screens/AdminReportsScreen'
 import ReportIssueScreen from '../screens/ReportIssueScreen'
 import VisitRequestsScreen from '../screens/VisitRequestsScreen'
+import RecentlyViewedScreen from '../screens/RecentlyViewedScreen'
+import ComparePropertiesScreen from '../screens/ComparePropertiesScreen'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import { supabase } from '../lib/supabase'
 import {
@@ -414,6 +416,16 @@ export default function AppNavigator() {
           name="VisitRequests"
           component={VisitRequestsScreen}
           options={{ title: 'Visit Requests' }}
+        />
+        <Stack.Screen
+          name="RecentlyViewed"
+          component={RecentlyViewedScreen}
+          options={{ title: 'Recently Viewed' }}
+        />
+        <Stack.Screen
+          name="CompareProperties"
+          component={ComparePropertiesScreen}
+          options={{ title: 'Compare Properties' }}
         />
       </Stack.Navigator>
       </NavigationContainer>

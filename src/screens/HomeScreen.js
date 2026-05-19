@@ -61,6 +61,12 @@ import { normalizeMediaList } from '../lib/media'
 import { getLocationSelectionFromCoords } from '../lib/location'
 import { ensureUserProfileRecord } from '../lib/profileSync'
 import {
+  addComparedProperty,
+  loadComparedProperties,
+  loadRecentlyViewedProperties,
+  removeComparedProperty,
+} from '../lib/propertyBrowse'
+import {
   buildSavedSearchName,
   createSavedSearch,
   deleteSavedSearch,
@@ -570,6 +576,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const [seenPostIds, setSeenPostIds] = useState([])
   const [feedSignalProfile, setFeedSignalProfile] = useState({ tokens: {}, updatedAt: null })
   const [feedRefreshTick, setFeedRefreshTick] = useState(0)
+  const [recentlyViewedProperties, setRecentlyViewedProperties] = useState([])
+  const [comparedProperties, setComparedProperties] = useState([])
   const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
   const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
   const [mediaViewer, setMediaViewer] = useState({
@@ -883,6 +891,40 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }
   }, [currentUser?.id])
 
+  useEffect(() => {
+    let isMounted = true
+
+    async function hydrateBrowseMemory() {
+      const storageUserId = currentUser?.id || currentUser?.email || 'guest'
+      const [recentItems, compareItems] = await Promise.all([
+        loadRecentlyViewedProperties(storageUserId),
+        loadComparedProperties(storageUserId),
+      ])
+
+      if (!isMounted) return
+
+      setRecentlyViewedProperties(recentItems)
+      setComparedProperties(compareItems)
+    }
+
+    hydrateBrowseMemory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentUser?.email, currentUser?.id])
+
+  useFocusEffect(
+    useCallback(() => {
+      const storageUserId = currentUser?.id || currentUser?.email || 'guest'
+
+      loadRecentlyViewedProperties(storageUserId).then(setRecentlyViewedProperties)
+      loadComparedProperties(storageUserId).then(setComparedProperties)
+
+      return undefined
+    }, [currentUser?.email, currentUser?.id])
+  )
+
   useFocusEffect(
     useCallback(() => {
       if (embeddedTabShell) {
@@ -895,7 +937,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       if (!manualLocationOverride.current && !route?.params?.selectedLocation) {
         loadCurrentLocation()
       }
-    }, [embeddedTabShell, route?.params?.selectedLocation])
+    }, [currentUser?.email, currentUser?.id, embeddedTabShell, route?.params?.selectedLocation])
   )
 
   useEffect(() => {
@@ -2100,6 +2142,28 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }
   }
 
+  async function toggleComparePost(post) {
+    const storageUserId = currentUser?.id || currentUser?.email || 'guest'
+    const exists = comparedProperties.some((item) => String(item.id) === String(post?.id))
+
+    if (exists) {
+      const nextItems = await removeComparedProperty(storageUserId, post.id)
+      setComparedProperties(nextItems)
+      Alert.alert('Removed', 'This property was removed from compare.')
+      return
+    }
+
+    const result = await addComparedProperty(storageUserId, post)
+
+    if (result.reason === 'limit') {
+      Alert.alert('Compare is full', 'You can compare up to 5 properties at a time.')
+      return
+    }
+
+    setComparedProperties(result.items)
+    Alert.alert('Added to compare', 'Open Compare to see this rental side by side.')
+  }
+
   function openPostMoreActions(post) {
     if (!post) return
     setActionSheetPost(post)
@@ -2283,6 +2347,195 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     )
   }
 
+  function getBrowsePreviewMedia(property) {
+    return property?.image_url || property?.media?.[0]?.uri || null
+  }
+
+  function RecentlyViewedSection() {
+    if (!recentlyViewedProperties.length) return null
+
+    return (
+      <View style={{ backgroundColor: '#fff', paddingTop: 10, paddingBottom: 12, marginBottom: 8 }}>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingBottom: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View>
+            <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+              Recently viewed
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+              Jump back into rentals you already checked.
+            </Text>
+          </View>
+
+          <TouchableOpacity onPress={() => navigation.navigate('RecentlyViewed')}>
+            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>See all</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+        >
+          {recentlyViewedProperties.slice(0, 8).map((item) => {
+            const mediaUri = getBrowsePreviewMedia(item)
+
+            return (
+              <TouchableOpacity
+                key={`recent-${item.id}`}
+                onPress={() => navigation.navigate('Property', { property: item })}
+                activeOpacity={0.88}
+                style={{
+                  width: 148,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#dbe4ee',
+                  backgroundColor: '#f8fafc',
+                  overflow: 'hidden',
+                }}
+              >
+                {mediaUri ? (
+                  <Image
+                    source={{ uri: mediaUri }}
+                    style={{ width: '100%', height: 68, backgroundColor: '#dbe4ee' }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: '100%',
+                      height: 68,
+                      backgroundColor: '#e2e8f0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="home-outline" size={22} color="#64748b" />
+                  </View>
+                )}
+
+                <View style={{ paddingHorizontal: 9, paddingVertical: 8 }}>
+                  <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 11, fontWeight: '900', lineHeight: 15 }}>
+                    {item.title || 'Rental post'}
+                  </Text>
+                  <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 10, marginTop: 4 }}>
+                    {item.location || 'Location not added'}
+                  </Text>
+                  <Text style={{ color: '#ea580c', fontSize: 10, fontWeight: '900', marginTop: 5 }}>
+                    {item.price ? `৳ ${item.price}` : '—'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
+      </View>
+    )
+  }
+
+  function CompareSection() {
+    if (!comparedProperties.length) return null
+
+    return (
+      <View style={{ backgroundColor: '#fff', paddingTop: 2, paddingBottom: 12, marginBottom: 8 }}>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingBottom: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View>
+            <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+              Compare rentals
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+              {comparedProperties.length} of 5 selected for side-by-side comparison.
+            </Text>
+          </View>
+
+          <TouchableOpacity onPress={() => navigation.navigate('CompareProperties')}>
+            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>Open</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+        >
+          {comparedProperties.map((item) => {
+            const mediaUri = getBrowsePreviewMedia(item)
+
+            return (
+              <TouchableOpacity
+                key={`compare-${item.id}`}
+                onPress={() => navigation.navigate('CompareProperties')}
+                activeOpacity={0.88}
+                style={{
+                  width: 148,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#dbe4ee',
+                  backgroundColor: '#f8fafc',
+                  overflow: 'hidden',
+                }}
+              >
+                {mediaUri ? (
+                  <Image
+                    source={{ uri: mediaUri }}
+                    style={{ width: '100%', height: 78, backgroundColor: '#dbe4ee' }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: '100%',
+                      height: 78,
+                      backgroundColor: '#e2e8f0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="git-compare-outline" size={22} color="#64748b" />
+                  </View>
+                )}
+
+                <View style={{ padding: 10 }}>
+                  <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 12, fontWeight: '900', lineHeight: 17 }}>
+                    {item.title || 'Rental post'}
+                  </Text>
+                  <Text style={{ color: '#ea580c', fontSize: 11, fontWeight: '900', marginTop: 7 }}>
+                    {item.price ? `৳ ${item.price}` : '—'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
+      </View>
+    )
+  }
+
+  function FeedHeader() {
+    return (
+      <>
+        {canCreatePosts ? <CreatePostBox /> : null}
+        <CompareSection />
+        <RecentlyViewedSection />
+      </>
+    )
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
       <SwipeTabView
@@ -2336,6 +2589,44 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CompareProperties')}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: comparedProperties.length ? '#eff6ff' : '#f1f1f1',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons
+              name="git-compare-outline"
+              size={18}
+              color={comparedProperties.length ? '#2563eb' : '#111'}
+            />
+            {comparedProperties.length ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -3,
+                  right: -3,
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: '#2563eb',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 4,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>
+                  {comparedProperties.length}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={openFilters}
             style={{
@@ -2540,7 +2831,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         renderItem={renderPost}
         onViewableItemsChanged={handleViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        ListHeaderComponent={canCreatePosts ? <CreatePostBox /> : null}
+        ListHeaderComponent={<FeedHeader />}
         ListEmptyComponent={
           showInitialLoader ? (
             <ActivityIndicator style={{ marginTop: 30 }} />
@@ -3339,6 +3630,22 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                         'Thanks',
                         'We will hide this post from your feed.'
                       )
+                    },
+                  },
+                  {
+                    icon: comparedProperties.some((item) => String(item.id) === String(actionSheetPost?.id))
+                      ? 'remove-circle-outline'
+                      : 'git-compare-outline',
+                    title: comparedProperties.some((item) => String(item.id) === String(actionSheetPost?.id))
+                      ? 'Remove from compare'
+                      : 'Add to compare',
+                    subtitle: comparedProperties.some((item) => String(item.id) === String(actionSheetPost?.id))
+                      ? 'Take this property out of your compare shortlist.'
+                      : 'Compare this property with 2 to 5 rentals side by side.',
+                    onPress: () => {
+                      const post = actionSheetPost
+                      setActionSheetPost(null)
+                      toggleComparePost(post)
                     },
                   },
                   {

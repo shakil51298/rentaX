@@ -26,6 +26,12 @@ import { saveMediaToLibrary } from '../lib/mediaSave'
 import { createNotification } from '../lib/notifications'
 import { applyLessLikeThis, hideOwnerFromFeed, hidePropertyFromFeed } from '../lib/feedControls'
 import {
+  addComparedProperty,
+  loadComparedProperties,
+  rememberRecentlyViewedProperty,
+  removeComparedProperty,
+} from '../lib/propertyBrowse'
+import {
   buildVisitTimestamp,
   cancelVisitRequest,
   fetchVisitRequestForProperty,
@@ -451,10 +457,33 @@ export default function PropertyScreen({ route, navigation }) {
     index: 0,
   })
   const [actionSheetVisible, setActionSheetVisible] = useState(false)
+  const [comparedProperties, setComparedProperties] = useState([])
 
   useEffect(() => {
     loadPost()
   }, [initialProperty?.id])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function hydrateCompareState() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const storageUserId = user?.id || user?.email || 'guest'
+      const nextItems = await loadComparedProperties(storageUserId)
+
+      if (isMounted) {
+        setComparedProperties(nextItems)
+      }
+    }
+
+    hydrateCompareState()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!initialProperty?.id) return undefined
@@ -588,6 +617,10 @@ export default function PropertyScreen({ route, navigation }) {
     setPost({
       ...nextPost,
       view_count: viewCount,
+      owner_profile: ownerProfile,
+    })
+    await rememberRecentlyViewedProperty(user?.id || user?.email || 'guest', {
+      ...nextPost,
       owner_profile: ownerProfile,
     })
     setVisitRequest(nextVisitRequest)
@@ -779,6 +812,28 @@ export default function PropertyScreen({ route, navigation }) {
     }
   }
 
+  async function toggleCompareCurrentPost() {
+    const storageUserId = currentUser?.id || currentUser?.email || 'guest'
+    const exists = comparedProperties.some((item) => String(item.id) === String(post?.id))
+
+    if (exists) {
+      const nextItems = await removeComparedProperty(storageUserId, post.id)
+      setComparedProperties(nextItems)
+      Alert.alert('Removed', 'This property was removed from compare.')
+      return
+    }
+
+    const result = await addComparedProperty(storageUserId, post)
+
+    if (result.reason === 'limit') {
+      Alert.alert('Compare is full', 'You can compare up to 5 properties at a time.')
+      return
+    }
+
+    setComparedProperties(result.items)
+    Alert.alert('Added to compare', 'Open Compare to see this rental side by side.')
+  }
+
   function openMoreActions() {
     setActionSheetVisible(true)
   }
@@ -926,6 +981,7 @@ export default function PropertyScreen({ route, navigation }) {
   const isVerifiedOwner = getOwnerVerificationStatus(ownerProfile) === 'verified'
   const isVerifiedProperty = getPropertyVerificationStatus(post) === 'verified'
   const isOwnProperty = String(post.owner_id) === String(currentUser?.id)
+  const isCompared = comparedProperties.some((item) => String(item.id) === String(post?.id))
   const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
   const propertyMetaChips = getPropertyMetaChips(post)
   const propertyDetailRows = getPropertyDetailRows(post)
@@ -1296,6 +1352,54 @@ export default function PropertyScreen({ route, navigation }) {
               </Text>
             </TouchableOpacity>
 
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TouchableOpacity
+                onPress={toggleCompareCurrentPost}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 12,
+                  backgroundColor: isCompared ? '#eff6ff' : '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: isCompared ? '#bfdbfe' : '#dbe4ee',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                }}
+              >
+                <Ionicons
+                  name={isCompared ? 'git-compare' : 'git-compare-outline'}
+                  size={16}
+                  color={isCompared ? '#2563eb' : '#475569'}
+                />
+                <Text style={{ color: isCompared ? '#2563eb' : '#475569', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                  {isCompared ? 'In compare' : 'Add to compare'}
+                </Text>
+              </TouchableOpacity>
+
+              {comparedProperties.length >= 2 ? (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('CompareProperties')}
+                  style={{
+                    flex: 1,
+                    minHeight: 42,
+                    borderRadius: 12,
+                    backgroundColor: '#f8fafc',
+                    borderWidth: 1,
+                    borderColor: '#dbe4ee',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                  }}
+                >
+                  <Ionicons name="open-outline" size={16} color="#475569" />
+                  <Text style={{ color: '#475569', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                    Open compare
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
             {visitRequest && ['pending', 'accepted', 'rescheduled'].includes(visitRequest.status) ? (
               <TouchableOpacity
                 onPress={cancelCurrentVisitRequest}
@@ -1341,6 +1445,17 @@ export default function PropertyScreen({ route, navigation }) {
           ...(String(post.owner_id) === String(currentUser?.id)
             ? []
             : [
+                {
+                  icon: isCompared ? 'remove-circle-outline' : 'git-compare-outline',
+                  title: isCompared ? 'Remove from compare' : 'Add to compare',
+                  subtitle: isCompared
+                    ? 'Take this property out of your compare shortlist.'
+                    : 'Compare this property with other rentals side by side.',
+                  onPress: () => {
+                    setActionSheetVisible(false)
+                    toggleCompareCurrentPost()
+                  },
+                },
                 {
                   icon: 'thumbs-down-outline',
                   title: 'Not interested',
