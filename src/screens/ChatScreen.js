@@ -56,6 +56,12 @@ import {
   getPropertyId,
   mediaLabel,
 } from '../lib/chatUtils'
+import {
+  buildAgoraChannelName,
+  canUseAgoraNativeModule,
+  createAgoraCallId,
+  sendAgoraCallInvite,
+} from '../lib/agoraCall'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 
 const EMPTY_ROUTE_PARAMS = {}
@@ -1331,23 +1337,87 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }
 
-  function startVoiceCall() {
-    if (!otherUser?.id) return
+  async function startVoiceCall() {
+    if (!currentUser?.id || !otherUser?.id) return
+
+    if (!canUseAgoraNativeModule()) {
+      Alert.alert(
+        'Call needs a native build',
+        'Agora calling will not run inside Expo Go. Please install a preview/development build and try again.'
+      )
+      return
+    }
+
+    const callId = createAgoraCallId('audio')
+    const channelName = buildAgoraChannelName({
+      conversationId: conversation?.id,
+      callId,
+      callerId: currentUser.id,
+      recipientId: otherUser.id,
+      kind: 'audio',
+    })
+
+    sendAgoraCallInvite({
+      callKind: 'audio',
+      caller: currentUser,
+      recipientId: otherUser.id,
+      property: conversationProperty,
+      conversationId: conversation?.id || null,
+      callId,
+      channelName,
+    }).catch((error) => {
+      console.warn('Audio call invite failed:', error?.message || error)
+    })
 
     navigation.navigate('AudioCall', {
       participant: otherUser,
       property: conversationProperty,
       conversationId: conversation?.id || null,
+      callId,
+      channelName,
+      startedByMe: true,
     })
   }
 
-  function startVideoCall() {
-    if (!otherUser?.id) return
+  async function startVideoCall() {
+    if (!currentUser?.id || !otherUser?.id) return
+
+    if (!canUseAgoraNativeModule()) {
+      Alert.alert(
+        'Call needs a native build',
+        'Agora calling will not run inside Expo Go. Please install a preview/development build and try again.'
+      )
+      return
+    }
+
+    const callId = createAgoraCallId('video')
+    const channelName = buildAgoraChannelName({
+      conversationId: conversation?.id,
+      callId,
+      callerId: currentUser.id,
+      recipientId: otherUser.id,
+      kind: 'video',
+    })
+
+    sendAgoraCallInvite({
+      callKind: 'video',
+      caller: currentUser,
+      recipientId: otherUser.id,
+      property: conversationProperty,
+      conversationId: conversation?.id || null,
+      callId,
+      channelName,
+    }).catch((error) => {
+      console.warn('Video call invite failed:', error?.message || error)
+    })
 
     navigation.navigate('VideoCall', {
       participant: otherUser,
       property: conversationProperty,
       conversationId: conversation?.id || null,
+      callId,
+      channelName,
+      startedByMe: true,
     })
   }
 

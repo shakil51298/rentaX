@@ -5,6 +5,15 @@ const googleMapsApiKey =
   process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
   || process.env.GOOGLE_MAPS_API_KEY
   || null
+const agoraAppId =
+  process.env.EXPO_PUBLIC_AGORA_APP_ID
+  || null
+const agoraTokenServerUrl =
+  process.env.EXPO_PUBLIC_AGORA_TOKEN_SERVER_URL
+  || null
+const agoraTempToken =
+  process.env.EXPO_PUBLIC_AGORA_TEMP_TOKEN
+  || null
 
 const googleServicesFile = path.resolve(__dirname, 'google-services.json')
 
@@ -23,6 +32,14 @@ module.exports = {
               },
             }
           : {}),
+      },
+    },
+    extra: {
+      ...(baseConfig.extra || {}),
+      agora: {
+        appId: agoraAppId,
+        tokenServerUrl: agoraTokenServerUrl,
+        tempToken: agoraTempToken,
       },
     },
   },

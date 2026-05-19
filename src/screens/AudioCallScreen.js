@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BackHandler,
   ActivityIndicator,
+  Alert,
+  BackHandler,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import {
+  buildAgoraChannelName,
+  getAgoraRuntimeConfig,
+  hashAgoraUid,
+  loadAgoraModule,
+  resolveAgoraToken,
+  saveAgoraCallHistory,
+} from '../lib/agoraCall'
 import Avatar from '../components/common/Avatar'
-import { supabase } from '../lib/supabase'
 import { getProfileName } from '../lib/userDisplay'
-import { formatDurationSeconds } from '../lib/chatUtils'
+import { supabase } from '../lib/supabase'
 
 function formatCallDuration(totalSeconds) {
   const safeSeconds = Math.max(0, totalSeconds || 0)
@@ -21,127 +29,268 @@ function formatCallDuration(totalSeconds) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-function getStatusLabel(stage, durationSeconds) {
-  if (stage === 'calling') return 'Calling...'
-  if (stage === 'ringing') return 'Ringing...'
-  if (stage === 'connecting') return 'Connecting audio...'
+function getStatusLabel(stage, durationSeconds, startedByMe, participantName) {
+  if (stage === 'preparing') return 'Preparing audio call...'
+  if (stage === 'joining') return startedByMe ? 'Starting call...' : `Joining ${participantName}...`
+  if (stage === 'waiting') {
+    return startedByMe
+      ? `Calling ${participantName}...`
+      : `Waiting for ${participantName} to connect...`
+  }
   if (stage === 'connected') return formatCallDuration(durationSeconds)
   if (stage === 'ended') return 'Call ended'
-  return 'Preparing call...'
+  return 'Connecting audio...'
 }
 
 export default function AudioCallScreen({ navigation, route }) {
   const participant = route?.params?.participant || null
   const property = route?.params?.property || null
   const conversationId = route?.params?.conversationId || null
+  const channelNameFromRoute = route?.params?.channelName || null
+  const startedByMe = route?.params?.startedByMe !== false
   const participantName = useMemo(
     () => getProfileName(participant, 'Rental X member'),
     [participant]
   )
 
-  const [stage, setStage] = useState('calling')
+  const [stage, setStage] = useState('preparing')
   const [durationSeconds, setDurationSeconds] = useState(0)
   const [muted, setMuted] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(true)
-  const [micOn, setMicOn] = useState(true)
   const [endingCall, setEndingCall] = useState(false)
-  const durationIntervalRef = useRef(null)
-  const hasLoggedCallRef = useRef(false)
+  const [remoteJoined, setRemoteJoined] = useState(false)
 
-  useEffect(() => {
-    const callingTimer = setTimeout(() => setStage('ringing'), 1600)
-    const connectingTimer = setTimeout(() => setStage('connecting'), 3800)
-    const connectedTimer = setTimeout(() => setStage('connected'), 5200)
+  const rtcEngineRef = useRef(null)
+  const intervalRef = useRef(null)
+  const currentUserIdRef = useRef(null)
+  const cleanedUpRef = useRef(false)
+  const wasConnectedRef = useRef(false)
+  const mountedRef = useRef(true)
 
-    return () => {
-      clearTimeout(callingTimer)
-      clearTimeout(connectingTimer)
-      clearTimeout(connectedTimer)
+  const cleanupRtcEngine = useCallback(() => {
+    if (cleanedUpRef.current) return
+
+    cleanedUpRef.current = true
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    const engine = rtcEngineRef.current
+    rtcEngineRef.current = null
+
+    if (!engine) return
+
+    try {
+      engine.removeAllListeners()
+      engine.leaveChannel()
+      engine.release()
+    } catch (error) {
+      console.warn('Audio call cleanup failed:', error?.message || error)
     }
   }, [])
 
-  useEffect(() => {
-    if (stage !== 'connected') {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-        durationIntervalRef.current = null
-      }
-      return undefined
-    }
-
-    durationIntervalRef.current = setInterval(() => {
-      setDurationSeconds((current) => current + 1)
-    }, 1000)
-
-    return () => {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-        durationIntervalRef.current = null
-      }
-    }
-  }, [stage])
-
-  const logCallHistory = useCallback(async (callStatus, totalDurationSeconds) => {
-    if (hasLoggedCallRef.current || !conversationId || !participant?.id) return
-
-    hasLoggedCallRef.current = true
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user?.id) return
-
-    const createdAt = new Date().toISOString()
-    const summary =
-      callStatus === 'completed'
-        ? 'Outgoing audio call'
-        : 'Outgoing call cancelled'
-    const lastMessage =
-      callStatus === 'completed'
-        ? `Audio call • ${formatDurationSeconds(totalDurationSeconds)}`
-        : 'Cancelled audio call'
-
-    await supabase.from('chat_messages').insert({
-      conversation_id: conversationId,
-      sender_id: user.id,
-      receiver_id: participant.id,
-      body: summary,
-      message_type: 'call',
-      call_kind: 'audio',
-      call_status: callStatus,
-      call_duration_seconds: totalDurationSeconds,
-      created_at: createdAt,
-      updated_at: createdAt,
-    })
-
-    await supabase
-      .from('chat_conversations')
-      .update({
-        last_message: lastMessage,
-        last_message_type: 'call',
-        last_message_at: createdAt,
-        last_sender_id: user.id,
-        updated_at: createdAt,
-      })
-      .eq('id', conversationId)
-  }, [conversationId, participant?.id])
-
-  const endCall = useCallback(async () => {
+  const endCall = useCallback(async ({ remoteEnded = false } = {}) => {
     if (endingCall) return
 
     setEndingCall(true)
     setStage('ended')
 
-    const callStatus = stage === 'connected' ? 'completed' : 'cancelled'
-    const totalDurationSeconds = stage === 'connected' ? durationSeconds : 0
+    cleanupRtcEngine()
+
+    const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
+    const totalDurationSeconds = wasConnectedRef.current ? durationSeconds : 0
 
     try {
-      await logCallHistory(callStatus, totalDurationSeconds)
+      await saveAgoraCallHistory({
+        conversationId,
+        participantId: participant?.id,
+        currentUserId: currentUserIdRef.current,
+        callKind: 'audio',
+        callStatus,
+        durationSeconds: totalDurationSeconds,
+        startedByMe,
+      })
+    } catch (error) {
+      if (!remoteEnded) {
+        Alert.alert(
+          'Call history failed',
+          error?.message || 'Could not save this call in chat.'
+        )
+      }
     } finally {
       navigation.goBack()
     }
-  }, [durationSeconds, endingCall, logCallHistory, navigation, stage])
+  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe])
+
+  useEffect(() => {
+    mountedRef.current = true
+
+    async function startAudioCall() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!mountedRef.current) return
+
+        if (!user?.id || !participant?.id) {
+          throw new Error('This call is missing user information.')
+        }
+
+        const agoraModule = loadAgoraModule()
+
+        if (!agoraModule) {
+          throw new Error(
+            'Agora native module is not linked in this build yet. Rebuild the app with EAS or a development build and try again.'
+          )
+        }
+
+        const {
+          ChannelProfileType,
+          ClientRoleType,
+          ConnectionStateType,
+          createAgoraRtcEngine,
+        } = agoraModule
+
+        const { appId } = getAgoraRuntimeConfig()
+
+        if (!appId) {
+          throw new Error('Agora is not configured yet. Add EXPO_PUBLIC_AGORA_APP_ID and rebuild the app.')
+        }
+
+        currentUserIdRef.current = user.id
+        const localUid = hashAgoraUid(user.id)
+        const channelName =
+          channelNameFromRoute ||
+          buildAgoraChannelName({
+            conversationId,
+            callerId: startedByMe ? user.id : participant.id,
+            recipientId: startedByMe ? participant.id : user.id,
+            kind: 'audio',
+          })
+
+        const token = await resolveAgoraToken({
+          channelName,
+          uid: localUid,
+          callKind: 'audio',
+        })
+
+        const engine = createAgoraRtcEngine()
+        rtcEngineRef.current = engine
+        cleanedUpRef.current = false
+
+        engine.initialize({
+          appId,
+          channelProfile: ChannelProfileType.ChannelProfileCommunication,
+        })
+
+        engine.addListener('onError', (_code, message) => {
+          if (!mountedRef.current) return
+          Alert.alert('Agora error', message || 'The audio call ran into a problem.')
+        })
+
+        engine.addListener('onJoinChannelSuccess', () => {
+          if (!mountedRef.current) return
+          setStage('waiting')
+        })
+
+        engine.addListener('onUserJoined', () => {
+          if (!mountedRef.current) return
+          wasConnectedRef.current = true
+          setRemoteJoined(true)
+          setStage('connected')
+        })
+
+        engine.addListener('onUserOffline', () => {
+          if (!mountedRef.current) return
+          setRemoteJoined(false)
+          endCall({ remoteEnded: true })
+        })
+
+        engine.addListener('onConnectionStateChanged', (_connection, state) => {
+          if (!mountedRef.current || endingCall) return
+
+          if (state === ConnectionStateType.ConnectionStateConnecting) {
+            setStage('joining')
+          }
+
+          if (
+            state === ConnectionStateType.ConnectionStateDisconnected
+            && wasConnectedRef.current
+          ) {
+            endCall({ remoteEnded: true })
+          }
+        })
+
+        engine.enableAudio()
+        engine.setEnableSpeakerphone(true)
+
+        setStage('joining')
+
+        const joinCode = engine.joinChannel(token, channelName, localUid, {
+          channelProfile: ChannelProfileType.ChannelProfileCommunication,
+          clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+          publishMicrophoneTrack: true,
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: false,
+          enableAudioRecordingOrPlayout: true,
+        })
+
+        if (joinCode < 0) {
+          throw new Error(engine.getErrorDescription(joinCode) || `Agora join failed (${joinCode}).`)
+        }
+      } catch (error) {
+        Alert.alert('Audio call unavailable', error?.message || 'Could not start the audio call.')
+        navigation.goBack()
+      }
+    }
+
+    startAudioCall()
+
+    return () => {
+      mountedRef.current = false
+      cleanupRtcEngine()
+    }
+  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, navigation, participant?.id, startedByMe])
+
+  useEffect(() => {
+    if (stage !== 'connected') {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      return undefined
+    }
+
+    intervalRef.current = setInterval(() => {
+      setDurationSeconds((current) => current + 1)
+    }, 1000)
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [stage])
+
+  useEffect(() => {
+    const engine = rtcEngineRef.current
+
+    if (!engine) return
+
+    engine.muteLocalAudioStream(muted)
+  }, [muted])
+
+  useEffect(() => {
+    const engine = rtcEngineRef.current
+
+    if (!engine) return
+
+    engine.setEnableSpeakerphone(speakerOn)
+  }, [speakerOn])
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -166,7 +315,7 @@ export default function AudioCallScreen({ navigation, route }) {
       >
         <View style={{ alignItems: 'flex-end' }}>
           <TouchableOpacity
-            onPress={endCall}
+            onPress={() => endCall()}
             style={{
               width: 42,
               height: 42,
@@ -211,7 +360,9 @@ export default function AudioCallScreen({ navigation, route }) {
               textAlign: 'center',
             }}
           >
-            {endingCall ? 'Saving call...' : getStatusLabel(stage, durationSeconds)}
+            {endingCall
+              ? 'Saving call...'
+              : getStatusLabel(stage, durationSeconds, startedByMe, participantName)}
           </Text>
 
           {property?.title ? (
@@ -252,7 +403,9 @@ export default function AudioCallScreen({ navigation, route }) {
             }}
           >
             <Text style={{ color: '#e2e8f0', lineHeight: 20 }}>
-              Phase 1 demo call screen is live now. We can connect this to real audio transport in the next upgrade.
+              {remoteJoined
+                ? 'You are live on a real Agora audio call now.'
+                : 'The call is live. We are waiting for the other person to join this channel.'}
             </Text>
           </View>
         </View>
@@ -321,8 +474,7 @@ export default function AudioCallScreen({ navigation, route }) {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setMicOn((current) => !current)}
+          <View
             style={{
               alignItems: 'center',
               flex: 1,
@@ -333,25 +485,25 @@ export default function AudioCallScreen({ navigation, route }) {
                 width: 58,
                 height: 58,
                 borderRadius: 29,
-                backgroundColor: micOn ? 'rgba(255,255,255,0.12)' : '#fee2e2',
+                backgroundColor: remoteJoined ? '#dcfce7' : 'rgba(255,255,255,0.12)',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               <Ionicons
-                name={micOn ? 'radio-outline' : 'pause-outline'}
+                name={remoteJoined ? 'radio' : 'hourglass-outline'}
                 size={24}
-                color={micOn ? '#fff' : '#dc2626'}
+                color={remoteJoined ? '#15803d' : '#fff'}
               />
             </View>
             <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {micOn ? 'Live' : 'Paused'}
+              {remoteJoined ? 'Connected' : 'Waiting'}
             </Text>
-          </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
-          onPress={endCall}
+          onPress={() => endCall()}
           disabled={endingCall}
           style={{
             alignSelf: 'center',

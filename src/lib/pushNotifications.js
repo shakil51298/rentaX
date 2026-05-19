@@ -6,6 +6,10 @@ import { supabase } from './supabase'
 let warnedAboutExpoGo = false
 
 const CHAT_NOTIFICATION_TYPES = new Set(['chat_message'])
+const CALL_NOTIFICATION_TYPES = new Set([
+  'incoming_audio_call',
+  'incoming_video_call',
+])
 const OFFER_NOTIFICATION_TYPES = new Set([
   'offer',
   'offers',
@@ -34,6 +38,7 @@ const VISIT_REQUEST_RENTER_TYPES = new Set([
 
 function getNotificationChannelId(type) {
   if (CHAT_NOTIFICATION_TYPES.has(type)) return 'messages'
+  if (CALL_NOTIFICATION_TYPES.has(type)) return 'calls'
   if (OFFER_NOTIFICATION_TYPES.has(type)) return 'offers'
   if (SAVED_SEARCH_NOTIFICATION_TYPES.has(type)) return 'activity'
   if (ADMIN_NOTIFICATION_TYPES.has(type)) return 'admin'
@@ -85,6 +90,14 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 200, 250],
       lightColor: '#34C759',
+    },
+    {
+      id: 'calls',
+      name: 'Calls',
+      description: 'Incoming audio and video calls',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 320, 180, 320, 180, 320],
+      lightColor: '#22c55e',
     },
     {
       id: 'offers',
@@ -282,6 +295,23 @@ export function routeFromNotificationData(navigation, payload = {}) {
       title: payload.propertyTitle || '',
     }
     : null
+
+  if (CALL_NOTIFICATION_TYPES.has(type) && payload.actorId) {
+    navigation.navigate(type === 'incoming_video_call' ? 'VideoCall' : 'AudioCall', {
+      participant: {
+        id: payload.actorId,
+        name: payload.actorName || 'Rental X member',
+        avatar_url: payload.actorAvatarUrl || null,
+        is_verified: Boolean(payload.actorVerified),
+      },
+      property,
+      conversationId: payload.conversationId || null,
+      callId: payload.callId || null,
+      channelName: payload.channelName || null,
+      startedByMe: false,
+    })
+    return
+  }
 
   if (type === 'chat_message' && payload.actorId) {
     navigation.navigate('MainTabs', {

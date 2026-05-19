@@ -11,9 +11,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import Avatar from '../components/common/Avatar'
-import { supabase } from '../lib/supabase'
-import { formatDurationSeconds } from '../lib/chatUtils'
+import {
+  buildAgoraChannelName,
+  getAgoraRuntimeConfig,
+  hashAgoraUid,
+  loadAgoraModule,
+  resolveAgoraToken,
+  saveAgoraCallHistory,
+} from '../lib/agoraCall'
 import { getProfileName } from '../lib/userDisplay'
+import { supabase } from '../lib/supabase'
 
 function formatCallDuration(totalSeconds) {
   const safeSeconds = Math.max(0, totalSeconds || 0)
@@ -22,44 +29,243 @@ function formatCallDuration(totalSeconds) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-function getStatusLabel(stage, durationSeconds) {
-  if (stage === 'calling') return 'Starting video call...'
-  if (stage === 'ringing') return 'Ringing...'
-  if (stage === 'connecting') return 'Connecting video...'
+function getStatusLabel(stage, durationSeconds, startedByMe, participantName) {
+  if (stage === 'preparing') return 'Preparing video call...'
+  if (stage === 'joining') return startedByMe ? 'Starting video call...' : `Joining ${participantName}...`
+  if (stage === 'waiting') {
+    return startedByMe
+      ? `Calling ${participantName}...`
+      : `Waiting for ${participantName} to connect...`
+  }
   if (stage === 'connected') return formatCallDuration(durationSeconds)
   if (stage === 'ended') return 'Video call ended'
-  return 'Preparing video...'
+  return 'Connecting video...'
 }
 
 export default function VideoCallScreen({ navigation, route }) {
   const participant = route?.params?.participant || null
   const property = route?.params?.property || null
   const conversationId = route?.params?.conversationId || null
+  const channelNameFromRoute = route?.params?.channelName || null
+  const startedByMe = route?.params?.startedByMe !== false
   const participantName = useMemo(
     () => getProfileName(participant, 'Rental X member'),
     [participant]
   )
+  const AgoraSurfaceView = agoraModule?.RtcSurfaceView || null
 
-  const [stage, setStage] = useState('calling')
+  const [stage, setStage] = useState('preparing')
   const [durationSeconds, setDurationSeconds] = useState(0)
   const [muted, setMuted] = useState(false)
   const [cameraOn, setCameraOn] = useState(true)
   const [speakerOn, setSpeakerOn] = useState(true)
   const [endingCall, setEndingCall] = useState(false)
+  const [remoteUid, setRemoteUid] = useState(null)
+  const [localUid, setLocalUid] = useState(0)
+  const [agoraModule, setAgoraModule] = useState(null)
+
+  const rtcEngineRef = useRef(null)
   const intervalRef = useRef(null)
-  const hasLoggedCallRef = useRef(false)
+  const currentUserIdRef = useRef(null)
+  const cleanedUpRef = useRef(false)
+  const wasConnectedRef = useRef(false)
+  const mountedRef = useRef(true)
 
-  useEffect(() => {
-    const callingTimer = setTimeout(() => setStage('ringing'), 1200)
-    const connectingTimer = setTimeout(() => setStage('connecting'), 2800)
-    const connectedTimer = setTimeout(() => setStage('connected'), 4300)
+  const cleanupRtcEngine = useCallback(() => {
+    if (cleanedUpRef.current) return
 
-    return () => {
-      clearTimeout(callingTimer)
-      clearTimeout(connectingTimer)
-      clearTimeout(connectedTimer)
+    cleanedUpRef.current = true
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    const engine = rtcEngineRef.current
+    rtcEngineRef.current = null
+
+    if (!engine) return
+
+    try {
+      engine.removeAllListeners()
+      engine.stopPreview()
+      engine.leaveChannel()
+      engine.release()
+    } catch (error) {
+      console.warn('Video call cleanup failed:', error?.message || error)
     }
   }, [])
+
+  const endCall = useCallback(async ({ remoteEnded = false } = {}) => {
+    if (endingCall) return
+
+    setEndingCall(true)
+    setStage('ended')
+
+    cleanupRtcEngine()
+
+    const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
+    const totalDurationSeconds = wasConnectedRef.current ? durationSeconds : 0
+
+    try {
+      await saveAgoraCallHistory({
+        conversationId,
+        participantId: participant?.id,
+        currentUserId: currentUserIdRef.current,
+        callKind: 'video',
+        callStatus,
+        durationSeconds: totalDurationSeconds,
+        startedByMe,
+      })
+    } catch (error) {
+      if (!remoteEnded) {
+        Alert.alert(
+          'Call history failed',
+          error?.message || 'Could not save this video call in chat.'
+        )
+      }
+    } finally {
+      navigation.goBack()
+    }
+  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe])
+
+  useEffect(() => {
+    mountedRef.current = true
+
+    async function startVideoCall() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!mountedRef.current) return
+
+        if (!user?.id || !participant?.id) {
+          throw new Error('This call is missing user information.')
+        }
+
+        const loadedAgoraModule = loadAgoraModule()
+
+        if (!loadedAgoraModule) {
+          throw new Error(
+            'Agora native module is not linked in this build yet. Rebuild the app with EAS or a development build and try again.'
+          )
+        }
+
+        setAgoraModule(loadedAgoraModule)
+
+        const {
+          ChannelProfileType,
+          ClientRoleType,
+          ConnectionStateType,
+          createAgoraRtcEngine,
+          VideoSourceType,
+        } = loadedAgoraModule
+
+        const { appId } = getAgoraRuntimeConfig()
+
+        if (!appId) {
+          throw new Error('Agora is not configured yet. Add EXPO_PUBLIC_AGORA_APP_ID and rebuild the app.')
+        }
+
+        currentUserIdRef.current = user.id
+        const nextLocalUid = hashAgoraUid(user.id)
+        setLocalUid(nextLocalUid)
+
+        const channelName =
+          channelNameFromRoute ||
+          buildAgoraChannelName({
+            conversationId,
+            callerId: startedByMe ? user.id : participant.id,
+            recipientId: startedByMe ? participant.id : user.id,
+            kind: 'video',
+          })
+
+        const token = await resolveAgoraToken({
+          channelName,
+          uid: nextLocalUid,
+          callKind: 'video',
+        })
+
+        const engine = createAgoraRtcEngine()
+        rtcEngineRef.current = engine
+        cleanedUpRef.current = false
+
+        engine.initialize({
+          appId,
+          channelProfile: ChannelProfileType.ChannelProfileCommunication,
+        })
+
+        engine.addListener('onError', (_code, message) => {
+          if (!mountedRef.current) return
+          Alert.alert('Agora error', message || 'The video call ran into a problem.')
+        })
+
+        engine.addListener('onJoinChannelSuccess', () => {
+          if (!mountedRef.current) return
+          setStage('waiting')
+        })
+
+        engine.addListener('onUserJoined', (_connection, joinedUid) => {
+          if (!mountedRef.current) return
+          wasConnectedRef.current = true
+          setRemoteUid(joinedUid)
+          setStage('connected')
+        })
+
+        engine.addListener('onUserOffline', () => {
+          if (!mountedRef.current) return
+          setRemoteUid(null)
+          endCall({ remoteEnded: true })
+        })
+
+        engine.addListener('onConnectionStateChanged', (_connection, state) => {
+          if (!mountedRef.current || endingCall) return
+
+          if (state === ConnectionStateType.ConnectionStateConnecting) {
+            setStage('joining')
+          }
+
+          if (
+            state === ConnectionStateType.ConnectionStateDisconnected
+            && wasConnectedRef.current
+          ) {
+            endCall({ remoteEnded: true })
+          }
+        })
+
+        engine.setEnableSpeakerphone(true)
+        engine.enableVideo()
+        engine.startPreview(VideoSourceType.VideoSourceCamera)
+
+        setStage('joining')
+
+        const joinCode = engine.joinChannel(token, channelName, nextLocalUid, {
+          channelProfile: ChannelProfileType.ChannelProfileCommunication,
+          clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+          publishMicrophoneTrack: true,
+          publishCameraTrack: true,
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: true,
+          enableAudioRecordingOrPlayout: true,
+        })
+
+        if (joinCode < 0) {
+          throw new Error(engine.getErrorDescription(joinCode) || `Agora join failed (${joinCode}).`)
+        }
+      } catch (error) {
+        Alert.alert('Video call unavailable', error?.message || 'Could not start the video call.')
+        navigation.goBack()
+      }
+    }
+
+    startVideoCall()
+
+    return () => {
+      mountedRef.current = false
+      cleanupRtcEngine()
+    }
+  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, navigation, participant?.id, startedByMe])
 
   useEffect(() => {
     if (stage !== 'connected') {
@@ -82,96 +288,29 @@ export default function VideoCallScreen({ navigation, route }) {
     }
   }, [stage])
 
-  const logCallHistory = useCallback(async (callStatus, totalDurationSeconds) => {
-    if (hasLoggedCallRef.current || !conversationId || !participant?.id) return
+  useEffect(() => {
+    const engine = rtcEngineRef.current
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    if (!engine) return
 
-    if (!user?.id) return
+    engine.muteLocalAudioStream(muted)
+  }, [muted])
 
-    const createdAt = new Date().toISOString()
-    const summary =
-      callStatus === 'completed'
-        ? 'Outgoing video call'
-        : 'Outgoing video call cancelled'
-    const lastMessage =
-      callStatus === 'completed'
-        ? `Video call • ${formatDurationSeconds(totalDurationSeconds)}`
-        : 'Cancelled video call'
+  useEffect(() => {
+    const engine = rtcEngineRef.current
 
-    const basePayload = {
-      conversation_id: conversationId,
-      sender_id: user.id,
-      receiver_id: participant.id,
-      body: summary,
-      message_type: 'call',
-      call_status: callStatus,
-      call_duration_seconds: totalDurationSeconds,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }
+    if (!engine) return
 
-    let insertError = null
-    const { error: videoInsertError } = await supabase
-      .from('chat_messages')
-      .insert({
-        ...basePayload,
-        call_kind: 'video',
-      })
+    engine.setEnableSpeakerphone(speakerOn)
+  }, [speakerOn])
 
-    if (videoInsertError) {
-      const { error: fallbackInsertError } = await supabase
-        .from('chat_messages')
-        .insert({
-          ...basePayload,
-          call_kind: null,
-        })
+  useEffect(() => {
+    const engine = rtcEngineRef.current
 
-      insertError = fallbackInsertError || videoInsertError
-    }
+    if (!engine) return
 
-    if (insertError) {
-      throw insertError
-    }
-
-    const { error: conversationError } = await supabase
-      .from('chat_conversations')
-      .update({
-        last_message: lastMessage,
-        last_message_type: 'call',
-        last_message_at: createdAt,
-        last_sender_id: user.id,
-        updated_at: createdAt,
-      })
-      .eq('id', conversationId)
-
-    if (conversationError) {
-      throw conversationError
-    }
-
-    hasLoggedCallRef.current = true
-  }, [conversationId, participant?.id])
-
-  const endCall = useCallback(async () => {
-    if (endingCall) return
-
-    setEndingCall(true)
-    setStage('ended')
-
-    const callStatus = stage === 'connected' ? 'completed' : 'cancelled'
-    const totalDurationSeconds = stage === 'connected' ? durationSeconds : 0
-
-    try {
-      await logCallHistory(callStatus, totalDurationSeconds)
-    } catch (error) {
-      hasLoggedCallRef.current = false
-      Alert.alert('Call history failed', error?.message || 'Could not save this video call in chat.')
-    } finally {
-      navigation.goBack()
-    }
-  }, [durationSeconds, endingCall, logCallHistory, navigation, stage])
+    engine.muteLocalVideoStream(!cameraOn)
+  }, [cameraOn])
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -189,7 +328,7 @@ export default function VideoCallScreen({ navigation, route }) {
       <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}>
         <View style={{ alignItems: 'flex-end' }}>
           <TouchableOpacity
-            onPress={endCall}
+            onPress={() => endCall()}
             style={{
               width: 42,
               height: 42,
@@ -231,54 +370,70 @@ export default function VideoCallScreen({ navigation, route }) {
                 backgroundColor: 'rgba(37,99,235,0.26)',
               }}
             />
+
+            {remoteUid ? (
+              AgoraSurfaceView ? (
+              <AgoraSurfaceView
+                style={StyleSheet.absoluteFill}
+                canvas={{
+                  uid: remoteUid,
+                  renderMode: agoraModule.RenderModeType.RenderModeHidden,
+                }}
+              />
+              ) : null
+            ) : (
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 22,
+                }}
+              >
+                <Avatar
+                  profile={participant}
+                  name={participantName}
+                  size={108}
+                  borderWidth={4}
+                  borderColor="rgba(255,255,255,0.22)"
+                  backgroundColor="#dbeafe"
+                  textColor="#1d4ed8"
+                />
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 26,
+                    fontWeight: '900',
+                    marginTop: 18,
+                    textAlign: 'center',
+                  }}
+                >
+                  {participantName}
+                </Text>
+              </View>
+            )}
+
             <View
               style={{
-                flex: 1,
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 24,
                 alignItems: 'center',
-                justifyContent: 'center',
                 paddingHorizontal: 22,
               }}
             >
-              <Avatar
-                profile={participant}
-                name={participantName}
-                size={108}
-                borderWidth={4}
-                borderColor="rgba(255,255,255,0.22)"
-                backgroundColor="#dbeafe"
-                textColor="#1d4ed8"
-              />
               <Text
                 style={{
                   color: '#fff',
-                  fontSize: 26,
-                  fontWeight: '900',
-                  marginTop: 18,
-                  textAlign: 'center',
-                }}
-              >
-                {participantName}
-              </Text>
-              <Text
-                style={{
-                  color: '#cbd5e1',
                   fontSize: 16,
-                  marginTop: 8,
+                  fontWeight: '800',
                   textAlign: 'center',
                 }}
               >
-                {endingCall ? 'Saving call...' : getStatusLabel(stage, durationSeconds)}
-              </Text>
-              <Text
-                style={{
-                  color: '#94a3b8',
-                  fontSize: 13,
-                  marginTop: 12,
-                  textAlign: 'center',
-                  lineHeight: 19,
-                }}
-              >
-                Demo video call screen is ready. We can plug in the real call API and camera streams later.
+                {endingCall
+                  ? 'Saving call...'
+                  : getStatusLabel(stage, durationSeconds, startedByMe, participantName)}
               </Text>
             </View>
 
@@ -299,23 +454,17 @@ export default function VideoCallScreen({ navigation, route }) {
               }}
             >
               {cameraOn ? (
-                <>
-                  <View
-                    style={{
-                      width: 58,
-                      height: 58,
-                      borderRadius: 29,
-                      backgroundColor: '#dbeafe',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="person" size={28} color="#1d4ed8" />
-                  </View>
-                  <Text style={{ color: '#e2e8f0', fontWeight: '800', marginTop: 10 }}>
-                    You
-                  </Text>
-                </>
+                AgoraSurfaceView ? (
+                <AgoraSurfaceView
+                  style={{ width: '100%', height: '100%' }}
+                  zOrderMediaOverlay
+                  canvas={{
+                    uid: localUid || 0,
+                    renderMode: agoraModule.RenderModeType.RenderModeHidden,
+                    sourceType: agoraModule.VideoSourceType.VideoSourceCamera,
+                  }}
+                />
+                ) : null
               ) : (
                 <Ionicons name="videocam-off" size={28} color="#94a3b8" />
               )}
@@ -427,7 +576,7 @@ export default function VideoCallScreen({ navigation, route }) {
         </View>
 
         <TouchableOpacity
-          onPress={endCall}
+          onPress={() => endCall()}
           disabled={endingCall}
           style={{
             alignSelf: 'center',
