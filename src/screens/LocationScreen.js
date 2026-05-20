@@ -36,6 +36,7 @@ export default function LocationScreen({ navigation, route }) {
   const hasManualSelectionRef = useRef(false)
   const isMountedRef = useRef(true)
   const [loading, setLoading] = useState(true)
+  const [locating, setLocating] = useState(false)
   const [searching, setSearching] = useState(false)
   const [searchText, setSearchText] = useState(route?.params?.initialLabel || '')
   const [currentCoords, setCurrentCoords] = useState(null)
@@ -132,6 +133,61 @@ export default function LocationScreen({ navigation, route }) {
     }
   }
 
+  async function getFreshDeviceCoords({
+    requestPermission = false,
+    allowLastKnownFallback = true,
+  } = {}) {
+    let permission = await Location.getForegroundPermissionsAsync()
+
+    if (!permission.granted && requestPermission) {
+      permission = await Location.requestForegroundPermissionsAsync()
+    }
+
+    if (!permission.granted) {
+      if (isMountedRef.current) {
+        setLocationPermissionGranted(false)
+      }
+      throw new Error('Location permission needed')
+    }
+
+    if (isMountedRef.current) {
+      setLocationPermissionGranted(true)
+    }
+
+    const servicesEnabled = await Location.hasServicesEnabledAsync()
+
+    if (!servicesEnabled) {
+      throw new Error('Turn on location services to use your current position.')
+    }
+
+    try {
+      const freshPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+        mayShowUserSettingsDialog: true,
+      })
+
+      return {
+        latitude: freshPosition.coords.latitude,
+        longitude: freshPosition.coords.longitude,
+      }
+    } catch (error) {
+      if (!allowLastKnownFallback) {
+        throw error
+      }
+
+      const lastKnownPosition = await Location.getLastKnownPositionAsync()
+
+      if (!lastKnownPosition) {
+        throw error
+      }
+
+      return {
+        latitude: lastKnownPosition.coords.latitude,
+        longitude: lastKnownPosition.coords.longitude,
+      }
+    }
+  }
+
   async function updateSelectedLabel(coords, fallbackLabel) {
     try {
       const selection = await getLocationSelectionFromCoords(coords, fallbackLabel)
@@ -185,44 +241,42 @@ export default function LocationScreen({ navigation, route }) {
 
   async function handleUseCurrentLocation() {
     try {
-      if (!locationPermissionGranted) {
-        const permission = await Location.requestForegroundPermissionsAsync()
-        setLocationPermissionGranted(Boolean(permission.granted))
+      setLocating(true)
 
-        if (!permission.granted) {
-          Alert.alert('Location permission needed', 'Please allow location access to use your current position.')
-          return
-        }
-      }
+      const coords = await getFreshDeviceCoords({
+        requestPermission: !locationPermissionGranted,
+        allowLastKnownFallback: true,
+      })
 
-      let coords = currentCoords
+      if (!isMountedRef.current) return
 
-      if (!coords) {
-        const lastKnownPosition = await Location.getLastKnownPositionAsync()
-        const position =
-          lastKnownPosition ||
-          await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          })
-
-        if (!position || !isMountedRef.current) {
-          Alert.alert('Location unavailable', 'We could not get your current location right now.')
-          return
-        }
-
-        coords = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        }
-
-        setCurrentCoords(coords)
-      }
+      setCurrentCoords(coords)
 
       hasManualSelectionRef.current = true
       setSelectedCoords(coords)
       await updateSelectedLabel(coords, 'Current location')
-    } catch (_error) {
-      Alert.alert('Location unavailable', 'We could not get your current location right now.')
+      mapRef.current?.animateToRegion(
+        {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        },
+        350
+      )
+    } catch (error) {
+      const message = error?.message || 'We could not get your current location right now.'
+
+      if (/permission needed/i.test(message)) {
+        Alert.alert('Location permission needed', 'Please allow location access to use your current position.')
+        return
+      }
+
+      Alert.alert('Location unavailable', message)
+    } finally {
+      if (isMountedRef.current) {
+        setLocating(false)
+      }
     }
   }
 
@@ -475,6 +529,7 @@ export default function LocationScreen({ navigation, route }) {
 
             <TouchableOpacity
               onPress={handleUseCurrentLocation}
+              disabled={locating}
               style={{
                 position: 'absolute',
                 right: 16,
@@ -490,9 +545,14 @@ export default function LocationScreen({ navigation, route }) {
                 shadowRadius: 10,
                 shadowOffset: { width: 0, height: 4 },
                 elevation: 5,
+                opacity: locating ? 0.75 : 1,
               }}
             >
-              <Ionicons name="locate" size={21} color="#2563eb" />
+              {locating ? (
+                <ActivityIndicator size="small" color="#2563eb" />
+              ) : (
+                <Ionicons name="locate" size={21} color="#2563eb" />
+              )}
             </TouchableOpacity>
 
             <View
