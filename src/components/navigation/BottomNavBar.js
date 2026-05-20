@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../../lib/supabase'
 import { getUnreadNotificationCount } from '../../lib/notifications'
 import { playNotificationSound } from '../../lib/sounds'
@@ -47,6 +48,7 @@ export default function BottomNavBar({
   notificationUnreadCount,
   onTabPress,
 }) {
+  const insets = useSafeAreaInsets()
   const [counts, setCounts] = useState({
     messageUnreadCount: messageUnreadCount ?? 0,
     notificationUnreadCount: notificationUnreadCount ?? 0,
@@ -194,7 +196,9 @@ export default function BottomNavBar({
       style={{
         flexDirection: 'row',
         justifyContent: 'space-around',
-        paddingVertical: 10,
+        paddingTop: 8,
+        paddingBottom: Math.max(insets.bottom, 10),
+        minHeight: 58 + Math.max(insets.bottom, 10),
         backgroundColor: '#fff',
         borderTopWidth: 1,
         borderTopColor: '#eee',
