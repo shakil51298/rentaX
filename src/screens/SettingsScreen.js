@@ -453,7 +453,7 @@ export default function SettingsScreen({ navigation }) {
       setSaving(false)
       Alert.alert(
         'Upload failed',
-        error?.message || 'Please run supabase-profile-media-features.sql in Supabase, then try again.'
+        error?.message || 'Profile media could not be uploaded. Please try again, and rerun supabase-profile-media-features.sql if this keeps happening.'
       )
       return
     }

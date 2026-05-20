@@ -5,6 +5,19 @@ export const PROPERTY_MEDIA_BUCKET = 'property-media'
 export const PROFILE_MEDIA_BUCKET = 'profile-media'
 export const VERIFICATION_MEDIA_BUCKET = 'verification-documents'
 
+function resolveFallbackBucket(bucket, error) {
+  const message = error?.message || ''
+
+  if (
+    bucket === PROFILE_MEDIA_BUCKET
+    && /bucket.*not found/i.test(message)
+  ) {
+    return PROPERTY_MEDIA_BUCKET
+  }
+
+  return null
+}
+
 export function normalizeMediaItem(item) {
   if (typeof item === 'string') {
     return {
@@ -96,16 +109,29 @@ export async function uploadMediaAsset({
   const response = await fetch(uri)
   const arrayBuffer = await response.arrayBuffer()
 
-  const { data, error } = await supabase.storage
-    .from(bucket)
+  let targetBucket = bucket
+  let { data, error } = await supabase.storage
+    .from(targetBucket)
     .upload(path, arrayBuffer, {
       contentType,
       upsert: false,
     })
 
+  const fallbackBucket = resolveFallbackBucket(bucket, error)
+
+  if (fallbackBucket) {
+    targetBucket = fallbackBucket
+    ;({ data, error } = await supabase.storage
+      .from(targetBucket)
+      .upload(path, arrayBuffer, {
+        contentType,
+        upsert: false,
+      }))
+  }
+
   if (error) throw error
 
-  const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(data.path)
+  const { data: publicUrlData } = supabase.storage.from(targetBucket).getPublicUrl(data.path)
 
   return {
     mediaUrl: publicUrlData.publicUrl,

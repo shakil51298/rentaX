@@ -12,8 +12,11 @@ values (
   12000000,
   array[
     'image/jpeg',
+    'image/jpg',
     'image/png',
-    'image/webp'
+    'image/webp',
+    'image/heic',
+    'image/heif'
   ]
 )
 on conflict (id) do update set
