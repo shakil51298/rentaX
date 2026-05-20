@@ -7,6 +7,7 @@ import { getUserAvatarUrl } from './userDisplay'
 import { supabaseAnonKey } from './supabase'
 
 let cachedAgoraModule = undefined
+let activeAgoraEngine = null
 
 function getExpoExtra() {
   return Constants?.expoConfig?.extra || {}
@@ -38,6 +39,27 @@ export function canUseAgoraNativeModule() {
   ]
 
   return possibleNativeModules.some(Boolean)
+}
+
+export function replaceActiveAgoraEngine(nextEngine) {
+  if (activeAgoraEngine && activeAgoraEngine !== nextEngine) {
+    try {
+      activeAgoraEngine.removeAllListeners?.()
+      activeAgoraEngine.leaveChannel?.()
+      activeAgoraEngine.stopPreview?.()
+      activeAgoraEngine.release?.()
+    } catch (error) {
+      console.warn('Previous Agora engine cleanup failed:', error?.message || error)
+    }
+  }
+
+  activeAgoraEngine = nextEngine || null
+}
+
+export function clearActiveAgoraEngine(engine) {
+  if (engine && activeAgoraEngine === engine) {
+    activeAgoraEngine = null
+  }
 }
 
 export function getAgoraRuntimeConfig() {

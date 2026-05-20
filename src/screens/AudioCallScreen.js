@@ -11,9 +11,11 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import {
   buildAgoraChannelName,
+  clearActiveAgoraEngine,
   getAgoraRuntimeConfig,
   hashAgoraUid,
   loadAgoraModule,
+  replaceActiveAgoraEngine,
   resolveAgoraToken,
   saveAgoraCallHistory,
 } from '../lib/agoraCall'
@@ -88,6 +90,8 @@ export default function AudioCallScreen({ navigation, route }) {
       engine.release()
     } catch (error) {
       console.warn('Audio call cleanup failed:', error?.message || error)
+    } finally {
+      clearActiveAgoraEngine(engine)
     }
   }, [])
 
@@ -178,6 +182,7 @@ export default function AudioCallScreen({ navigation, route }) {
         })
 
         const engine = createAgoraRtcEngine()
+        replaceActiveAgoraEngine(engine)
         rtcEngineRef.current = engine
         cleanedUpRef.current = false
 

@@ -13,9 +13,11 @@ import { Ionicons } from '@expo/vector-icons'
 import Avatar from '../components/common/Avatar'
 import {
   buildAgoraChannelName,
+  clearActiveAgoraEngine,
   getAgoraRuntimeConfig,
   hashAgoraUid,
   loadAgoraModule,
+  replaceActiveAgoraEngine,
   resolveAgoraToken,
   saveAgoraCallHistory,
 } from '../lib/agoraCall'
@@ -93,6 +95,8 @@ export default function VideoCallScreen({ navigation, route }) {
       engine.release()
     } catch (error) {
       console.warn('Video call cleanup failed:', error?.message || error)
+    } finally {
+      clearActiveAgoraEngine(engine)
     }
   }, [])
 
@@ -188,6 +192,7 @@ export default function VideoCallScreen({ navigation, route }) {
         })
 
         const engine = createAgoraRtcEngine()
+        replaceActiveAgoraEngine(engine)
         rtcEngineRef.current = engine
         cleanedUpRef.current = false
 
