@@ -24,6 +24,12 @@ import {
   resolveAgoraToken,
   saveAgoraCallHistory,
 } from '../lib/agoraCall'
+import {
+  buildCallSignalKey,
+  sendCallSignal,
+  subscribeToCallSignals,
+  unsubscribeCallSignals,
+} from '../lib/callSignaling'
 import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
 
@@ -58,6 +64,10 @@ export default function VideoCallScreen({ navigation, route }) {
     () => getProfileName(participant, 'Rental X member'),
     [participant]
   )
+  const callSignalKey = useMemo(
+    () => buildCallSignalKey('video', { callId: route?.params?.callId, channelName: channelNameFromRoute }),
+    [channelNameFromRoute, route?.params?.callId]
+  )
 
   const [stage, setStage] = useState(startedByMe ? 'preparing' : 'incoming')
   const [durationSeconds, setDurationSeconds] = useState(0)
@@ -80,6 +90,24 @@ export default function VideoCallScreen({ navigation, route }) {
   const hasStartedRef = useRef(false)
   const ringtoneRef = useRef(null)
   const callKeyRef = useRef(null)
+  const signalChannelRef = useRef(null)
+  const signalReadyRef = useRef(Promise.resolve(null))
+  const endCallRef = useRef(null)
+  const endingCallRef = useRef(false)
+  const connectedAtRef = useRef(null)
+  const joinRequestedRef = useRef(joinRequested)
+
+  useEffect(() => {
+    endCallRef.current = endCall
+  })
+
+  useEffect(() => {
+    endingCallRef.current = endingCall
+  }, [endingCall])
+
+  useEffect(() => {
+    joinRequestedRef.current = joinRequested
+  }, [joinRequested])
 
   const cleanupRtcEngine = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -134,6 +162,23 @@ export default function VideoCallScreen({ navigation, route }) {
     setEndingCall(true)
     setStage('ended')
 
+    if (!remoteEnded) {
+      const signalType =
+        !startedByMe && !joinRequestedRef.current && !wasConnectedRef.current
+          ? 'declined'
+          : 'ended'
+
+      try {
+        await signalReadyRef.current
+        await sendCallSignal(signalChannelRef.current, {
+          type: signalType,
+          senderId: currentUserIdRef.current,
+        })
+      } catch (_error) {
+        // ignore signaling errors during teardown
+      }
+    }
+
     await stopRingtone()
     cleanupRtcEngine()
 
@@ -161,6 +206,33 @@ export default function VideoCallScreen({ navigation, route }) {
       navigation.goBack()
     }
   }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe, stopRingtone])
+
+  useEffect(() => {
+    const { channel, ready } = subscribeToCallSignals(callSignalKey, (payload) => {
+      if (!mountedRef.current) return
+      if (payload?.senderId && payload.senderId === currentUserIdRef.current) return
+
+      if (payload?.type === 'accepted' && startedByMe) {
+        stopRingtone()
+        setStage((current) => (current === 'connected' ? current : 'waiting'))
+        return
+      }
+
+      if (payload?.type === 'ended' || payload?.type === 'declined') {
+        if (endingCallRef.current) return
+        endCallRef.current?.({ remoteEnded: true })
+      }
+    })
+
+    signalChannelRef.current = channel
+    signalReadyRef.current = ready.catch(() => null)
+
+    return () => {
+      unsubscribeCallSignals(channel)
+      signalChannelRef.current = null
+      signalReadyRef.current = Promise.resolve(null)
+    }
+  }, [callSignalKey, startedByMe, stopRingtone])
 
   useEffect(() => {
     mountedRef.current = true
@@ -224,6 +296,20 @@ export default function VideoCallScreen({ navigation, route }) {
 
         callKeyRef.current = callKey
 
+        await signalReadyRef.current
+
+        if (startedByMe) {
+          await sendCallSignal(signalChannelRef.current, {
+            type: 'ringing',
+            senderId: user.id,
+          })
+        } else {
+          await sendCallSignal(signalChannelRef.current, {
+            type: 'accepted',
+            senderId: user.id,
+          })
+        }
+
         const token = await resolveAgoraToken({
           channelName,
           uid: nextLocalUid,
@@ -253,7 +339,10 @@ export default function VideoCallScreen({ navigation, route }) {
         engine.addListener('onUserJoined', (_connection, joinedUid) => {
           if (!mountedRef.current) return
           wasConnectedRef.current = true
+          connectedAtRef.current = Date.now()
           setRemoteUid(joinedUid)
+          setDurationSeconds(0)
+          stopRingtone()
           setStage('connected')
         })
 
@@ -323,8 +412,9 @@ export default function VideoCallScreen({ navigation, route }) {
     }
 
     intervalRef.current = setInterval(() => {
-      setDurationSeconds((current) => current + 1)
-    }, 1000)
+      const connectedAt = connectedAtRef.current || Date.now()
+      setDurationSeconds(Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)))
+    }, 500)
 
     return () => {
       if (intervalRef.current) {
@@ -333,6 +423,26 @@ export default function VideoCallScreen({ navigation, route }) {
       }
     }
   }, [stage])
+
+  useEffect(() => {
+    if (!startedByMe) return undefined
+    if (stage !== 'joining' && stage !== 'waiting') return undefined
+    if (remoteUid) return undefined
+
+    const timeout = setTimeout(() => {
+      if (!mountedRef.current || endingCallRef.current || remoteUid) return
+      Alert.alert('No answer', `${participantName} did not join the call.`)
+      endCallRef.current?.()
+    }, 35000)
+
+    return () => clearTimeout(timeout)
+  }, [participantName, remoteUid, stage, startedByMe])
+
+  async function acceptIncomingCall() {
+    if (endingCall || joinRequested) return
+    setJoinRequested(true)
+    setStage('preparing')
+  }
 
   useEffect(() => {
     const engine = rtcEngineRef.current
@@ -631,10 +741,7 @@ export default function VideoCallScreen({ navigation, route }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => {
-                setJoinRequested(true)
-                setStage('preparing')
-              }}
+              onPress={acceptIncomingCall}
               style={{
                 width: 74,
                 height: 74,
