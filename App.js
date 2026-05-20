@@ -7,15 +7,17 @@ import { Text, View } from 'react-native'
 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { hasSupabaseConfig, supabaseConfigError } from './src/lib/supabase'
+import { AppSettingsProvider, useAppSettings } from './src/lib/appSettings'
 
-export default function App() {
+function AppContent() {
   const [fontsLoaded, fontError] = useFonts({
     ...Ionicons.font,
   })
+  const { theme, t } = useAppSettings()
 
   if (!fontsLoaded && !fontError) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View
           style={{
             flex: 1,
@@ -24,18 +26,18 @@ export default function App() {
             paddingHorizontal: 24,
           }}
         >
-          <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827', textAlign: 'center' }}>
-            Rental X is starting
+          <Text style={{ fontSize: 24, fontWeight: '900', color: theme.text, textAlign: 'center' }}>
+            {t('appStarting', 'Rental X is starting')}
           </Text>
           <Text
             style={{
               marginTop: 12,
-              color: '#64748b',
+              color: theme.mutedText,
               textAlign: 'center',
               lineHeight: 22,
             }}
           >
-            Loading app resources...
+            {t('appLoadingResources', 'Loading app resources...')}
           </Text>
         </View>
       </SafeAreaView>
@@ -48,7 +50,7 @@ export default function App() {
 
   if (!hasSupabaseConfig) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View
           style={{
             flex: 1,
@@ -57,13 +59,13 @@ export default function App() {
             paddingHorizontal: 24,
           }}
         >
-          <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827', textAlign: 'center' }}>
-            Rental X configuration missing
+          <Text style={{ fontSize: 24, fontWeight: '900', color: theme.text, textAlign: 'center' }}>
+            {t('appConfigMissing', 'Rental X configuration missing')}
           </Text>
           <Text
             style={{
               marginTop: 12,
-              color: '#475569',
+              color: theme.mutedText,
               textAlign: 'center',
               lineHeight: 22,
             }}
@@ -73,12 +75,15 @@ export default function App() {
           <Text
             style={{
               marginTop: 12,
-              color: '#64748b',
+              color: theme.mutedText,
               textAlign: 'center',
               lineHeight: 22,
             }}
           >
-            Add your EXPO_PUBLIC Supabase values to the EAS build profile, then rebuild the APK.
+            {t(
+              'appConfigHelp',
+              'Add your EXPO_PUBLIC Supabase values to the EAS build profile, then rebuild the APK.'
+            )}
           </Text>
         </View>
       </SafeAreaView>
@@ -86,4 +91,12 @@ export default function App() {
   }
 
   return <AppNavigator />
+}
+
+export default function App() {
+  return (
+    <AppSettingsProvider>
+      <AppContent />
+    </AppSettingsProvider>
+  )
 }

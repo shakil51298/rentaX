@@ -19,6 +19,7 @@ import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
+import { APP_LANGUAGES, APP_THEMES, useAppSettings } from '../lib/appSettings'
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -26,7 +27,7 @@ function displayNameFromEmail(email) {
   return email.split('@')[0]
 }
 
-function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0 }) {
+function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -48,17 +49,17 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0 }) {
             width: 42,
             height: 42,
             borderRadius: 21,
-            backgroundColor: '#eff6ff',
+            backgroundColor: theme.accentSoft,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name={icon} size={22} color="#2563eb" />
+          <Ionicons name={icon} size={22} color={theme.accent} />
         </View>
 
         <View style={{ marginLeft: 12, flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
               {title}
             </Text>
             {badgeCount ? (
@@ -80,7 +81,7 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0 }) {
               </View>
             ) : null}
           </View>
-          <Text style={{ color: '#64748b', marginTop: 4 }}>
+          <Text style={{ color: theme.mutedText, marginTop: 4 }}>
             {subtitle}
           </Text>
         </View>
@@ -91,7 +92,84 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0 }) {
   )
 }
 
+function ThemeSwatch({ preset, selected, theme, title, onPress }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.86}
+      style={{
+        width: '18.4%',
+        minWidth: 58,
+        alignItems: 'center',
+        gap: 7,
+      }}
+    >
+      <View
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: 18,
+          backgroundColor: preset.surface,
+          borderWidth: 2,
+          borderColor: selected ? theme.accent : preset.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            backgroundColor: preset.accent,
+          }}
+        />
+      </View>
+      <Text
+        style={{
+          color: selected ? theme.text : theme.mutedText,
+          fontSize: 10,
+          fontWeight: selected ? '900' : '700',
+          textAlign: 'center',
+        }}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
+function LanguageOption({ label, selected, onPress, theme }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.86}
+      style={{
+        flex: 1,
+        minHeight: 42,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: selected ? theme.accent : theme.border,
+        backgroundColor: selected ? theme.accentSoft : theme.surfaceMuted,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        style={{
+          color: selected ? theme.accentStrong : theme.mutedText,
+          fontSize: 13,
+          fontWeight: '900',
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
 export default function ProfileScreen({ navigation, embeddedTabShell = false }) {
+  const { theme, language, setLanguage, themeId, setThemeId, t } = useAppSettings()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [email, setEmail] = useState('')
@@ -292,21 +370,21 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     navigation.navigate('Connections', {
       userId: currentUserId,
       kind,
-      title: kind === 'following' ? 'Following' : 'Followers',
+      title: kind === 'following' ? t('profileFollowing', 'Following') : t('profileFollowers', 'Followers'),
       isOwnProfile: true,
     })
   }
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['top', 'left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top', 'left', 'right', 'bottom']}>
       <SwipeTabView navigation={navigation} activeTab="profile">
         <View style={{ flex: 1 }}>
           <ScrollView
@@ -314,12 +392,12 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
             contentContainerStyle={{ paddingBottom: 140 }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={{ backgroundColor: '#fff', paddingBottom: 18 }}>
+            <View style={{ backgroundColor: theme.surface, paddingBottom: 18 }}>
               <TouchableOpacity
                 activeOpacity={0.92}
                 onPress={() => openImageViewer('Cover photo', coverUrl)}
                 disabled={!coverUrl}
-                style={{ height: 96, backgroundColor: '#1877F2' }}
+                style={{ height: 96, backgroundColor: theme.accent }}
               >
                 {coverUrl ? (
                   <Image
@@ -354,21 +432,21 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       width: 76,
                       height: 76,
                       borderRadius: 38,
-                      backgroundColor: '#dbeafe',
+                      backgroundColor: theme.hero,
                       borderWidth: 4,
                       borderColor: '#fff',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 26, fontWeight: '900', color: '#1d4ed8' }}>
+                    <Text style={{ fontSize: 26, fontWeight: '900', color: theme.heroText }}>
                       {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
                     </Text>
                   </View>
                 )}
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-                  <Text style={{ fontSize: 20, fontWeight: '900', color: '#111827' }}>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: theme.text }}>
                     {displayName || 'User'}
                   </Text>
 
@@ -376,13 +454,13 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                     <Ionicons
                       name="checkmark-circle"
                       size={18}
-                      color="#1877F2"
+                      color={theme.accent}
                       style={{ marginLeft: 6 }}
                     />
                   ) : null}
                 </View>
 
-                <Text style={{ marginTop: 3, color: '#64748b', fontSize: 13 }}>
+                <Text style={{ marginTop: 3, color: theme.mutedText, fontSize: 13 }}>
                   {email}
                 </Text>
 
@@ -392,7 +470,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                     width: '100%',
                     marginTop: 14,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     borderRadius: 18,
                     overflow: 'hidden',
                   }}
@@ -402,14 +480,14 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       flex: 1,
                       alignItems: 'center',
                       paddingVertical: 14,
-                      backgroundColor: '#fff',
+                      backgroundColor: theme.surface,
                     }}
                   >
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
                       {socialCounts.posts}
                     </Text>
-                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
-                      Posts
+                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
+                      {t('profilePosts', 'Posts')}
                     </Text>
                   </View>
 
@@ -419,16 +497,16 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       flex: 1,
                       alignItems: 'center',
                       paddingVertical: 14,
-                      backgroundColor: '#fff',
+                      backgroundColor: theme.surface,
                       borderLeftWidth: 1,
-                      borderLeftColor: '#e2e8f0',
+                      borderLeftColor: theme.border,
                     }}
                   >
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
                       {socialCounts.followers}
                     </Text>
-                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
-                      Followers
+                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
+                      {t('profileFollowers', 'Followers')}
                     </Text>
                   </TouchableOpacity>
 
@@ -438,16 +516,16 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       flex: 1,
                       alignItems: 'center',
                       paddingVertical: 14,
-                      backgroundColor: '#fff',
+                      backgroundColor: theme.surface,
                       borderLeftWidth: 1,
-                      borderLeftColor: '#e2e8f0',
+                      borderLeftColor: theme.border,
                     }}
                   >
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
                       {socialCounts.following}
                     </Text>
-                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
-                      Following
+                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
+                      {t('profileFollowing', 'Following')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -455,27 +533,148 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
             </View>
 
             <View style={{ padding: 16, gap: 16 }}>
+              <View
+                style={{
+                  backgroundColor: theme.surface,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  padding: 16,
+                  gap: 14,
+                }}
+              >
+                <View>
+                  <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                    {t('profileGeneralSettings', 'General settings')}
+                  </Text>
+                  <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
+                    {t('profileGeneralSettingsSubtitle', 'Change the app theme and switch between Bangla and English.')}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    padding: 12,
+                    gap: 12,
+                  }}
+                >
+                  <View>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                      {t('settingsThemeTitle', 'Theme')}
+                    </Text>
+                    <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
+                      {t('settingsThemeSubtitle', 'Pick the colors and button style you want across the app.')}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 }}>
+                    {APP_THEMES.map((preset) => (
+                      <ThemeSwatch
+                        key={preset.id}
+                        preset={preset}
+                        selected={themeId === preset.id}
+                        theme={theme}
+                        title={t(preset.nameKey, preset.id)}
+                        onPress={() => setThemeId(preset.id)}
+                      />
+                    ))}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View
+                      style={{
+                        flex: 1,
+                        minHeight: 40,
+                        borderRadius: 13,
+                        backgroundColor: theme.accent,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>
+                        {t('settingsPreviewPrimary', 'Primary')}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        flex: 1,
+                        minHeight: 40,
+                        borderRadius: 13,
+                        backgroundColor: theme.accentSoft,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: theme.accentStrong, fontSize: 12, fontWeight: '900' }}>
+                        {t('settingsPreviewSoft', 'Soft')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    padding: 12,
+                    gap: 12,
+                  }}
+                >
+                  <View>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                      {t('settingsLanguageTitle', 'Language')}
+                    </Text>
+                    <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
+                      {t('settingsLanguageSubtitle', 'Switch app text between English and Bangla.')}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {APP_LANGUAGES.map((option) => (
+                      <LanguageOption
+                        key={option.id}
+                        label={option.label}
+                        selected={language === option.id}
+                        onPress={() => setLanguage(option.id)}
+                        theme={theme}
+                      />
+                    ))}
+                  </View>
+                </View>
+              </View>
+
               <ActionCard
                 icon="newspaper-outline"
-                title="Ads Management"
-                subtitle="View, edit, share, and delete your property posts."
+                title={t('profileAdsManagement', 'Ads Management')}
+                subtitle={t('profileAdsManagementSubtitle', 'View, edit, share, and delete your property posts.')}
+                theme={theme}
                 onPress={() => navigation.navigate('AdsManagement')}
               />
 
               {showAdminPanel ? (
                 <ActionCard
                   icon="shield-checkmark-outline"
-                  title="Admin panel"
-                  subtitle="Review owner and property verification requests."
+                  title={t('profileAdminPanel', 'Admin panel')}
+                  subtitle={t('profileAdminPanelSubtitle', 'Review owner and property verification requests.')}
                   badgeCount={adminPanelCount}
+                  theme={theme}
                   onPress={() => navigation.navigate('AdminPanel')}
                 />
               ) : null}
 
               <ActionCard
                 icon="settings-outline"
-                title="Settings"
-                subtitle="Profile, notifications, password, security, and account type."
+                title={t('profileSettings', 'Settings')}
+                subtitle={t('profileSettingsSubtitle', 'Profile, notifications, password, security, and account type.')}
+                theme={theme}
                 onPress={() => navigation.navigate('Settings')}
               />
             </View>

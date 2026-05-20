@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { getUnreadNotificationCount } from '../../lib/notifications'
 import { playNotificationSound } from '../../lib/sounds'
 import { navigateToMainTab } from './tabNavigation'
+import { useAppSettings } from '../../lib/appSettings'
 
 function Badge({ count }) {
   if (!count) return null
@@ -50,6 +51,7 @@ export default function BottomNavBar({
   userType = 'renter',
 }) {
   const insets = useSafeAreaInsets()
+  const { theme } = useAppSettings()
   const [counts, setCounts] = useState({
     messageUnreadCount: messageUnreadCount ?? 0,
     notificationUnreadCount: notificationUnreadCount ?? 0,
@@ -204,14 +206,14 @@ export default function BottomNavBar({
         paddingTop: 8,
         paddingBottom: Math.max(insets.bottom, 10),
         minHeight: 58 + Math.max(insets.bottom, 10),
-        backgroundColor: '#fff',
+        backgroundColor: theme.navBackground,
         borderTopWidth: 1,
-        borderTopColor: '#eee',
+        borderTopColor: theme.navBorder,
       }}
     >
       {tabs.map((tab) => {
         const isActive = tab.key === 'create' ? false : activeTab === tab.key
-        const color = isActive ? '#1877F2' : '#111'
+        const color = isActive ? theme.accent : theme.text
         const badgeCount =
           tab.key === 'chat'
             ? counts.messageUnreadCount

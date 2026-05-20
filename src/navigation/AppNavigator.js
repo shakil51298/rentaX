@@ -45,6 +45,7 @@ import {
   registerDevicePushToken,
   routeFromNotificationData,
 } from '../lib/pushNotifications'
+import { useAppSettings } from '../lib/appSettings'
 
 const LIVE_ALERT_NOTIFICATION_TYPES = new Set([
   'saved_search_match',
@@ -70,11 +71,13 @@ const TAB_ACTIVE_KEYS = {
 function GuestLockedScreen({
   navigation,
   icon,
-  title,
-  subtitle,
+  titleKey,
+  subtitleKey,
 }) {
+  const { theme, t } = useAppSettings()
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f4f7fb' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <View
         style={{
           flex: 1,
@@ -88,51 +91,51 @@ function GuestLockedScreen({
             width: 72,
             height: 72,
             borderRadius: 36,
-            backgroundColor: '#eff6ff',
+            backgroundColor: theme.accentSoft,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name={icon} size={34} color="#2563eb" />
+          <Ionicons name={icon} size={34} color={theme.accent} />
         </View>
 
         <Text
           style={{
             marginTop: 18,
-            color: '#0f172a',
+            color: theme.text,
             fontSize: 22,
             fontWeight: '900',
             textAlign: 'center',
           }}
         >
-          {title}
+          {t(titleKey, '')}
         </Text>
 
         <Text
           style={{
             marginTop: 10,
-            color: '#64748b',
+            color: theme.mutedText,
             fontSize: 14,
             lineHeight: 21,
             textAlign: 'center',
             maxWidth: 280,
           }}
         >
-          {subtitle}
+          {t(subtitleKey, '')}
         </Text>
 
         <TouchableOpacity
           onPress={() => navigation.getParent()?.navigate('Login')}
           style={{
             marginTop: 20,
-            backgroundColor: '#1877F2',
+            backgroundColor: theme.accent,
             borderRadius: 14,
             paddingHorizontal: 22,
             paddingVertical: 13,
           }}
         >
           <Text style={{ color: '#fff', fontWeight: '900', fontSize: 15 }}>
-            Login or Register
+            {t('guestLoginOrRegister', 'Login or Register')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -201,8 +204,8 @@ function MainTabsNavigator({ guestMode = false }) {
       <GuestLockedScreen
         {...props}
         icon="chatbubble-ellipses-outline"
-        title="Chat needs an account"
-        subtitle="Create an account to message owners and continue conversations."
+        titleKey="guestChatTitle"
+        subtitleKey="guestChatSubtitle"
       />
     ) : (
       <ChatScreen {...props} embeddedTabShell />
@@ -214,8 +217,8 @@ function MainTabsNavigator({ guestMode = false }) {
       <GuestLockedScreen
         {...props}
         icon="heart-outline"
-        title="Favorites need an account"
-        subtitle="Login to save listings and come back to them later."
+        titleKey="guestFavoriteTitle"
+        subtitleKey="guestFavoriteSubtitle"
       />
     ) : (
       <FavoriteScreen {...props} embeddedTabShell />
@@ -227,8 +230,8 @@ function MainTabsNavigator({ guestMode = false }) {
       <GuestLockedScreen
         {...props}
         icon="notifications-outline"
-        title="Notifications need an account"
-        subtitle="Login to get message updates, alerts, and admin or verification notices."
+        titleKey="guestNotificationTitle"
+        subtitleKey="guestNotificationSubtitle"
       />
     ) : (
       <NotificationsScreen {...props} embeddedTabShell />
@@ -240,8 +243,8 @@ function MainTabsNavigator({ guestMode = false }) {
       <GuestLockedScreen
         {...props}
         icon="person-outline"
-        title="Profile needs an account"
-        subtitle="Create an account to manage your profile, listings, and saved activity."
+        titleKey="guestProfileTitle"
+        subtitleKey="guestProfileSubtitle"
       />
     ) : (
       <ProfileScreen {...props} embeddedTabShell />
@@ -426,6 +429,7 @@ export default function AppNavigator() {
   const lastOpenedCallKeyRef = useRef(null)
   const [session, setSession] = useState(undefined)
   const [guestMode, setGuestMode] = useState(false)
+  const { theme, t } = useAppSettings()
 
   const handleOpenNotification = useCallback((payload) => {
     if (!payload) return
@@ -493,8 +497,8 @@ export default function AppNavigator() {
 
   if (session === undefined) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f7fb' }}>
-        <ActivityIndicator size="large" color="#1877F2" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     )
   }
@@ -511,7 +515,15 @@ export default function AppNavigator() {
           }
         }}
       >
-      <Stack.Navigator initialRouteName={session || guestMode ? 'MainTabs' : 'Login'}>
+      <Stack.Navigator
+        initialRouteName={session || guestMode ? 'MainTabs' : 'Login'}
+        screenOptions={{
+          headerStyle: { backgroundColor: theme.surface },
+          headerTintColor: theme.text,
+          headerTitleStyle: { color: theme.text, fontWeight: '800' },
+          contentStyle: { backgroundColor: theme.background },
+        }}
+      >
         <Stack.Screen
           name="Login"
           component={LoginScreen}
@@ -525,11 +537,15 @@ export default function AppNavigator() {
         <Stack.Screen name="Property">
           {(props) => <PropertyScreen {...props} guestMode={guestMode} />}
         </Stack.Screen>
-        <Stack.Screen name="CreatePost" component={CreatePostScreen} />
+        <Stack.Screen
+          name="CreatePost"
+          component={CreatePostScreen}
+          options={{ title: t('stackCreatePost', 'Create Post') }}
+        />
         <Stack.Screen
           name="ChatSettings"
           component={ChatSettingsScreen}
-          options={{ title: 'Chat settings' }}
+          options={{ title: t('stackChatSettings', 'Chat settings') }}
         />
         <Stack.Screen
           name="AudioCall"
@@ -549,58 +565,62 @@ export default function AppNavigator() {
         <Stack.Screen
           name="OwnerProfile"
           component={OwnerProfileScreen}
-          options={{ title: 'Public Profile' }}
+          options={{ title: t('stackOwnerProfile', 'Public Profile') }}
         />
-        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{ title: t('stackSettings', 'Settings') }}
+        />
         <Stack.Screen
           name="VerificationCenter"
           component={VerificationCenterScreen}
-          options={{ title: 'Verification center' }}
+          options={{ title: t('stackVerificationCenter', 'Verification center') }}
         />
         <Stack.Screen
           name="AdminPanel"
           component={AdminPanelScreen}
-          options={{ title: 'Admin panel' }}
+          options={{ title: t('stackAdminPanel', 'Admin panel') }}
         />
         <Stack.Screen
           name="ReviewVerify"
           component={ReviewVerifyScreen}
-          options={{ title: 'Review Verify' }}
+          options={{ title: t('stackReviewVerify', 'Review Verify') }}
         />
         <Stack.Screen
           name="AdminUsers"
           component={AdminUsersScreen}
-          options={{ title: 'Total Users' }}
+          options={{ title: t('stackAdminUsers', 'Total Users') }}
         />
         <Stack.Screen
           name="AdminReports"
           component={AdminReportsScreen}
-          options={{ title: 'Report Queue' }}
+          options={{ title: t('stackAdminReports', 'Report Queue') }}
         />
         <Stack.Screen
           name="AdminBanners"
           component={AdminBannersScreen}
-          options={{ title: 'Home Banners' }}
+          options={{ title: t('stackAdminBanners', 'Home Banners') }}
         />
         <Stack.Screen
           name="AdminUserDetail"
           component={AdminUserDetailScreen}
-          options={{ title: 'User Detail' }}
+          options={{ title: t('stackAdminUserDetail', 'User Detail') }}
         />
         <Stack.Screen
           name="AdminUserPosts"
           component={AdminUserPostsScreen}
-          options={{ title: 'User Posts' }}
+          options={{ title: t('stackAdminUserPosts', 'User Posts') }}
         />
         <Stack.Screen
           name="CustomerCare"
           component={CustomerCareScreen}
-          options={{ title: 'Customer Care' }}
+          options={{ title: t('stackCustomerCare', 'Customer Care') }}
         />
         <Stack.Screen
           name="ReportIssue"
           component={ReportIssueScreen}
-          options={{ title: 'Report' }}
+          options={{ title: t('stackReportIssue', 'Report') }}
         />
         <Stack.Screen
           name="Connections"
@@ -620,22 +640,22 @@ export default function AppNavigator() {
         <Stack.Screen
           name="AdsManagement"
           component={AdsManagementScreen}
-          options={{ title: 'Ads Management' }}
+          options={{ title: t('stackAdsManagement', 'Ads Management') }}
         />
         <Stack.Screen
           name="VisitRequests"
           component={VisitRequestsScreen}
-          options={{ title: 'Visit Requests' }}
+          options={{ title: t('stackVisitRequests', 'Visit Requests') }}
         />
         <Stack.Screen
           name="RecentlyViewed"
           component={RecentlyViewedScreen}
-          options={{ title: 'Recently Viewed' }}
+          options={{ title: t('stackRecentlyViewed', 'Recently Viewed') }}
         />
         <Stack.Screen
           name="CompareProperties"
           component={ComparePropertiesScreen}
-          options={{ title: 'Compare Properties' }}
+          options={{ title: t('stackCompareProperties', 'Compare Properties') }}
         />
       </Stack.Navigator>
       </NavigationContainer>

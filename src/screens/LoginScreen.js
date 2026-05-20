@@ -18,23 +18,25 @@ import appConfig from '../../app.json'
 import { supabase } from '../lib/supabase'
 import { activateGuestMode, clearGuestMode } from '../lib/guestSession'
 import { ensureUserProfileRecord } from '../lib/profileSync'
+import { useAppSettings } from '../lib/appSettings'
 
 const USER_TYPES = [
   {
     id: 'property_owner',
-    title: 'Property owner',
-    subtitle: 'Post and manage rental listings',
+    titleKey: 'authPropertyOwner',
+    subtitleKey: 'authPropertyOwnerSubtitle',
     icon: 'business-outline',
   },
   {
     id: 'renter',
-    title: 'Finding property',
-    subtitle: 'Search and save homes for rent',
+    titleKey: 'authFindingProperty',
+    subtitleKey: 'authFindingPropertySubtitle',
     icon: 'search-outline',
   },
 ]
 
 export default function LoginScreen({ navigation }) {
+  const { theme, t } = useAppSettings()
   const scrollRef = useRef(null)
   const [mode, setMode] = useState('login')
   const [name, setName] = useState('')
@@ -87,22 +89,22 @@ export default function LoginScreen({ navigation }) {
     const cleanEmail = email.trim()
 
     if (!cleanEmail || !password) {
-      Alert.alert('Missing details', 'Please enter your email and password.')
+      Alert.alert(t('authMissingDetails', 'Missing details'), t('authMissingDetailsBody', 'Please enter your email and password.'))
       return false
     }
 
     if (isRegisterMode && !name.trim()) {
-      Alert.alert('Missing name', 'Please enter your full name.')
+      Alert.alert(t('authMissingName', 'Missing name'), t('authMissingNameBody', 'Please enter your full name.'))
       return false
     }
 
     if (isRegisterMode && password.length < 6) {
-      Alert.alert('Weak password', 'Password should be at least 6 characters.')
+      Alert.alert(t('authWeakPassword', 'Weak password'), t('authWeakPasswordBody', 'Password should be at least 6 characters.'))
       return false
     }
 
     if (isRegisterMode && password !== confirmPassword) {
-      Alert.alert('Password mismatch', 'Both passwords should match.')
+      Alert.alert(t('authPasswordMismatch', 'Password mismatch'), t('authPasswordMismatchBody', 'Both passwords should match.'))
       return false
     }
 
@@ -122,7 +124,7 @@ export default function LoginScreen({ navigation }) {
     setLoading(false)
 
     if (error) {
-      Alert.alert('Login failed', error.message)
+      Alert.alert(t('authLoginFailed', 'Login failed'), error.message)
       return
     }
 
@@ -157,7 +159,7 @@ export default function LoginScreen({ navigation }) {
           name: name.trim(),
           full_name: name.trim(),
           user_type: userType,
-          user_type_label: selectedType?.title || 'Finding property',
+          user_type_label: selectedType ? t(selectedType.titleKey, 'Finding property') : t('authFindingProperty', 'Finding property'),
         },
       },
     })
@@ -165,7 +167,7 @@ export default function LoginScreen({ navigation }) {
     setLoading(false)
 
     if (error) {
-      Alert.alert('Registration failed', error.message)
+      Alert.alert(t('authRegistrationFailed', 'Registration failed'), error.message)
       return
     }
 
@@ -181,8 +183,8 @@ export default function LoginScreen({ navigation }) {
     }
 
     Alert.alert(
-      'Check your email',
-      'Your account was created. Please confirm your email, then log in.'
+      t('authCheckEmail', 'Check your email'),
+      t('authCheckEmailBody', 'Your account was created. Please confirm your email, then log in.')
     )
     resetFormForMode('login')
   }
@@ -205,7 +207,7 @@ export default function LoginScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f4f7fb' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -231,11 +233,11 @@ export default function LoginScreen({ navigation }) {
               width: 80,
               height: 80,
               borderRadius: 20,
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 1,
-              borderColor: '#e5eaf2',
+              borderColor: theme.border,
             }}
           >
             <Image
@@ -250,11 +252,11 @@ export default function LoginScreen({ navigation }) {
               marginTop: 12,
               fontSize: 22,
               fontWeight: '900',
-              color: '#0f172a',
+              color: theme.text,
               letterSpacing: 0,
             }}
           >
-            Rental X
+            {t('appName', 'Rental X')}
           </Text>
 
           <Text
@@ -262,33 +264,33 @@ export default function LoginScreen({ navigation }) {
               marginTop: 4,
               fontSize: 12,
               fontWeight: '700',
-              color: '#64748b',
+              color: theme.mutedText,
               letterSpacing: 0,
             }}
           >
-            Rent. Live. Connect.
+            {t('appTagline', 'Rent. Live. Connect.')}
           </Text>
 
           <Text
             style={{
               marginTop: 8,
               fontSize: 13,
-              color: '#94a3b8',
+              color: theme.mutedText,
               textAlign: 'center',
               lineHeight: 19,
               maxWidth: 240,
             }}
           >
-            Find the right place, talk to owners directly, and move with confidence.
+            {t('appDescription', 'Find the right place, talk to owners directly, and move with confidence.')}
           </Text>
         </View>
 
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 18,
             borderWidth: 1,
-            borderColor: '#e5eaf2',
+            borderColor: theme.border,
             padding: 18,
             shadowColor: '#0f172a',
             shadowOpacity: 0.04,
@@ -300,7 +302,7 @@ export default function LoginScreen({ navigation }) {
           <View
             style={{
               flexDirection: 'row',
-              backgroundColor: '#eef2f7',
+              backgroundColor: theme.surfaceMuted,
               borderRadius: 12,
               padding: 4,
               marginBottom: 16,
@@ -317,18 +319,17 @@ export default function LoginScreen({ navigation }) {
                     flex: 1,
                     paddingVertical: 11,
                     borderRadius: 9,
-                    backgroundColor: isActive ? '#fff' : 'transparent',
+                    backgroundColor: isActive ? theme.surface : 'transparent',
                     alignItems: 'center',
                   }}
                 >
                   <Text
                     style={{
-                      color: isActive ? '#111827' : '#64748b',
+                      color: isActive ? theme.text : theme.mutedText,
                       fontWeight: '700',
-                      textTransform: 'capitalize',
                     }}
                   >
-                    {item}
+                    {item === 'login' ? t('authLogin', 'Login') : t('authRegister', 'Register')}
                   </Text>
                 </TouchableOpacity>
               )
@@ -337,32 +338,33 @@ export default function LoginScreen({ navigation }) {
 
           {isRegisterMode ? (
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 7 }}>
-                Full name
+              <Text style={{ fontSize: 13, color: theme.mutedText, fontWeight: '700', marginBottom: 7 }}>
+                {t('authFullName', 'Full name')}
               </Text>
 
               <TextInput
-                placeholder="Enter your name"
+                placeholder={t('authEnterName', 'Enter your name')}
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
                 textContentType="name"
                 style={{
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 12,
                   paddingHorizontal: 14,
                   paddingVertical: 13,
                   fontSize: 15,
+                  color: theme.text,
                 }}
               />
             </View>
           ) : null}
 
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 7 }}>
-              Email
+            <Text style={{ fontSize: 13, color: theme.mutedText, fontWeight: '700', marginBottom: 7 }}>
+              {t('authEmail', 'Email')}
             </Text>
 
             <TextInput
@@ -374,13 +376,14 @@ export default function LoginScreen({ navigation }) {
               keyboardType="email-address"
               textContentType="emailAddress"
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 borderRadius: 12,
                 paddingHorizontal: 14,
                 paddingVertical: 13,
                 fontSize: 15,
+                color: theme.text,
               }}
             />
           </View>
@@ -391,15 +394,15 @@ export default function LoginScreen({ navigation }) {
               setPasswordFieldY(event.nativeEvent.layout.y)
             }}
           >
-            <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 7 }}>
-              Password
+            <Text style={{ fontSize: 13, color: theme.mutedText, fontWeight: '700', marginBottom: 7 }}>
+              {t('authPassword', 'Password')}
             </Text>
 
             <View
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 borderRadius: 12,
                 paddingLeft: 14,
                 paddingRight: 10,
@@ -409,7 +412,7 @@ export default function LoginScreen({ navigation }) {
               }}
             >
               <TextInput
-                placeholder="Enter your password"
+                placeholder={t('authEnterPassword', 'Enter your password')}
                 value={password}
                 onChangeText={setPassword}
                 onFocus={() => scrollToField(passwordFieldY)}
@@ -419,7 +422,7 @@ export default function LoginScreen({ navigation }) {
                   flex: 1,
                   paddingVertical: 13,
                   fontSize: 15,
-                  color: '#0f172a',
+                  color: theme.text,
                 }}
               />
 
@@ -436,7 +439,7 @@ export default function LoginScreen({ navigation }) {
                 <Ionicons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={19}
-                  color="#64748b"
+                  color={theme.mutedText}
                 />
               </TouchableOpacity>
             </View>
@@ -450,15 +453,15 @@ export default function LoginScreen({ navigation }) {
                   setConfirmPasswordFieldY(event.nativeEvent.layout.y)
                 }}
               >
-                <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 7 }}>
-                  Confirm password
+                <Text style={{ fontSize: 13, color: theme.mutedText, fontWeight: '700', marginBottom: 7 }}>
+                  {t('authConfirmPassword', 'Confirm password')}
                 </Text>
 
                 <View
                   style={{
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     borderRadius: 12,
                     paddingLeft: 14,
                     paddingRight: 10,
@@ -468,7 +471,7 @@ export default function LoginScreen({ navigation }) {
                   }}
                 >
                   <TextInput
-                    placeholder="Re-enter your password"
+                    placeholder={t('authReenterPassword', 'Re-enter your password')}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     onFocus={() => scrollToField(confirmPasswordFieldY)}
@@ -478,7 +481,7 @@ export default function LoginScreen({ navigation }) {
                       flex: 1,
                       paddingVertical: 13,
                       fontSize: 15,
-                      color: '#0f172a',
+                      color: theme.text,
                     }}
                   />
 
@@ -495,14 +498,14 @@ export default function LoginScreen({ navigation }) {
                     <Ionicons
                       name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                       size={19}
-                      color="#64748b"
+                      color={theme.mutedText}
                     />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 8 }}>
-                Account type
+              <Text style={{ fontSize: 13, color: theme.mutedText, fontWeight: '700', marginBottom: 8 }}>
+                {t('authAccountType', 'Account type')}
               </Text>
 
               <View style={{ gap: 10, marginBottom: 18 }}>
@@ -516,8 +519,8 @@ export default function LoginScreen({ navigation }) {
                       activeOpacity={0.86}
                       style={{
                         borderWidth: 1,
-                        borderColor: isSelected ? '#1877F2' : '#e2e8f0',
-                        backgroundColor: isSelected ? '#eff6ff' : '#f8fafc',
+                        borderColor: isSelected ? theme.accent : theme.border,
+                        backgroundColor: isSelected ? theme.accentSoft : theme.surfaceMuted,
                         borderRadius: 13,
                         padding: 12,
                         flexDirection: 'row',
@@ -529,7 +532,7 @@ export default function LoginScreen({ navigation }) {
                           width: 40,
                           height: 40,
                           borderRadius: 20,
-                          backgroundColor: isSelected ? '#1877F2' : '#e2e8f0',
+                          backgroundColor: isSelected ? theme.accent : theme.border,
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
@@ -537,24 +540,24 @@ export default function LoginScreen({ navigation }) {
                         <Ionicons
                           name={item.icon}
                           size={21}
-                          color={isSelected ? '#fff' : '#475569'}
+                          color={isSelected ? '#fff' : theme.mutedText}
                         />
                       </View>
 
                       <View style={{ marginLeft: 11, flex: 1 }}>
-                        <Text style={{ color: '#111827', fontWeight: '800' }}>
-                          {item.title}
+                        <Text style={{ color: theme.text, fontWeight: '800' }}>
+                          {t(item.titleKey, '')}
                         </Text>
 
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                          {item.subtitle}
+                        <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 2 }}>
+                          {t(item.subtitleKey, '')}
                         </Text>
                       </View>
 
                       <Ionicons
                         name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
                         size={23}
-                        color={isSelected ? '#1877F2' : '#94a3b8'}
+                        color={isSelected ? theme.accent : theme.mutedText}
                       />
                     </TouchableOpacity>
                   )
@@ -568,7 +571,7 @@ export default function LoginScreen({ navigation }) {
             activeOpacity={0.9}
             disabled={loading}
             style={{
-              backgroundColor: loading ? '#8bbcf7' : '#1877F2',
+              backgroundColor: loading ? theme.accentStrong : theme.accent,
               borderRadius: 13,
               paddingVertical: 15,
               alignItems: 'center',
@@ -581,7 +584,7 @@ export default function LoginScreen({ navigation }) {
             ) : null}
 
             <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>
-              {isRegisterMode ? 'Create account' : 'Login'}
+              {isRegisterMode ? t('authCreateAccount', 'Create account') : t('authLogin', 'Login')}
             </Text>
           </TouchableOpacity>
 
@@ -589,10 +592,10 @@ export default function LoginScreen({ navigation }) {
             onPress={() => resetFormForMode(isRegisterMode ? 'login' : 'register')}
             style={{ paddingVertical: 16, alignItems: 'center' }}
           >
-            <Text style={{ color: '#475569' }}>
-              {isRegisterMode ? 'Already have an account?' : "Don't have an account?"}
-              <Text style={{ color: '#1877F2', fontWeight: '800' }}>
-                {isRegisterMode ? ' Login' : ' Register'}
+            <Text style={{ color: theme.mutedText }}>
+              {isRegisterMode ? t('authAlreadyHaveAccount', 'Already have an account?') : t('authDontHaveAccount', "Don't have an account?")}
+              <Text style={{ color: theme.accent, fontWeight: '800' }}>
+                {isRegisterMode ? ` ${t('authLogin', 'Login')}` : ` ${t('authRegister', 'Register')}`}
               </Text>
             </Text>
           </TouchableOpacity>
@@ -601,19 +604,19 @@ export default function LoginScreen({ navigation }) {
             onPress={continueAsGuest}
             style={{
               borderTopWidth: 1,
-              borderTopColor: '#eef2f7',
+              borderTopColor: theme.border,
               paddingTop: 14,
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: '#64748b', fontWeight: '700' }}>
-              Skip for now
+              <Text style={{ color: theme.mutedText, fontWeight: '700' }}>
+              {t('authSkipForNow', 'Skip for now')}
             </Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={{ color: '#94a3b8', textAlign: 'center', marginTop: 18, fontSize: 12 }}>
-          Rental X version {appConfig.expo.version}
+        <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 18, fontSize: 12 }}>
+          {t('appName', 'Rental X')} version {appConfig.expo.version}
         </Text>
         </View>
       </ScrollView>
