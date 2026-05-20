@@ -12,10 +12,16 @@ values (
   25000000,
   array[
     'image/jpeg',
+    'image/jpg',
     'image/png',
     'image/webp',
+    'image/heic',
+    'image/heif',
     'video/mp4',
-    'video/quicktime'
+    'video/quicktime',
+    'video/webm',
+    'video/3gpp',
+    'video/x-m4v'
   ]
 )
 on conflict (id) do update set

@@ -721,9 +721,13 @@ export default function CreatePostScreen({ navigation, route }) {
       )
     } catch (error) {
       setLoading(false)
+      const rawMessage = String(error?.message || '').trim()
+      const detailMessage = rawMessage
+        ? rawMessage
+        : 'Please make sure the property-media bucket and storage policies are up to date.'
       Alert.alert(
         'Media upload failed',
-        'Please run supabase-property-media-features.sql in Supabase, then try again.'
+        detailMessage
       )
       return
     }
