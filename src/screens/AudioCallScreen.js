@@ -9,6 +9,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { Audio } from 'expo-av'
 import {
   buildAgoraChannelName,
   clearActiveAgoraEngine,
@@ -32,6 +33,7 @@ function formatCallDuration(totalSeconds) {
 }
 
 function getStatusLabel(stage, durationSeconds, startedByMe, participantName) {
+  if (stage === 'incoming') return `${participantName} is calling...`
   if (stage === 'preparing') return 'Preparing audio call...'
   if (stage === 'joining') return startedByMe ? 'Starting call...' : `Joining ${participantName}...`
   if (stage === 'waiting') {
@@ -55,12 +57,13 @@ export default function AudioCallScreen({ navigation, route }) {
     [participant]
   )
 
-  const [stage, setStage] = useState('preparing')
+  const [stage, setStage] = useState(startedByMe ? 'preparing' : 'incoming')
   const [durationSeconds, setDurationSeconds] = useState(0)
   const [muted, setMuted] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(true)
   const [endingCall, setEndingCall] = useState(false)
   const [remoteJoined, setRemoteJoined] = useState(false)
+  const [joinRequested, setJoinRequested] = useState(startedByMe)
 
   const rtcEngineRef = useRef(null)
   const intervalRef = useRef(null)
@@ -68,6 +71,8 @@ export default function AudioCallScreen({ navigation, route }) {
   const cleanedUpRef = useRef(false)
   const wasConnectedRef = useRef(false)
   const mountedRef = useRef(true)
+  const hasStartedRef = useRef(false)
+  const ringtoneRef = useRef(null)
 
   const cleanupRtcEngine = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -95,12 +100,32 @@ export default function AudioCallScreen({ navigation, route }) {
     }
   }, [])
 
+  const stopRingtone = useCallback(async () => {
+    const sound = ringtoneRef.current
+    ringtoneRef.current = null
+
+    if (!sound) return
+
+    try {
+      await sound.stopAsync()
+    } catch (_error) {
+      // ignore stop errors during fast transitions
+    }
+
+    try {
+      await sound.unloadAsync()
+    } catch (_error) {
+      // ignore unload errors
+    }
+  }, [])
+
   const endCall = useCallback(async ({ remoteEnded = false } = {}) => {
     if (endingCall) return
 
     setEndingCall(true)
     setStage('ended')
 
+    await stopRingtone()
     cleanupRtcEngine()
 
     const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
@@ -126,12 +151,15 @@ export default function AudioCallScreen({ navigation, route }) {
     } finally {
       navigation.goBack()
     }
-  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe])
+  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe, stopRingtone])
 
   useEffect(() => {
     mountedRef.current = true
 
     async function startAudioCall() {
+      if (!joinRequested || hasStartedRef.current) return
+      hasStartedRef.current = true
+
       try {
         const {
           data: { user },
@@ -256,9 +284,10 @@ export default function AudioCallScreen({ navigation, route }) {
 
     return () => {
       mountedRef.current = false
+      stopRingtone()
       cleanupRtcEngine()
     }
-  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, navigation, participant?.id, startedByMe])
+  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, joinRequested, navigation, participant?.id, startedByMe, stopRingtone])
 
   useEffect(() => {
     if (stage !== 'connected') {
@@ -307,6 +336,61 @@ export default function AudioCallScreen({ navigation, route }) {
       subscription.remove()
     }
   }, [endCall])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function syncRingtone() {
+      const shouldRing =
+        !endingCall
+        && (
+          stage === 'incoming'
+          || stage === 'joining'
+          || stage === 'waiting'
+        )
+
+      if (!shouldRing) {
+        await stopRingtone()
+        return
+      }
+
+      if (ringtoneRef.current) return
+
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        })
+
+        const { sound } = await Audio.Sound.createAsync(
+          require('../../assets/sounds/notification.mp3'),
+          {
+            shouldPlay: true,
+            isLooping: true,
+            volume: 0.65,
+          }
+        )
+
+        if (cancelled) {
+          await sound.unloadAsync()
+          return
+        }
+
+        ringtoneRef.current = sound
+      } catch (error) {
+        console.warn('Audio ringtone failed:', error?.message || error)
+      }
+    }
+
+    syncRingtone()
+
+    return () => {
+      cancelled = true
+    }
+  }, [endingCall, stage, stopRingtone])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f172a' }}>
@@ -370,6 +454,20 @@ export default function AudioCallScreen({ navigation, route }) {
               : getStatusLabel(stage, durationSeconds, startedByMe, participantName)}
           </Text>
 
+          {!startedByMe && stage === 'incoming' ? (
+            <Text
+              style={{
+                color: '#94a3b8',
+                fontSize: 13,
+                marginTop: 10,
+                textAlign: 'center',
+                lineHeight: 19,
+              }}
+            >
+              Tap join to answer this audio call or decline to dismiss it.
+            </Text>
+          ) : null}
+
           {property?.title ? (
             <View
               style={{
@@ -415,118 +513,163 @@ export default function AudioCallScreen({ navigation, route }) {
           </View>
         </View>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 18,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setMuted((current) => !current)}
-            style={{
-              alignItems: 'center',
-              flex: 1,
-            }}
-          >
-            <View
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.12)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons
-                name={muted ? 'mic-off' : 'mic'}
-                size={24}
-                color={muted ? '#dc2626' : '#fff'}
-              />
-            </View>
-            <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {muted ? 'Unmute' : 'Mute'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setSpeakerOn((current) => !current)}
-            style={{
-              alignItems: 'center',
-              flex: 1,
-            }}
-          >
-            <View
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.12)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons
-                name={speakerOn ? 'volume-high' : 'volume-mute'}
-                size={24}
-                color={speakerOn ? '#2563eb' : '#fff'}
-              />
-            </View>
-            <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {speakerOn ? 'Speaker' : 'Earpiece'}
-            </Text>
-          </TouchableOpacity>
-
+        {stage === 'incoming' ? (
           <View
             style={{
-              alignItems: 'center',
-              flex: 1,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 22,
             }}
           >
-            <View
+            <TouchableOpacity
+              onPress={() => endCall()}
+              disabled={endingCall}
               style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                backgroundColor: remoteJoined ? '#dcfce7' : 'rgba(255,255,255,0.12)',
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                backgroundColor: '#ef4444',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: endingCall ? 0.75 : 1,
+              }}
+            >
+              <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setJoinRequested(true)
+                setStage('preparing')
+              }}
+              style={{
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                backgroundColor: '#16a34a',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons
-                name={remoteJoined ? 'radio' : 'hourglass-outline'}
-                size={24}
-                color={remoteJoined ? '#15803d' : '#fff'}
-              />
-            </View>
-            <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {remoteJoined ? 'Connected' : 'Waiting'}
-            </Text>
+              <Ionicons name="call" size={28} color="#fff" />
+            </TouchableOpacity>
           </View>
-        </View>
+        ) : (
+          <>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 18,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setMuted((current) => !current)}
+                style={{
+                  alignItems: 'center',
+                  flex: 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.12)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={muted ? 'mic-off' : 'mic'}
+                    size={24}
+                    color={muted ? '#dc2626' : '#fff'}
+                  />
+                </View>
+                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
+                  {muted ? 'Unmute' : 'Mute'}
+                </Text>
+              </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => endCall()}
-          disabled={endingCall}
-          style={{
-            alignSelf: 'center',
-            width: 74,
-            height: 74,
-            borderRadius: 37,
-            backgroundColor: '#ef4444',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: endingCall ? 0.75 : 1,
-          }}
-        >
-          {endingCall ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-          )}
-        </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setSpeakerOn((current) => !current)}
+                style={{
+                  alignItems: 'center',
+                  flex: 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.12)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={speakerOn ? 'volume-high' : 'volume-mute'}
+                    size={24}
+                    color={speakerOn ? '#2563eb' : '#fff'}
+                  />
+                </View>
+                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
+                  {speakerOn ? 'Speaker' : 'Earpiece'}
+                </Text>
+              </TouchableOpacity>
+
+              <View
+                style={{
+                  alignItems: 'center',
+                  flex: 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor: remoteJoined ? '#dcfce7' : 'rgba(255,255,255,0.12)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={remoteJoined ? 'radio' : 'hourglass-outline'}
+                    size={24}
+                    color={remoteJoined ? '#15803d' : '#fff'}
+                  />
+                </View>
+                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
+                  {remoteJoined ? 'Connected' : 'Waiting'}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => endCall()}
+              disabled={endingCall}
+              style={{
+                alignSelf: 'center',
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                backgroundColor: '#ef4444',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: endingCall ? 0.75 : 1,
+              }}
+            >
+              {endingCall ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </SafeAreaView>
   )

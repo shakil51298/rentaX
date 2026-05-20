@@ -47,7 +47,7 @@ export function replaceActiveAgoraEngine(nextEngine) {
       activeAgoraEngine.removeAllListeners?.()
       activeAgoraEngine.leaveChannel?.()
       activeAgoraEngine.stopPreview?.()
-      activeAgoraEngine.release?.()
+      activeAgoraEngine.release?.(true)
     } catch (error) {
       console.warn('Previous Agora engine cleanup failed:', error?.message || error)
     }

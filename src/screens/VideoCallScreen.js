@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { Audio } from 'expo-av'
 import Avatar from '../components/common/Avatar'
 import {
   buildAgoraChannelName,
@@ -32,6 +33,7 @@ function formatCallDuration(totalSeconds) {
 }
 
 function getStatusLabel(stage, durationSeconds, startedByMe, participantName) {
+  if (stage === 'incoming') return `${participantName} is calling...`
   if (stage === 'preparing') return 'Preparing video call...'
   if (stage === 'joining') return startedByMe ? 'Starting video call...' : `Joining ${participantName}...`
   if (stage === 'waiting') {
@@ -54,9 +56,8 @@ export default function VideoCallScreen({ navigation, route }) {
     () => getProfileName(participant, 'Rental X member'),
     [participant]
   )
-  const AgoraSurfaceView = agoraModule?.RtcSurfaceView || null
 
-  const [stage, setStage] = useState('preparing')
+  const [stage, setStage] = useState(startedByMe ? 'preparing' : 'incoming')
   const [durationSeconds, setDurationSeconds] = useState(0)
   const [muted, setMuted] = useState(false)
   const [cameraOn, setCameraOn] = useState(true)
@@ -65,6 +66,8 @@ export default function VideoCallScreen({ navigation, route }) {
   const [remoteUid, setRemoteUid] = useState(null)
   const [localUid, setLocalUid] = useState(0)
   const [agoraModule, setAgoraModule] = useState(null)
+  const [joinRequested, setJoinRequested] = useState(startedByMe)
+  const AgoraSurfaceView = agoraModule?.RtcSurfaceView || null
 
   const rtcEngineRef = useRef(null)
   const intervalRef = useRef(null)
@@ -72,6 +75,8 @@ export default function VideoCallScreen({ navigation, route }) {
   const cleanedUpRef = useRef(false)
   const wasConnectedRef = useRef(false)
   const mountedRef = useRef(true)
+  const hasStartedRef = useRef(false)
+  const ringtoneRef = useRef(null)
 
   const cleanupRtcEngine = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -100,12 +105,32 @@ export default function VideoCallScreen({ navigation, route }) {
     }
   }, [])
 
+  const stopRingtone = useCallback(async () => {
+    const sound = ringtoneRef.current
+    ringtoneRef.current = null
+
+    if (!sound) return
+
+    try {
+      await sound.stopAsync()
+    } catch (_error) {
+      // ignore stop errors during fast transitions
+    }
+
+    try {
+      await sound.unloadAsync()
+    } catch (_error) {
+      // ignore unload errors
+    }
+  }, [])
+
   const endCall = useCallback(async ({ remoteEnded = false } = {}) => {
     if (endingCall) return
 
     setEndingCall(true)
     setStage('ended')
 
+    await stopRingtone()
     cleanupRtcEngine()
 
     const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
@@ -131,12 +156,15 @@ export default function VideoCallScreen({ navigation, route }) {
     } finally {
       navigation.goBack()
     }
-  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe])
+  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe, stopRingtone])
 
   useEffect(() => {
     mountedRef.current = true
 
     async function startVideoCall() {
+      if (!joinRequested || hasStartedRef.current) return
+      hasStartedRef.current = true
+
       try {
         const {
           data: { user },
@@ -162,8 +190,8 @@ export default function VideoCallScreen({ navigation, route }) {
           ChannelProfileType,
           ClientRoleType,
           ConnectionStateType,
-          createAgoraRtcEngine,
           VideoSourceType,
+          createAgoraRtcEngine,
         } = loadedAgoraModule
 
         const { appId } = getAgoraRuntimeConfig()
@@ -268,9 +296,10 @@ export default function VideoCallScreen({ navigation, route }) {
 
     return () => {
       mountedRef.current = false
+      stopRingtone()
       cleanupRtcEngine()
     }
-  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, navigation, participant?.id, startedByMe])
+  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, joinRequested, navigation, participant?.id, startedByMe, stopRingtone])
 
   useEffect(() => {
     if (stage !== 'connected') {
@@ -316,6 +345,61 @@ export default function VideoCallScreen({ navigation, route }) {
 
     engine.muteLocalVideoStream(!cameraOn)
   }, [cameraOn])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function syncRingtone() {
+      const shouldRing =
+        !endingCall
+        && (
+          stage === 'incoming'
+          || stage === 'joining'
+          || stage === 'waiting'
+        )
+
+      if (!shouldRing) {
+        await stopRingtone()
+        return
+      }
+
+      if (ringtoneRef.current) return
+
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        })
+
+        const { sound } = await Audio.Sound.createAsync(
+          require('../../assets/sounds/notification.mp3'),
+          {
+            shouldPlay: true,
+            isLooping: true,
+            volume: 0.65,
+          }
+        )
+
+        if (cancelled) {
+          await sound.unloadAsync()
+          return
+        }
+
+        ringtoneRef.current = sound
+      } catch (error) {
+        console.warn('Video ringtone failed:', error?.message || error)
+      }
+    }
+
+    syncRingtone()
+
+    return () => {
+      cancelled = true
+    }
+  }, [endingCall, stage, stopRingtone])
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -378,13 +462,13 @@ export default function VideoCallScreen({ navigation, route }) {
 
             {remoteUid ? (
               AgoraSurfaceView ? (
-              <AgoraSurfaceView
-                style={StyleSheet.absoluteFill}
-                canvas={{
-                  uid: remoteUid,
-                  renderMode: agoraModule.RenderModeType.RenderModeHidden,
-                }}
-              />
+                <AgoraSurfaceView
+                  style={StyleSheet.absoluteFill}
+                  canvas={{
+                    uid: remoteUid,
+                    renderMode: agoraModule.RenderModeType.RenderModeHidden,
+                  }}
+                />
               ) : null
             ) : (
               <View
@@ -440,6 +524,20 @@ export default function VideoCallScreen({ navigation, route }) {
                   ? 'Saving call...'
                   : getStatusLabel(stage, durationSeconds, startedByMe, participantName)}
               </Text>
+
+              {!startedByMe && stage === 'incoming' ? (
+                <Text
+                  style={{
+                    color: '#cbd5e1',
+                    fontSize: 13,
+                    marginTop: 10,
+                    textAlign: 'center',
+                    lineHeight: 19,
+                  }}
+                >
+                  Tap join to answer this video call or decline to dismiss it.
+                </Text>
+              ) : null}
             </View>
 
             <View
@@ -460,15 +558,15 @@ export default function VideoCallScreen({ navigation, route }) {
             >
               {cameraOn ? (
                 AgoraSurfaceView ? (
-                <AgoraSurfaceView
-                  style={{ width: '100%', height: '100%' }}
-                  zOrderMediaOverlay
-                  canvas={{
-                    uid: localUid || 0,
-                    renderMode: agoraModule.RenderModeType.RenderModeHidden,
-                    sourceType: agoraModule.VideoSourceType.VideoSourceCamera,
-                  }}
-                />
+                  <AgoraSurfaceView
+                    style={{ width: '100%', height: '100%' }}
+                    zOrderMediaOverlay
+                    canvas={{
+                      uid: localUid || 0,
+                      renderMode: agoraModule.RenderModeType.RenderModeHidden,
+                      sourceType: agoraModule.VideoSourceType.VideoSourceCamera,
+                    }}
+                  />
                 ) : null
               ) : (
                 <Ionicons name="videocam-off" size={28} color="#94a3b8" />
@@ -496,110 +594,155 @@ export default function VideoCallScreen({ navigation, route }) {
           ) : null}
         </View>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 18,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setMuted((current) => !current)}
-            style={{ alignItems: 'center', flex: 1 }}
+        {stage === 'incoming' ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 22,
+            }}
           >
-            <View
+            <TouchableOpacity
+              onPress={() => endCall()}
+              disabled={endingCall}
               style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.12)',
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                backgroundColor: '#ef4444',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: endingCall ? 0.75 : 1,
+              }}
+            >
+              <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setJoinRequested(true)
+                setStage('preparing')
+              }}
+              style={{
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                backgroundColor: '#16a34a',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons
-                name={muted ? 'mic-off' : 'mic'}
-                size={24}
-                color={muted ? '#dc2626' : '#fff'}
-              />
-            </View>
-            <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {muted ? 'Unmute' : 'Mute'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setCameraOn((current) => !current)}
-            style={{ alignItems: 'center', flex: 1 }}
-          >
+              <Ionicons name="videocam" size={28} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
             <View
               style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                backgroundColor: cameraOn ? 'rgba(255,255,255,0.12)' : '#fee2e2',
+                flexDirection: 'row',
+                justifyContent: 'space-between',
                 alignItems: 'center',
-                justifyContent: 'center',
+                marginBottom: 18,
               }}
             >
-              <Ionicons
-                name={cameraOn ? 'videocam' : 'videocam-off'}
-                size={24}
-                color={cameraOn ? '#fff' : '#dc2626'}
-              />
-            </View>
-            <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {cameraOn ? 'Camera' : 'Camera off'}
-            </Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMuted((current) => !current)}
+                style={{ alignItems: 'center', flex: 1 }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.12)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={muted ? 'mic-off' : 'mic'}
+                    size={24}
+                    color={muted ? '#dc2626' : '#fff'}
+                  />
+                </View>
+                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
+                  {muted ? 'Unmute' : 'Mute'}
+                </Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setSpeakerOn((current) => !current)}
-            style={{ alignItems: 'center', flex: 1 }}
-          >
-            <View
+              <TouchableOpacity
+                onPress={() => setCameraOn((current) => !current)}
+                style={{ alignItems: 'center', flex: 1 }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor: cameraOn ? 'rgba(255,255,255,0.12)' : '#fee2e2',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={cameraOn ? 'videocam' : 'videocam-off'}
+                    size={24}
+                    color={cameraOn ? '#fff' : '#dc2626'}
+                  />
+                </View>
+                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
+                  {cameraOn ? 'Camera' : 'Camera off'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setSpeakerOn((current) => !current)}
+                style={{ alignItems: 'center', flex: 1 }}
+              >
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.12)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={speakerOn ? 'volume-high' : 'volume-mute'}
+                    size={24}
+                    color={speakerOn ? '#2563eb' : '#fff'}
+                  />
+                </View>
+                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
+                  {speakerOn ? 'Speaker' : 'Earpiece'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => endCall()}
+              disabled={endingCall}
               style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.12)',
+                alignSelf: 'center',
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                backgroundColor: '#ef4444',
                 alignItems: 'center',
                 justifyContent: 'center',
+                opacity: endingCall ? 0.75 : 1,
               }}
             >
-              <Ionicons
-                name={speakerOn ? 'volume-high' : 'volume-mute'}
-                size={24}
-                color={speakerOn ? '#2563eb' : '#fff'}
-              />
-            </View>
-            <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-              {speakerOn ? 'Speaker' : 'Earpiece'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => endCall()}
-          disabled={endingCall}
-          style={{
-            alignSelf: 'center',
-            width: 74,
-            height: 74,
-            borderRadius: 37,
-            backgroundColor: '#ef4444',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: endingCall ? 0.75 : 1,
-          }}
-        >
-          {endingCall ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-          )}
-        </TouchableOpacity>
+              {endingCall ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </SafeAreaView>
   )

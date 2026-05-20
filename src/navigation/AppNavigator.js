@@ -253,10 +253,24 @@ function NotificationCoordinator({ onOpenNotification }) {
 
 export default function AppNavigator() {
   const pendingNotificationPayload = useRef(null)
+  const lastOpenedCallKeyRef = useRef(null)
   const [session, setSession] = useState(undefined)
 
   const handleOpenNotification = useCallback((payload) => {
     if (!payload) return
+
+    if (
+      payload.type
+      && (payload.type === 'incoming_audio_call' || payload.type === 'incoming_video_call')
+    ) {
+      const callKey = `${payload.type}:${payload.callId || payload.channelName || payload.actorId || 'unknown'}`
+
+      if (lastOpenedCallKeyRef.current === callKey) {
+        return
+      }
+
+      lastOpenedCallKeyRef.current = callKey
+    }
 
     if (navigationRef.isReady()) {
       routeFromNotificationData(navigationRef, payload)
