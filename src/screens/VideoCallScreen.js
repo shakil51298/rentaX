@@ -18,7 +18,9 @@ import {
   getAgoraRuntimeConfig,
   hashAgoraUid,
   loadAgoraModule,
+  releaseActiveAgoraCall,
   replaceActiveAgoraEngine,
+  reserveActiveAgoraCall,
   resolveAgoraToken,
   saveAgoraCallHistory,
 } from '../lib/agoraCall'
@@ -77,6 +79,7 @@ export default function VideoCallScreen({ navigation, route }) {
   const mountedRef = useRef(true)
   const hasStartedRef = useRef(false)
   const ringtoneRef = useRef(null)
+  const callKeyRef = useRef(null)
 
   const cleanupRtcEngine = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -102,6 +105,7 @@ export default function VideoCallScreen({ navigation, route }) {
       console.warn('Video call cleanup failed:', error?.message || error)
     } finally {
       clearActiveAgoraEngine(engine)
+      releaseActiveAgoraCall(callKeyRef.current)
     }
   }, [])
 
@@ -212,6 +216,13 @@ export default function VideoCallScreen({ navigation, route }) {
             recipientId: startedByMe ? participant.id : user.id,
             kind: 'video',
           })
+        const callKey = `video:${route?.params?.callId || channelName}`
+
+        if (!reserveActiveAgoraCall(callKey)) {
+          throw new Error('This video call is already opening. Please wait a moment and try again.')
+        }
+
+        callKeyRef.current = callKey
 
         const token = await resolveAgoraToken({
           channelName,
@@ -287,6 +298,7 @@ export default function VideoCallScreen({ navigation, route }) {
           throw new Error(engine.getErrorDescription(joinCode) || `Agora join failed (${joinCode}).`)
         }
       } catch (error) {
+        releaseActiveAgoraCall(callKeyRef.current)
         Alert.alert('Video call unavailable', error?.message || 'Could not start the video call.')
         navigation.goBack()
       }
@@ -299,7 +311,7 @@ export default function VideoCallScreen({ navigation, route }) {
       stopRingtone()
       cleanupRtcEngine()
     }
-  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, joinRequested, navigation, participant?.id, startedByMe, stopRingtone])
+  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, joinRequested, navigation, participant?.id, route?.params?.callId, startedByMe, stopRingtone])
 
   useEffect(() => {
     if (stage !== 'connected') {

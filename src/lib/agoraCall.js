@@ -8,6 +8,7 @@ import { supabaseAnonKey } from './supabase'
 
 let cachedAgoraModule = undefined
 let activeAgoraEngine = null
+let activeAgoraCallKey = null
 
 function getExpoExtra() {
   return Constants?.expoConfig?.extra || {}
@@ -59,6 +60,25 @@ export function replaceActiveAgoraEngine(nextEngine) {
 export function clearActiveAgoraEngine(engine) {
   if (engine && activeAgoraEngine === engine) {
     activeAgoraEngine = null
+  }
+}
+
+export function reserveActiveAgoraCall(callKey) {
+  if (!callKey) return true
+
+  if (activeAgoraCallKey && activeAgoraCallKey === callKey) {
+    return false
+  }
+
+  activeAgoraCallKey = callKey
+  return true
+}
+
+export function releaseActiveAgoraCall(callKey) {
+  if (!callKey) return
+
+  if (activeAgoraCallKey === callKey) {
+    activeAgoraCallKey = null
   }
 }
 
