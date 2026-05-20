@@ -45,6 +45,7 @@ import {
   saveVisitRequest,
   splitVisitTimestamp,
 } from '../lib/visitScheduling'
+import { useAppSettings } from '../lib/appSettings'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -446,6 +447,7 @@ function Avatar({ name, uri }) {
 }
 
 export default function PropertyScreen({ route, navigation, guestMode = false }) {
+  const { theme } = useAppSettings()
   const initialProperty = route.params?.property || {}
   const [post, setPost] = useState(initialProperty)
   const [currentUser, setCurrentUser] = useState(null)
@@ -1041,8 +1043,8 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center' }}>
+        <ActivityIndicator color={theme.accent} />
       </SafeAreaView>
     )
   }
@@ -1073,9 +1075,9 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
       : `${ownerResponseQuality.responseRate}% response`
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView contentInsetAdjustmentBehavior="automatic">
-        <View style={{ backgroundColor: '#fff', paddingTop: 12 }}>
+        <View style={{ backgroundColor: theme.surface, paddingTop: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
             <TouchableOpacity
               onPress={() => {

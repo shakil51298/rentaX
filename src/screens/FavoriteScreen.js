@@ -11,8 +11,10 @@ import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchHiddenContentState } from '../lib/reporting'
+import { useAppSettings } from '../lib/appSettings'
 
 export default function FavoriteScreen({ navigation, embeddedTabShell = false }) {
+  const { theme } = useAppSettings()
   const [favorites, setFavorites] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -76,17 +78,17 @@ export default function FavoriteScreen({ navigation, embeddedTabShell = false })
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f0f2f5' }}>
-        <ActivityIndicator />
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </SafeAreaView>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <SwipeTabView navigation={navigation} activeTab="favorite">
       <View style={{ flex: 1, padding: 16 }}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 16 }}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 16, color: theme.text }}>
           Favorite Posts
         </Text>
 
@@ -108,25 +110,25 @@ export default function FavoriteScreen({ navigation, embeddedTabShell = false })
               <TouchableOpacity
                 onPress={() => navigation.navigate('Property', { property })}
                 style={{
-                  backgroundColor: '#fff',
+                  backgroundColor: theme.surface,
                   padding: 16,
                   borderRadius: 12,
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ fontSize: 18, fontWeight: '700' }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: theme.text }}>
                   {property?.title}
                 </Text>
 
-                <Text style={{ marginTop: 6, color: '#666' }}>
+                <Text style={{ marginTop: 6, color: theme.mutedText }}>
                   {property?.location || 'Location not added'}
                 </Text>
 
-                <Text style={{ marginTop: 8, fontWeight: '600' }}>
+                <Text style={{ marginTop: 8, fontWeight: '600', color: theme.text }}>
                   ৳ {property?.price}
                 </Text>
 
-                <Text style={{ marginTop: 12, color: '#1877F2', fontWeight: '800' }}>
+                <Text style={{ marginTop: 12, color: theme.accent, fontWeight: '800' }}>
                   Open post
                 </Text>
               </TouchableOpacity>

@@ -19,7 +19,7 @@ import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
-import { APP_LANGUAGES, APP_THEMES, useAppSettings } from '../lib/appSettings'
+import { APP_APPEARANCE_MODES, APP_LANGUAGES, APP_THEMES, useAppSettings } from '../lib/appSettings'
 
 function displayNameFromEmail(email) {
   if (!email) return 'User'
@@ -33,10 +33,10 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
       onPress={onPress}
       activeOpacity={0.86}
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 16,
         flexDirection: 'row',
         alignItems: 'center',
@@ -87,7 +87,7 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={20} color="#64748b" />
+      <Ionicons name="chevron-forward" size={20} color={theme.mutedText} />
     </TouchableOpacity>
   )
 }
@@ -169,7 +169,16 @@ function LanguageOption({ label, selected, onPress, theme }) {
 }
 
 export default function ProfileScreen({ navigation, embeddedTabShell = false }) {
-  const { theme, language, setLanguage, themeId, setThemeId, t } = useAppSettings()
+  const {
+    theme,
+    language,
+    setLanguage,
+    themeId,
+    setThemeId,
+    appearanceMode,
+    setAppearanceMode,
+    t,
+  } = useAppSettings()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [email, setEmail] = useState('')
@@ -550,6 +559,38 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                   <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
                     {t('profileGeneralSettingsSubtitle', 'Change the app theme and switch between Bangla and English.')}
                   </Text>
+                </View>
+
+                <View
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    padding: 12,
+                    gap: 12,
+                  }}
+                >
+                  <View>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                      {t('settingsAppearanceTitle', 'Appearance')}
+                    </Text>
+                    <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
+                      {t('settingsAppearanceSubtitle', 'Choose a light or dark look for the app.')}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {APP_APPEARANCE_MODES.map((option) => (
+                      <LanguageOption
+                        key={option.id}
+                        label={t(option.labelKey, option.id)}
+                        selected={appearanceMode === option.id}
+                        onPress={() => setAppearanceMode(option.id)}
+                        theme={theme}
+                      />
+                    ))}
+                  </View>
                 </View>
 
                 <View

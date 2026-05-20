@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
 import { getVerificationMeta } from '../lib/verification'
 import { PROFILE_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
+import { useAppSettings } from '../lib/appSettings'
 
 const USER_TYPES = [
   { id: 'property_owner', title: 'Property owner' },
@@ -329,6 +330,7 @@ function SettingRow({ title, subtitle, value, onValueChange }) {
 }
 
 export default function SettingsScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -604,16 +606,16 @@ export default function SettingsScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: '#f7f7f7' }}
+        style={{ flex: 1, backgroundColor: theme.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={80}
       >

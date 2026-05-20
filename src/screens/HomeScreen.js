@@ -82,6 +82,7 @@ import {
   hideOwnerFromFeed,
   hidePropertyFromFeed,
 } from '../lib/feedControls'
+import { useAppSettings } from '../lib/appSettings'
 
 function formatCurrency(value) {
   return `৳ ${Number(value || 0).toLocaleString()}`
@@ -555,6 +556,7 @@ function getRecentlyViewedSignature(items) {
 }
 
 export default function HomeScreen({ navigation, route, embeddedTabShell = false, guestMode = false }) {
+  const { theme } = useAppSettings()
   const { width: screenWidth } = useWindowDimensions()
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2775,7 +2777,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <SwipeTabView
         navigation={navigation}
         activeTab="home"
@@ -2783,12 +2785,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       >
       <View
         style={{
-          backgroundColor: '#fff',
+          backgroundColor: theme.surface,
           paddingHorizontal: 16,
           paddingTop: 8,
           paddingBottom: 10,
           borderBottomWidth: 1,
-          borderBottomColor: '#eee',
+          borderBottomColor: theme.border,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',

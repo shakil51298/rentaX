@@ -18,8 +18,10 @@ import PostCard from '../components/home/PostCard'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { isUrgentProperty } from '../lib/propertyLifecycle'
 import { getPropertyVerificationStatus } from '../lib/verification'
+import { useAppSettings } from '../lib/appSettings'
 
 export default function AdsManagementScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [currentUser, setCurrentUser] = useState(null)
   const [userType, setUserType] = useState('renter')
   const [loading, setLoading] = useState(true)
@@ -494,14 +496,14 @@ export default function AdsManagementScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 30 }}

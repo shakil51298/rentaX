@@ -99,6 +99,11 @@ export const APP_THEMES = [
 
 const FALLBACK_THEME = APP_THEMES[0]
 
+export const APP_APPEARANCE_MODES = [
+  { id: 'light', labelKey: 'settings.modeLight' },
+  { id: 'dark', labelKey: 'settings.modeDark' },
+]
+
 export const APP_LANGUAGES = [
   { id: 'en', label: 'English' },
   { id: 'bn', label: 'বাংলা' },
@@ -121,6 +126,10 @@ const STRINGS = {
     commonRegister: 'Register',
     commonEnglish: 'English',
     commonBangla: 'বাংলা',
+    settingsAppearanceTitle: 'Appearance',
+    settingsAppearanceSubtitle: 'Choose a light or dark look for the app.',
+    settingsModeLight: 'Light',
+    settingsModeDark: 'Dark',
     guestLoginOrRegister: 'Login or Register',
     guestChatTitle: 'Chat needs an account',
     guestChatSubtitle: 'Create an account to message owners and continue conversations.',
@@ -218,6 +227,10 @@ const STRINGS = {
     commonRegister: 'রেজিস্টার',
     commonEnglish: 'English',
     commonBangla: 'বাংলা',
+    settingsAppearanceTitle: 'অ্যাপিয়ারেন্স',
+    settingsAppearanceSubtitle: 'অ্যাপের জন্য লাইট বা ডার্ক লুক বেছে নিন।',
+    settingsModeLight: 'লাইট',
+    settingsModeDark: 'ডার্ক',
     guestLoginOrRegister: 'লগইন বা রেজিস্টার',
     guestChatTitle: 'চ্যাট করতে অ্যাকাউন্ট লাগবে',
     guestChatSubtitle: 'মালিককে মেসেজ করতে এবং কথোপকথন চালিয়ে যেতে একটি অ্যাকাউন্ট তৈরি করুন।',
@@ -307,6 +320,33 @@ export function resolveAppTheme(themeId) {
   return APP_THEMES.find((item) => item.id === themeId) || FALLBACK_THEME
 }
 
+function withAlpha(hexColor, alphaHex) {
+  const cleanHex = String(hexColor || '').replace('#', '')
+
+  if (cleanHex.length !== 6) {
+    return `#000000${alphaHex}`
+  }
+
+  return `#${cleanHex}${alphaHex}`
+}
+
+function buildDarkTheme(baseTheme) {
+  return {
+    ...baseTheme,
+    background: '#09111f',
+    surface: '#101b2d',
+    surfaceMuted: '#132238',
+    border: withAlpha(baseTheme.accent, '33'),
+    text: '#f8fafc',
+    mutedText: '#94a3b8',
+    navBackground: '#0b1526',
+    navBorder: withAlpha(baseTheme.accent, '2b'),
+    hero: withAlpha(baseTheme.accent, '2b'),
+    heroText: '#ffffff',
+    accentSoft: withAlpha(baseTheme.accent, '2b'),
+  }
+}
+
 export function translateText(language, key, fallback, params) {
   const table = STRINGS[language] || STRINGS.en
   let template = table[key] || STRINGS.en[key] || fallback || key
@@ -324,6 +364,7 @@ export function translateText(language, key, fallback, params) {
 
 export function AppSettingsProvider({ children }) {
   const [themeId, setThemeId] = useState(FALLBACK_THEME.id)
+  const [appearanceMode, setAppearanceMode] = useState('light')
   const [language, setLanguage] = useState('en')
   const [ready, setReady] = useState(false)
 
@@ -341,6 +382,10 @@ export function AppSettingsProvider({ children }) {
 
         if (parsed.themeId) {
           setThemeId(parsed.themeId)
+        }
+
+        if (parsed.appearanceMode) {
+          setAppearanceMode(parsed.appearanceMode)
         }
 
         if (parsed.language) {
@@ -369,26 +414,30 @@ export function AppSettingsProvider({ children }) {
       APP_SETTINGS_KEY,
       JSON.stringify({
         themeId,
+        appearanceMode,
         language,
       })
     ).catch(() => {
       // Ignore local settings write issues.
     })
-  }, [language, ready, themeId])
+  }, [appearanceMode, language, ready, themeId])
 
   const value = useMemo(() => {
-    const theme = resolveAppTheme(themeId)
+    const baseTheme = resolveAppTheme(themeId)
+    const theme = appearanceMode === 'dark' ? buildDarkTheme(baseTheme) : baseTheme
 
     return {
       ready,
       themeId,
       theme,
+      appearanceMode,
       language,
       setThemeId,
+      setAppearanceMode,
       setLanguage,
       t: (key, fallback, params) => translateText(language, key, fallback, params),
     }
-  }, [language, ready, themeId])
+  }, [appearanceMode, language, ready, themeId])
 
   return (
     <AppSettingsContext.Provider value={value}>

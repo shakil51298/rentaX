@@ -49,6 +49,7 @@ import {
   resolveChatColorPreset,
   resolveChatWallpaperPreset,
 } from '../lib/chatAppearance'
+import { useAppSettings } from '../lib/appSettings'
 import {
   formatDuration,
   getCallPresentation,
@@ -266,6 +267,7 @@ async function fetchProfiles(userIds) {
 }
 
 export default function ChatScreen({ route, navigation, embeddedTabShell = false }) {
+  const { theme } = useAppSettings()
   const flatListRef = useRef(null)
   const messageInputRef = useRef(null)
   const highlightTimerRef = useRef(null)
@@ -1888,8 +1890,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
   if (loading && !conversation && conversationRows.length === 0) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center' }}>
+        <ActivityIndicator color={theme.accent} />
       </SafeAreaView>
     )
   }
@@ -1899,7 +1901,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: '#f0f2f5',
+          backgroundColor: theme.background,
           alignItems: 'center',
           justifyContent: 'center',
           padding: 24,
@@ -1918,12 +1920,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
   if (mode === 'list') {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <SwipeTabView navigation={navigation} activeTab="chat">
         <View style={{ flex: 1 }}>
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               paddingHorizontal: 16,
               paddingVertical: 14,
               borderBottomWidth: 1,

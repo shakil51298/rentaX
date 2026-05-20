@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase'
 import { getUnreadNotificationCount } from '../lib/notifications'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
+import { useAppSettings } from '../lib/appSettings'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -153,6 +154,7 @@ function enrichNotifications(notifications, profilesById, propertiesById) {
 }
 
 export default function NotificationsScreen({ navigation, embeddedTabShell = false }) {
+  const { theme } = useAppSettings()
   const [currentUser, setCurrentUser] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -519,14 +521,14 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f0f2f5' }}>
-        <ActivityIndicator />
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </SafeAreaView>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f2f5' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <SwipeTabView navigation={navigation} activeTab="notifications">
       <View style={{ flex: 1 }}>
         <View
