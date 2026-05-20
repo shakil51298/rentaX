@@ -262,14 +262,7 @@ function getPropertyPrice(post) {
   return Number.isFinite(price) ? price : 0
 }
 
-function getPriceCeiling(posts) {
-  const detectedMax = Math.max(...posts.map(getPropertyPrice), 0)
-
-  if (detectedMax <= 10000) return 10000
-  if (detectedMax <= 50000) return Math.ceil(detectedMax / 5000) * 5000
-
-  return Math.ceil(detectedMax / 10000) * 10000
-}
+const FILTER_MAX_BUDGET = 500000
 
 function createDefaultFilters(maxPrice) {
   return {
@@ -552,6 +545,15 @@ function SearchResultRow({ item, onPress }) {
   )
 }
 
+function getRecentlyViewedSignature(items) {
+  if (!Array.isArray(items) || !items.length) return 'empty'
+
+  return items
+    .slice(0, 3)
+    .map((item) => `${item?.id || 'unknown'}:${item?.viewed_at || 'na'}`)
+    .join('|')
+}
+
 export default function HomeScreen({ navigation, route, embeddedTabShell = false, guestMode = false }) {
   const { width: screenWidth } = useWindowDimensions()
   const [properties, setProperties] = useState([])
@@ -579,11 +581,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const [feedSignalProfile, setFeedSignalProfile] = useState({ tokens: {}, updatedAt: null })
   const [feedRefreshTick, setFeedRefreshTick] = useState(0)
   const [recentlyViewedProperties, setRecentlyViewedProperties] = useState([])
+  const [recentlyViewedHidden, setRecentlyViewedHidden] = useState(false)
   const [comparedProperties, setComparedProperties] = useState([])
   const [homeBanners, setHomeBanners] = useState([])
   const [selectedBanner, setSelectedBanner] = useState(null)
-  const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
-  const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
+  const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(FILTER_MAX_BUDGET))
+  const [draftFilters, setDraftFilters] = useState(createDefaultFilters(FILTER_MAX_BUDGET))
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -597,6 +600,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const postListRef = useRef(null)
   const homeBannerScrollRef = useRef(null)
   const homeBannerIndexRef = useRef(0)
+  const recentlyViewedHiddenSignatureRef = useRef('empty')
   const currentUserIdRef = useRef(null)
   const seenPostIdsRef = useRef([])
   const viewabilityConfig = useRef({
@@ -609,6 +613,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     return Math.max(122, Math.floor((screenWidth - horizontalPadding - gap) / 2.42))
   }, [screenWidth])
   const homeBannerCardStep = useMemo(() => homeBannerCardWidth + 10, [homeBannerCardWidth])
+  const homeBannerMaxLeadIndex = useMemo(
+    () => Math.max(0, homeBanners.length - 2),
+    [homeBanners.length]
+  )
 
   function promptGuestLogin(feature = 'this feature') {
     Alert.alert(
@@ -637,10 +645,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     seenPostIdsRef.current = seenPostIds
   }, [seenPostIds])
 
-  const priceCeiling = useMemo(() => getPriceCeiling(properties), [properties])
+  const filterBudgetCap = FILTER_MAX_BUDGET
   const activeFilterCount = useMemo(
-    () => countActiveFilters(appliedFilters, priceCeiling),
-    [appliedFilters, priceCeiling]
+    () => countActiveFilters(appliedFilters, filterBudgetCap),
+    [appliedFilters, filterBudgetCap]
   )
   const defaultLocationArea = useMemo(
     () => getHomeLocationArea(locationFullLabel),
@@ -680,7 +688,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           return false
         }
 
-        if (price > Number(appliedFilters.maxPrice || priceCeiling)) {
+        if (price > Number(appliedFilters.maxPrice || filterBudgetCap)) {
           return false
         }
 
@@ -745,7 +753,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           return 0
       }
     })
-  }, [appliedFilters, priceCeiling, rankedProperties])
+  }, [appliedFilters, filterBudgetCap, rankedProperties])
 
   const searchResults = useMemo(() => {
     const query = normalizeSearchText(draftSearchQuery)
@@ -832,9 +840,9 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }, [])
 
   useEffect(() => {
-    setAppliedFilters((current) => normalizeFilters(current, priceCeiling))
-    setDraftFilters((current) => normalizeFilters(current, priceCeiling))
-  }, [priceCeiling])
+    setAppliedFilters((current) => normalizeFilters(current, filterBudgetCap))
+    setDraftFilters((current) => normalizeFilters(current, filterBudgetCap))
+  }, [filterBudgetCap])
 
   useEffect(() => {
     let isMounted = true
@@ -873,7 +881,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       }
 
       try {
-        const nextSavedSearches = await fetchSavedSearches(currentUser.id, priceCeiling)
+        const nextSavedSearches = await fetchSavedSearches(currentUser.id, filterBudgetCap)
 
         if (isMounted) {
           setSavedSearches(nextSavedSearches)
@@ -890,7 +898,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     return () => {
       isMounted = false
     }
-  }, [currentUser?.id, priceCeiling])
+  }, [currentUser?.id, filterBudgetCap])
 
   useEffect(() => {
     let isMounted = true
@@ -951,6 +959,16 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }, [currentUser?.email, currentUser?.id])
   )
 
+  useEffect(() => {
+    if (!recentlyViewedHidden || !recentlyViewedProperties.length) return
+
+    const nextSignature = getRecentlyViewedSignature(recentlyViewedProperties)
+
+    if (nextSignature !== recentlyViewedHiddenSignatureRef.current) {
+      setRecentlyViewedHidden(false)
+    }
+  }, [recentlyViewedHidden, recentlyViewedProperties])
+
   useFocusEffect(
     useCallback(() => {
       loadHomeBanners()
@@ -967,7 +985,16 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     if (homeBanners.length < 2 || selectedBanner) return undefined
 
     const autoplay = setInterval(() => {
-      const nextIndex = (homeBannerIndexRef.current + 1) % homeBanners.length
+      if (homeBannerIndexRef.current >= homeBannerMaxLeadIndex) {
+        homeBannerIndexRef.current = 0
+        homeBannerScrollRef.current?.scrollTo?.({
+          x: 0,
+          animated: false,
+        })
+        return
+      }
+
+      const nextIndex = homeBannerIndexRef.current + 1
       homeBannerIndexRef.current = nextIndex
       homeBannerScrollRef.current?.scrollTo?.({
         x: nextIndex * homeBannerCardStep,
@@ -976,7 +1003,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }, 3000)
 
     return () => clearInterval(autoplay)
-  }, [homeBanners.length, homeBannerCardStep, selectedBanner])
+  }, [homeBanners.length, homeBannerCardStep, homeBannerMaxLeadIndex, selectedBanner])
 
   useFocusEffect(
     useCallback(() => {
@@ -1060,7 +1087,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         },
         async () => {
           try {
-            setSavedSearches(await fetchSavedSearches(currentUser.id, priceCeiling))
+            setSavedSearches(await fetchSavedSearches(currentUser.id, filterBudgetCap))
           } catch {
             // keep current list if the table is not ready yet
           }
@@ -1071,7 +1098,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [currentUser?.id, priceCeiling])
+  }, [currentUser?.id, filterBudgetCap])
 
   useEffect(() => {
     const selectedLocation = route?.params?.selectedLocation
@@ -1438,7 +1465,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   function openFilters() {
-    setDraftFilters(normalizeFilters(appliedFilters, priceCeiling))
+    setDraftFilters(normalizeFilters(appliedFilters, filterBudgetCap))
     setFilterModalVisible(true)
   }
 
@@ -1447,15 +1474,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   function updateDraftFilter(key, value) {
-    setDraftFilters((current) => normalizeFilters({ ...current, [key]: value }, priceCeiling))
-  }
-
-  function resetDraftFilters() {
-    setDraftFilters(createDefaultFilters(priceCeiling))
+    setDraftFilters((current) => normalizeFilters({ ...current, [key]: value }, filterBudgetCap))
   }
 
   function applyFilters() {
-    setAppliedFilters(normalizeFilters(draftFilters, priceCeiling))
+    setAppliedFilters(normalizeFilters(draftFilters, filterBudgetCap))
     setFilterModalVisible(false)
   }
 
@@ -1465,12 +1488,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       return
     }
 
-    const nextFilters = normalizeFilters(draftFilters, priceCeiling)
+    const nextFilters = normalizeFilters(draftFilters, filterBudgetCap)
 
     const hasUsefulAlertCriteria = Boolean(
       nextFilters.location
       || Number(nextFilters.minPrice || 0) > 0
-      || Number(nextFilters.maxPrice || 0) < Number(priceCeiling || 0)
+      || Number(nextFilters.maxPrice || 0) < Number(filterBudgetCap || 0)
       || Number(nextFilters.minBeds || 0) > 0
       || Number(nextFilters.minBaths || 0) > 0
       || nextFilters.furnishing !== 'any'
@@ -1499,7 +1522,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       const createdSearch = await createSavedSearch({
         userId: currentUser.id,
         filters: nextFilters,
-        maxPrice: priceCeiling,
+        maxPrice: filterBudgetCap,
       })
 
       setSavedSearches((current) => [createdSearch, ...current].slice(0, 8))
@@ -2409,7 +2432,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   function RecentlyViewedSection() {
-    if (!recentlyViewedProperties.length) return null
+    if (!recentlyViewedProperties.length || recentlyViewedHidden) return null
 
     return (
       <View style={{ backgroundColor: '#fff', paddingTop: 10, paddingBottom: 12, marginBottom: 8 }}>
@@ -2431,9 +2454,31 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             </Text>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.navigate('RecentlyViewed')}>
-            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>See all</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TouchableOpacity onPress={() => navigation.navigate('RecentlyViewed')}>
+              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>See all</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                recentlyViewedHiddenSignatureRef.current = getRecentlyViewedSignature(recentlyViewedProperties)
+                setRecentlyViewedHidden(true)
+              }}
+              activeOpacity={0.82}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 999,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#f1f5f9',
+                borderWidth: 1,
+                borderColor: '#dbe4ee',
+              }}
+            >
+              <Ionicons name="close" size={13} color="#64748b" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -2631,7 +2676,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           decelerationRate="fast"
           onMomentumScrollEnd={(event) => {
             const offsetX = event?.nativeEvent?.contentOffset?.x || 0
-            homeBannerIndexRef.current = Math.max(0, Math.round(offsetX / homeBannerCardStep))
+            homeBannerIndexRef.current = Math.min(
+              homeBannerMaxLeadIndex,
+              Math.max(0, Math.round(offsetX / homeBannerCardStep))
+            )
           }}
         >
           {homeBanners.map((banner) => {
@@ -3033,14 +3081,14 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               <Text style={{ marginTop: 6, fontSize: 12, color: '#64748b', textAlign: 'center' }}>
                 {appliedSearchQuery
                   ? 'Try another keyword, owner name, or area.'
-                  : 'Try a wider budget, another area, or reset the filters.'}
+                  : 'Try a wider budget, another area, or adjust the filters.'}
               </Text>
               <TouchableOpacity
                 onPress={() => {
                   if (appliedSearchQuery) {
                     clearSearch()
                   } else {
-                    setAppliedFilters(createDefaultFilters(priceCeiling))
+                    setAppliedFilters(createDefaultFilters(filterBudgetCap))
                   }
                 }}
                 style={{
@@ -3365,8 +3413,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   </View>
                   <Slider
                     minimumValue={0}
-                    maximumValue={priceCeiling}
-                    step={Math.max(500, Math.round(priceCeiling / 40))}
+                    maximumValue={filterBudgetCap}
+                    step={Math.max(500, Math.round(filterBudgetCap / 40))}
                     value={draftFilters.minPrice}
                     minimumTrackTintColor="#2563eb"
                     maximumTrackTintColor="#cbd5e1"
@@ -3384,8 +3432,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   </View>
                   <Slider
                     minimumValue={draftFilters.minPrice}
-                    maximumValue={priceCeiling}
-                    step={Math.max(500, Math.round(priceCeiling / 40))}
+                    maximumValue={filterBudgetCap}
+                    step={Math.max(500, Math.round(filterBudgetCap / 40))}
                     value={draftFilters.maxPrice}
                     minimumTrackTintColor="#2563eb"
                     maximumTrackTintColor="#cbd5e1"
@@ -3574,27 +3622,9 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={resetDraftFilters}
-                style={{
-                  flex: 0.9,
-                  height: 46,
-                  borderRadius: 15,
-                  backgroundColor: '#f8fafc',
-                  borderWidth: 1,
-                  borderColor: '#dbe4ee',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: '#475569', fontSize: 13, fontWeight: '900' }}>
-                  Reset
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 onPress={applyFilters}
                 style={{
-                  flex: 1.15,
+                  flex: 1,
                   height: 46,
                   borderRadius: 15,
                   backgroundColor: '#2563eb',
