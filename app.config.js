@@ -36,6 +36,7 @@ module.exports = {
     },
     extra: {
       ...(baseConfig.extra || {}),
+      googleMapsEnabled: Boolean(googleMapsApiKey),
       agora: {
         appId: agoraAppId,
         tokenServerUrl: agoraTokenServerUrl,

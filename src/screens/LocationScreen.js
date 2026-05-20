@@ -11,6 +11,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import Constants from 'expo-constants'
 import MapView, { Marker } from 'react-native-maps'
 import * as Location from 'expo-location'
 import { CommonActions } from '@react-navigation/native'
@@ -27,7 +28,8 @@ const DEFAULT_REGION = {
 }
 
 const HAS_ANDROID_GOOGLE_MAPS_KEY =
-  Platform.OS !== 'android' || Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
+  Platform.OS !== 'android'
+  || Boolean(Constants?.expoConfig?.extra?.googleMapsEnabled)
 
 export default function LocationScreen({ navigation, route }) {
   const mapRef = useRef(null)
@@ -389,6 +391,7 @@ export default function LocationScreen({ navigation, route }) {
               <MapView
                 ref={mapRef}
                 style={{ flex: 1 }}
+                provider={Platform.OS === 'android' ? 'google' : undefined}
                 initialRegion={initialRegion}
                 onMapReady={() => setMapReady(true)}
                 onPress={handleMapPick}
