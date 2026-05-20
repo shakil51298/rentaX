@@ -3,7 +3,9 @@ import { NavigationContainer, createNavigationContainerRef } from '@react-naviga
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import * as Notifications from 'expo-notifications'
-import { ActivityIndicator, AppState, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { ActivityIndicator, AppState, Text, TouchableOpacity, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import LoginScreen from '../screens/LoginScreen'
 import HomeScreen from '../screens/HomeScreen'
@@ -37,6 +39,7 @@ import RecentlyViewedScreen from '../screens/RecentlyViewedScreen'
 import ComparePropertiesScreen from '../screens/ComparePropertiesScreen'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import { supabase } from '../lib/supabase'
+import { clearGuestMode, isGuestModeEnabled } from '../lib/guestSession'
 import {
   registerDevicePushToken,
   routeFromNotificationData,
@@ -63,27 +66,136 @@ const TAB_ACTIVE_KEYS = {
   Profile: 'profile',
 }
 
-function HomeTabScreen(props) {
-  return <HomeScreen {...props} embeddedTabShell />
+function GuestLockedScreen({
+  navigation,
+  icon,
+  title,
+  subtitle,
+}) {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f4f7fb' }}>
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: 22,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <View
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            backgroundColor: '#eff6ff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icon} size={34} color="#2563eb" />
+        </View>
+
+        <Text
+          style={{
+            marginTop: 18,
+            color: '#0f172a',
+            fontSize: 22,
+            fontWeight: '900',
+            textAlign: 'center',
+          }}
+        >
+          {title}
+        </Text>
+
+        <Text
+          style={{
+            marginTop: 10,
+            color: '#64748b',
+            fontSize: 14,
+            lineHeight: 21,
+            textAlign: 'center',
+            maxWidth: 280,
+          }}
+        >
+          {subtitle}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => navigation.getParent()?.navigate('Login')}
+          style={{
+            marginTop: 20,
+            backgroundColor: '#1877F2',
+            borderRadius: 14,
+            paddingHorizontal: 22,
+            paddingVertical: 13,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 15 }}>
+            Login or Register
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  )
 }
 
-function ChatTabScreen(props) {
-  return <ChatScreen {...props} embeddedTabShell />
-}
+function MainTabsNavigator({ guestMode = false }) {
+  function HomeTabScreen(props) {
+    return <HomeScreen {...props} embeddedTabShell guestMode={guestMode} />
+  }
 
-function FavoriteTabScreen(props) {
-  return <FavoriteScreen {...props} embeddedTabShell />
-}
+  function ChatTabScreen(props) {
+    return guestMode ? (
+      <GuestLockedScreen
+        {...props}
+        icon="chatbubble-ellipses-outline"
+        title="Chat needs an account"
+        subtitle="Create an account to message owners and continue conversations."
+      />
+    ) : (
+      <ChatScreen {...props} embeddedTabShell />
+    )
+  }
 
-function NotificationsTabScreen(props) {
-  return <NotificationsScreen {...props} embeddedTabShell />
-}
+  function FavoriteTabScreen(props) {
+    return guestMode ? (
+      <GuestLockedScreen
+        {...props}
+        icon="heart-outline"
+        title="Favorites need an account"
+        subtitle="Login to save listings and come back to them later."
+      />
+    ) : (
+      <FavoriteScreen {...props} embeddedTabShell />
+    )
+  }
 
-function ProfileTabScreen(props) {
-  return <ProfileScreen {...props} embeddedTabShell />
-}
+  function NotificationsTabScreen(props) {
+    return guestMode ? (
+      <GuestLockedScreen
+        {...props}
+        icon="notifications-outline"
+        title="Notifications need an account"
+        subtitle="Login to get message updates, alerts, and admin or verification notices."
+      />
+    ) : (
+      <NotificationsScreen {...props} embeddedTabShell />
+    )
+  }
 
-function MainTabsNavigator() {
+  function ProfileTabScreen(props) {
+    return guestMode ? (
+      <GuestLockedScreen
+        {...props}
+        icon="person-outline"
+        title="Profile needs an account"
+        subtitle="Create an account to manage your profile, listings, and saved activity."
+      />
+    ) : (
+      <ProfileScreen {...props} embeddedTabShell />
+    )
+  }
+
   return (
     <Tab.Navigator
       initialRouteName="Home"
@@ -255,6 +367,7 @@ export default function AppNavigator() {
   const pendingNotificationPayload = useRef(null)
   const lastOpenedCallKeyRef = useRef(null)
   const [session, setSession] = useState(undefined)
+  const [guestMode, setGuestMode] = useState(false)
 
   const handleOpenNotification = useCallback((payload) => {
     if (!payload) return
@@ -290,19 +403,27 @@ export default function AppNavigator() {
 
       if (error) {
         setSession(null)
+        setGuestMode(await isGuestModeEnabled())
         return
       }
 
       setSession(data.session || null)
+      setGuestMode(!data.session && await isGuestModeEnabled())
     }
 
     bootstrapSession()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       if (isMounted) {
         setSession(nextSession || null)
+        if (nextSession) {
+          setGuestMode(false)
+          clearGuestMode()
+        } else if (event === 'SIGNED_OUT') {
+          setGuestMode(false)
+        }
       }
     })
 
@@ -332,7 +453,7 @@ export default function AppNavigator() {
           }
         }}
       >
-      <Stack.Navigator initialRouteName={session ? 'MainTabs' : 'Login'}>
+      <Stack.Navigator initialRouteName={session || guestMode ? 'MainTabs' : 'Login'}>
         <Stack.Screen
           name="Login"
           component={LoginScreen}
@@ -340,10 +461,12 @@ export default function AppNavigator() {
         />
         <Stack.Screen
           name="MainTabs"
-          component={MainTabsNavigator}
+          children={() => <MainTabsNavigator guestMode={guestMode} />}
           options={{ headerShown: false }}
         />
-        <Stack.Screen name="Property" component={PropertyScreen} />
+        <Stack.Screen name="Property">
+          {(props) => <PropertyScreen {...props} guestMode={guestMode} />}
+        </Stack.Screen>
         <Stack.Screen name="CreatePost" component={CreatePostScreen} />
         <Stack.Screen
           name="ChatSettings"

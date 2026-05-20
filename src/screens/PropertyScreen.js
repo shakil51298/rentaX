@@ -445,7 +445,7 @@ function Avatar({ name, uri }) {
   )
 }
 
-export default function PropertyScreen({ route, navigation }) {
+export default function PropertyScreen({ route, navigation, guestMode = false }) {
   const initialProperty = route.params?.property || {}
   const [post, setPost] = useState(initialProperty)
   const [currentUser, setCurrentUser] = useState(null)
@@ -465,6 +465,20 @@ export default function PropertyScreen({ route, navigation }) {
   })
   const [actionSheetVisible, setActionSheetVisible] = useState(false)
   const [comparedProperties, setComparedProperties] = useState([])
+
+  function promptGuestLogin(feature = 'this feature') {
+    Alert.alert(
+      'Login required',
+      `Please login or register to use ${feature}.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Login',
+          onPress: () => navigation.navigate('Login'),
+        },
+      ]
+    )
+  }
 
   useEffect(() => {
     loadPost()
@@ -652,7 +666,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function toggleLike() {
-    if (!currentUser || !post?.id) return
+    if (guestMode || !currentUser || !post?.id) {
+      promptGuestLogin('likes')
+      return
+    }
 
     const myReaction = post.property_reactions?.find(
       (item) => item.user_id === currentUser.id
@@ -704,7 +721,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function toggleFavorite() {
-    if (!currentUser || !post?.id) return
+    if (guestMode || !currentUser || !post?.id) {
+      promptGuestLogin('favorites')
+      return
+    }
 
     const isFavorite = post.property_favorites?.some(
       (item) => item.user_id === currentUser.id
@@ -754,13 +774,21 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function sharePost() {
+    if (guestMode) {
+      promptGuestLogin('sharing')
+      return
+    }
+
     await Share.share({
       message: `${post.title}\nRent: ৳ ${post.price}\nLocation: ${post.location || ''}`,
     })
   }
 
   async function blockOwner() {
-    if (!currentUser?.id || !post?.owner_id) return
+    if (guestMode || !currentUser?.id || !post?.owner_id) {
+      promptGuestLogin('blocking users')
+      return
+    }
 
     const { error } = await blockUser(currentUser.id, post.owner_id)
 
@@ -777,7 +805,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function hideCurrentPost(reason, successTitle, successBody) {
-    if (!currentUser?.id || !post?.id) return
+    if (guestMode || !currentUser?.id || !post?.id) {
+      promptGuestLogin('feed controls')
+      return
+    }
 
     try {
       await hidePropertyFromFeed({
@@ -793,7 +824,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function hideCurrentOwner() {
-    if (!currentUser?.id || !post?.owner_id) return
+    if (guestMode || !currentUser?.id || !post?.owner_id) {
+      promptGuestLogin('feed controls')
+      return
+    }
 
     try {
       await hideOwnerFromFeed({
@@ -813,7 +847,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function showLessLikeCurrentPost() {
-    if (!currentUser?.id || !post?.id) return
+    if (guestMode || !currentUser?.id || !post?.id) {
+      promptGuestLogin('feed controls')
+      return
+    }
 
     try {
       await hidePropertyFromFeed({
@@ -837,6 +874,11 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function toggleCompareCurrentPost() {
+    if (guestMode) {
+      promptGuestLogin('compare')
+      return
+    }
+
     const storageUserId = currentUser?.id || currentUser?.email || 'guest'
     const exists = comparedProperties.some((item) => String(item.id) === String(post?.id))
 
@@ -859,6 +901,11 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   function openMoreActions() {
+    if (guestMode) {
+      promptGuestLogin('post actions')
+      return
+    }
+
     setActionSheetVisible(true)
   }
 
@@ -878,6 +925,11 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   function openVisitModal() {
+    if (guestMode) {
+      promptGuestLogin('visit scheduling')
+      return
+    }
+
     const { dateText, timeText } = splitVisitTimestamp(
       visitRequest?.status === 'rescheduled'
         ? visitRequest?.owner_proposed_for
@@ -895,7 +947,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function submitVisitRequest() {
-    if (!currentUser?.id || !post?.id || !post?.owner_id) return
+    if (guestMode || !currentUser?.id || !post?.id || !post?.owner_id) {
+      promptGuestLogin('visit scheduling')
+      return
+    }
 
     let requestedFor = null
 
@@ -952,7 +1007,10 @@ export default function PropertyScreen({ route, navigation }) {
   }
 
   async function cancelCurrentVisitRequest() {
-    if (!visitRequest?.id || !currentUser?.id) return
+    if (guestMode || !visitRequest?.id || !currentUser?.id) {
+      promptGuestLogin('visit scheduling')
+      return
+    }
 
     try {
       setVisitSaving(true)
@@ -1020,7 +1078,12 @@ export default function PropertyScreen({ route, navigation }) {
         <View style={{ backgroundColor: '#fff', paddingTop: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
             <TouchableOpacity
-              onPress={() =>
+              onPress={() => {
+                if (guestMode) {
+                  promptGuestLogin('public profiles')
+                  return
+                }
+
                 navigation.navigate('OwnerProfile', {
                   owner: {
                     id: post.owner_id,
@@ -1028,7 +1091,7 @@ export default function PropertyScreen({ route, navigation }) {
                     name: ownerDisplayName,
                   },
                 })
-              }
+              }}
               activeOpacity={0.82}
               style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
             >
@@ -1314,7 +1377,12 @@ export default function PropertyScreen({ route, navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() =>
+              onPress={() => {
+                if (guestMode) {
+                  promptGuestLogin('comments')
+                  return
+                }
+
                 navigation.navigate('MainTabs', {
                   screen: 'Home',
                   params: {
@@ -1323,7 +1391,7 @@ export default function PropertyScreen({ route, navigation }) {
                     openCommentsRequestId: `property-${post.id}-${Date.now()}`,
                   },
                 })
-              }
+              }}
               style={{ flex: 1, paddingVertical: 13, alignItems: 'center' }}
             >
               <Ionicons name="chatbubble-outline" size={22} color="#555" />
@@ -1424,12 +1492,17 @@ export default function PropertyScreen({ route, navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() =>
+              onPress={() => {
+                if (guestMode) {
+                  promptGuestLogin('messaging owners')
+                  return
+                }
+
                 navigation.navigate('MainTabs', {
                   screen: 'Chat',
                   params: { property: post },
                 })
-              }
+              }}
               style={{
                 marginTop: 10,
                 backgroundColor: '#111827',

@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import appConfig from '../../app.json'
 import { supabase } from '../lib/supabase'
+import { activateGuestMode, clearGuestMode } from '../lib/guestSession'
 import { ensureUserProfileRecord } from '../lib/profileSync'
 
 const USER_TYPES = [
@@ -45,6 +46,8 @@ export default function LoginScreen({ navigation }) {
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [passwordFieldY, setPasswordFieldY] = useState(0)
   const [confirmPasswordFieldY, setConfirmPasswordFieldY] = useState(0)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const isRegisterMode = mode === 'register'
 
@@ -135,6 +138,7 @@ export default function LoginScreen({ navigation }) {
       }
     }
 
+    await clearGuestMode()
     navigation.replace('MainTabs')
   }
 
@@ -171,6 +175,7 @@ export default function LoginScreen({ navigation }) {
       } catch (_error) {
         // Let registration continue; profile sync will retry from the app screens.
       }
+      await clearGuestMode()
       navigation.replace('MainTabs')
       return
     }
@@ -190,6 +195,13 @@ export default function LoginScreen({ navigation }) {
     } else {
       login()
     }
+  }
+
+  async function continueAsGuest() {
+    if (loading) return
+
+    await activateGuestMode()
+    navigation.replace('MainTabs')
   }
 
   return (
@@ -232,15 +244,57 @@ export default function LoginScreen({ navigation }) {
               resizeMode="contain"
             />
           </View>
+
+          <Text
+            style={{
+              marginTop: 12,
+              fontSize: 22,
+              fontWeight: '900',
+              color: '#0f172a',
+              letterSpacing: 0,
+            }}
+          >
+            Rental X
+          </Text>
+
+          <Text
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: '700',
+              color: '#64748b',
+              letterSpacing: 0,
+            }}
+          >
+            Rent. Live. Connect.
+          </Text>
+
+          <Text
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: '#94a3b8',
+              textAlign: 'center',
+              lineHeight: 19,
+              maxWidth: 240,
+            }}
+          >
+            Find the right place, talk to owners directly, and move with confidence.
+          </Text>
         </View>
 
         <View
           style={{
             backgroundColor: '#fff',
-            borderRadius: 16,
+            borderRadius: 18,
             borderWidth: 1,
             borderColor: '#e5eaf2',
-            padding: 16,
+            padding: 18,
+            shadowColor: '#0f172a',
+            shadowOpacity: 0.04,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 2,
           }}
         >
           <View
@@ -341,23 +395,51 @@ export default function LoginScreen({ navigation }) {
               Password
             </Text>
 
-            <TextInput
-              placeholder="Enter your password"
-              value={password}
-              onChangeText={setPassword}
-              onFocus={() => scrollToField(passwordFieldY)}
-              secureTextEntry
-              textContentType={isRegisterMode ? 'newPassword' : 'password'}
+            <View
               style={{
                 backgroundColor: '#f8fafc',
                 borderWidth: 1,
                 borderColor: '#e2e8f0',
                 borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 13,
-                fontSize: 15,
+                paddingLeft: 14,
+                paddingRight: 10,
+                minHeight: 50,
+                flexDirection: 'row',
+                alignItems: 'center',
               }}
-            />
+            >
+              <TextInput
+                placeholder="Enter your password"
+                value={password}
+                onChangeText={setPassword}
+                onFocus={() => scrollToField(passwordFieldY)}
+                secureTextEntry={!showPassword}
+                textContentType={isRegisterMode ? 'newPassword' : 'password'}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  fontSize: 15,
+                  color: '#0f172a',
+                }}
+              />
+
+              <TouchableOpacity
+                onPress={() => setShowPassword((current) => !current)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={19}
+                  color="#64748b"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {isRegisterMode ? (
@@ -372,23 +454,51 @@ export default function LoginScreen({ navigation }) {
                   Confirm password
                 </Text>
 
-                <TextInput
-                  placeholder="Re-enter your password"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  onFocus={() => scrollToField(confirmPasswordFieldY)}
-                  secureTextEntry
-                  textContentType="newPassword"
+                <View
                   style={{
                     backgroundColor: '#f8fafc',
                     borderWidth: 1,
                     borderColor: '#e2e8f0',
                     borderRadius: 12,
-                    paddingHorizontal: 14,
-                    paddingVertical: 13,
-                    fontSize: 15,
+                    paddingLeft: 14,
+                    paddingRight: 10,
+                    minHeight: 50,
+                    flexDirection: 'row',
+                    alignItems: 'center',
                   }}
-                />
+                >
+                  <TextInput
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    onFocus={() => scrollToField(confirmPasswordFieldY)}
+                    secureTextEntry={!showConfirmPassword}
+                    textContentType="newPassword"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 13,
+                      fontSize: 15,
+                      color: '#0f172a',
+                    }}
+                  />
+
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmPassword((current) => !current)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons
+                      name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={19}
+                      color="#64748b"
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <Text style={{ fontSize: 13, color: '#475569', fontWeight: '700', marginBottom: 8 }}>
@@ -484,6 +594,20 @@ export default function LoginScreen({ navigation }) {
               <Text style={{ color: '#1877F2', fontWeight: '800' }}>
                 {isRegisterMode ? ' Login' : ' Register'}
               </Text>
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={continueAsGuest}
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: '#eef2f7',
+              paddingTop: 14,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#64748b', fontWeight: '700' }}>
+              Skip for now
             </Text>
           </TouchableOpacity>
         </View>

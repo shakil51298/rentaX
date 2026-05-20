@@ -551,7 +551,7 @@ function SearchResultRow({ item, onPress }) {
   )
 }
 
-export default function HomeScreen({ navigation, route, embeddedTabShell = false }) {
+export default function HomeScreen({ navigation, route, embeddedTabShell = false, guestMode = false }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [commentModal, setCommentModal] = useState(false)
@@ -597,6 +597,20 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     minimumViewTime: 650,
     itemVisiblePercentThreshold: 55,
   }).current
+
+  function promptGuestLogin(feature = 'this feature') {
+    Alert.alert(
+      'Login required',
+      `Please login or register to use ${feature}.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Login',
+          onPress: () => navigation.navigate('Login'),
+        },
+      ]
+    )
+  }
 
   function formatLocationLabel(value) {
     if (!value) return ''
@@ -1574,7 +1588,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function toggleLike(propertyId) {
-    if (!currentUser) return
+    if (guestMode || !currentUser) {
+      promptGuestLogin('likes')
+      return
+    }
 
     const post = properties.find((item) => item.id === propertyId)
 
@@ -1627,7 +1644,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function reactToPost(propertyId, reaction) {
-    if (!currentUser) return
+    if (guestMode || !currentUser) {
+      promptGuestLogin('reactions')
+      return
+    }
 
     const post = properties.find((item) => item.id === propertyId)
 
@@ -1746,6 +1766,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function openComments(post) {
+    if (guestMode) {
+      promptGuestLogin('comments')
+      return
+    }
+
     markPostsAsSeen([post.id])
     commentReturnRoute.current = null
     setSelectedPost(post)
@@ -1755,6 +1780,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function addComment() {
+    if (guestMode) {
+      promptGuestLogin('comments')
+      return
+    }
+
     if (!commentText.trim() || !selectedPost) return
 
     const {
@@ -1853,6 +1883,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function toggleCommentLike(comment) {
+    if (guestMode) {
+      promptGuestLogin('comment likes')
+      return
+    }
+
     if (!currentUser) return
 
     const likes = comment.property_comment_likes || []
@@ -2001,7 +2036,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function toggleFavorite(post) {
-    if (!currentUser) return
+    if (guestMode || !currentUser) {
+      promptGuestLogin('favorites')
+      return
+    }
 
     const isFavorite = post.property_favorites?.some(
       (item) => item.user_id === currentUser.id
@@ -2063,13 +2101,21 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function sharePost(post) {
+    if (guestMode) {
+      promptGuestLogin('sharing')
+      return
+    }
+
     await Share.share({
       message: `${post.title}\nRent: ৳ ${post.price}\nLocation: ${post.location || ''}`,
     })
   }
 
   async function blockPostOwner(post) {
-    if (!currentUser?.id || !post?.owner_id) return
+    if (guestMode || !currentUser?.id || !post?.owner_id) {
+      promptGuestLogin('blocking users')
+      return
+    }
 
     const { error } = await blockUser(currentUser.id, post.owner_id)
 
@@ -2083,7 +2129,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function hideSinglePost(post, reason, successTitle, successBody) {
-    if (!currentUser?.id || !post?.id) return
+    if (guestMode || !currentUser?.id || !post?.id) {
+      promptGuestLogin('feed controls')
+      return
+    }
 
     try {
       await hidePropertyFromFeed({
@@ -2100,7 +2149,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function hideOwnerPosts(post) {
-    if (!currentUser?.id || !post?.owner_id) return
+    if (guestMode || !currentUser?.id || !post?.owner_id) {
+      promptGuestLogin('feed controls')
+      return
+    }
 
     try {
       await hideOwnerFromFeed({
@@ -2117,7 +2169,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function showLessLikeThis(post) {
-    if (!currentUser?.id || !post?.id) return
+    if (guestMode || !currentUser?.id || !post?.id) {
+      promptGuestLogin('feed controls')
+      return
+    }
 
     try {
       await hidePropertyFromFeed({
@@ -2143,6 +2198,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }
 
   async function toggleComparePost(post) {
+    if (guestMode) {
+      promptGuestLogin('compare')
+      return
+    }
+
     const storageUserId = currentUser?.id || currentUser?.email || 'guest'
     const exists = comparedProperties.some((item) => String(item.id) === String(post?.id))
 
@@ -2166,6 +2226,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
 
   function openPostMoreActions(post) {
     if (!post) return
+    if (guestMode) {
+      promptGuestLogin('post actions')
+      return
+    }
     setActionSheetPost(post)
   }
 
@@ -2185,6 +2249,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }, [])
 
   const openOwnerProfile = useCallback((post) => {
+    if (guestMode) {
+      promptGuestLogin('public profiles')
+      return
+    }
+
     const ownerProfile = post.owner_profile || {}
 
     navigation.navigate('OwnerProfile', {
@@ -2194,10 +2263,14 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         name: ownerProfile.display_name || post.owner_name,
       },
     })
-  }, [navigation])
+  }, [guestMode, navigation])
 
   const openCommentProfile = useCallback((comment) => {
     if (!comment?.user_id) return
+    if (guestMode) {
+      promptGuestLogin('public profiles')
+      return
+    }
 
     reopenCommentsOnFocus.current = true
     closeCommentModal({ skipReturn: true })
@@ -2209,7 +2282,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         name: getCommentAuthorName(comment),
       },
     })
-  }, [navigation])
+  }, [guestMode, navigation])
 
   function closeCommentModal(options = {}) {
     setCommentModal(false)
