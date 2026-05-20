@@ -14,6 +14,7 @@ import {
   Pressable,
   Image,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -72,6 +73,7 @@ import {
   deleteSavedSearch,
   fetchSavedSearches,
 } from '../lib/savedSearches'
+import { fetchVisibleHomeBanners } from '../lib/homeBanners'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { getOwnerVerificationStatus } from '../lib/verification'
@@ -552,6 +554,7 @@ function SearchResultRow({ item, onPress }) {
 }
 
 export default function HomeScreen({ navigation, route, embeddedTabShell = false, guestMode = false }) {
+  const { width: screenWidth } = useWindowDimensions()
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [commentModal, setCommentModal] = useState(false)
@@ -578,6 +581,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const [feedRefreshTick, setFeedRefreshTick] = useState(0)
   const [recentlyViewedProperties, setRecentlyViewedProperties] = useState([])
   const [comparedProperties, setComparedProperties] = useState([])
+  const [homeBanners, setHomeBanners] = useState([])
+  const [selectedBanner, setSelectedBanner] = useState(null)
   const [appliedFilters, setAppliedFilters] = useState(createDefaultFilters(0))
   const [draftFilters, setDraftFilters] = useState(createDefaultFilters(0))
   const [mediaViewer, setMediaViewer] = useState({
@@ -591,12 +596,20 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const commentReturnRoute = useRef(null)
   const manualLocationOverride = useRef(false)
   const postListRef = useRef(null)
+  const homeBannerScrollRef = useRef(null)
+  const homeBannerIndexRef = useRef(0)
   const currentUserIdRef = useRef(null)
   const seenPostIdsRef = useRef([])
   const viewabilityConfig = useRef({
     minimumViewTime: 650,
     itemVisiblePercentThreshold: 55,
   }).current
+  const homeBannerCardWidth = useMemo(() => {
+    const horizontalPadding = 32
+    const gap = 10
+    return Math.max(122, Math.floor((screenWidth - horizontalPadding - gap) / 2.42))
+  }, [screenWidth])
+  const homeBannerCardStep = useMemo(() => homeBannerCardWidth + 10, [homeBannerCardWidth])
 
   function promptGuestLogin(feature = 'this feature') {
     Alert.alert(
@@ -938,6 +951,33 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       return undefined
     }, [currentUser?.email, currentUser?.id])
   )
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHomeBanners()
+      return undefined
+    }, [loadHomeBanners])
+  )
+
+  useEffect(() => {
+    homeBannerIndexRef.current = 0
+    homeBannerScrollRef.current?.scrollTo?.({ x: 0, animated: false })
+  }, [homeBanners.length, homeBannerCardStep])
+
+  useEffect(() => {
+    if (homeBanners.length < 2 || selectedBanner) return undefined
+
+    const autoplay = setInterval(() => {
+      const nextIndex = (homeBannerIndexRef.current + 1) % homeBanners.length
+      homeBannerIndexRef.current = nextIndex
+      homeBannerScrollRef.current?.scrollTo?.({
+        x: nextIndex * homeBannerCardStep,
+        animated: true,
+      })
+    }, 3000)
+
+    return () => clearInterval(autoplay)
+  }, [homeBanners.length, homeBannerCardStep, selectedBanner])
 
   useFocusEffect(
     useCallback(() => {
@@ -1342,6 +1382,15 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }
   }, [currentUser?.id])
 
+  const loadHomeBanners = useCallback(async () => {
+    try {
+      const nextBanners = await fetchVisibleHomeBanners()
+      setHomeBanners(nextBanners)
+    } catch (_error) {
+      setHomeBanners([])
+    }
+  }, [])
+
   async function markPostsAsSeen(postIds) {
     if (!currentUser?.id || !postIds?.length) return
 
@@ -1367,7 +1416,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
 
   async function refreshHomeFeed({ scrollToTop = false } = {}) {
     setFeedRefreshTick((current) => current + 1)
-    await loadProperties()
+    await Promise.all([
+      loadProperties(),
+      loadHomeBanners(),
+    ])
 
     if (scrollToTop) {
       postListRef.current?.scrollToOffset?.({
@@ -2466,8 +2518,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 onPress={() => navigation.navigate('Property', { property: item })}
                 activeOpacity={0.88}
                 style={{
-                  width: 148,
-                  borderRadius: 16,
+                  width: 124,
+                  borderRadius: 14,
                   borderWidth: 1,
                   borderColor: '#dbe4ee',
                   backgroundColor: '#f8fafc',
@@ -2477,31 +2529,31 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 {mediaUri ? (
                   <Image
                     source={{ uri: mediaUri }}
-                    style={{ width: '100%', height: 68, backgroundColor: '#dbe4ee' }}
+                    style={{ width: '100%', height: 56, backgroundColor: '#dbe4ee' }}
                     resizeMode="cover"
                   />
                 ) : (
                   <View
                     style={{
                       width: '100%',
-                      height: 68,
+                      height: 56,
                       backgroundColor: '#e2e8f0',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="home-outline" size={22} color="#64748b" />
+                    <Ionicons name="home-outline" size={18} color="#64748b" />
                   </View>
                 )}
 
-                <View style={{ paddingHorizontal: 9, paddingVertical: 8 }}>
-                  <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 11, fontWeight: '900', lineHeight: 15 }}>
+                <View style={{ paddingHorizontal: 8, paddingVertical: 7 }}>
+                  <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 10, fontWeight: '900', lineHeight: 13 }}>
                     {item.title || 'Rental post'}
                   </Text>
-                  <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 10, marginTop: 4 }}>
+                  <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 9, marginTop: 3 }}>
                     {item.location || 'Location not added'}
                   </Text>
-                  <Text style={{ color: '#ea580c', fontSize: 10, fontWeight: '900', marginTop: 5 }}>
+                  <Text style={{ color: '#ea580c', fontSize: 9, fontWeight: '900', marginTop: 4 }}>
                     {item.price ? `৳ ${item.price}` : '—'}
                   </Text>
                 </View>
@@ -2599,9 +2651,143 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     )
   }
 
+  function HomeBannerSection() {
+    if (!homeBanners.length) return null
+
+    return (
+      <View style={{ backgroundColor: '#fff', paddingTop: 8, paddingBottom: 12, marginBottom: 8 }}>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingBottom: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View>
+            <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+              Featured now
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+              Fresh posts and offers picked for the home feed.
+            </Text>
+          </View>
+          <View
+            style={{
+              minWidth: 24,
+              height: 24,
+              borderRadius: 12,
+              paddingHorizontal: 7,
+              backgroundColor: '#eff6ff',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+              {homeBanners.length}
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView
+          ref={homeBannerScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+          snapToInterval={homeBannerCardStep}
+          decelerationRate="fast"
+          onMomentumScrollEnd={(event) => {
+            const offsetX = event?.nativeEvent?.contentOffset?.x || 0
+            homeBannerIndexRef.current = Math.max(0, Math.round(offsetX / homeBannerCardStep))
+          }}
+        >
+          {homeBanners.map((banner) => {
+            const isOffer = banner.kind === 'offer'
+
+            return (
+              <TouchableOpacity
+                key={banner.id}
+                activeOpacity={0.9}
+                onPress={() => setSelectedBanner(banner)}
+                style={{
+                  width: homeBannerCardWidth,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#dbe4ee',
+                  backgroundColor: '#dbe4ee',
+                  overflow: 'hidden',
+                }}
+              >
+                <Image
+                  source={{ uri: banner.image_url }}
+                  style={{ width: '100%', height: 84, backgroundColor: '#dbe4ee' }}
+                  resizeMode="cover"
+                />
+
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: 6,
+                    right: 6,
+                    bottom: 6,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+                    paddingHorizontal: 8,
+                    paddingVertical: 7,
+                  }}
+                >
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 999,
+                      backgroundColor: isOffer
+                        ? 'rgba(255, 247, 237, 0.88)'
+                        : 'rgba(239, 246, 255, 0.88)',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isOffer ? '#c2410c' : '#1d4ed8',
+                        fontSize: 7,
+                        fontWeight: '900',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {banner.kind}
+                    </Text>
+                  </View>
+
+                  <Text
+                    numberOfLines={2}
+                    style={{ color: '#fff', fontSize: 10, fontWeight: '900', marginTop: 6, lineHeight: 13 }}
+                  >
+                    {banner.title}
+                  </Text>
+
+                  {banner.subtitle ? (
+                    <Text
+                      numberOfLines={2}
+                      style={{ color: 'rgba(255,255,255,0.82)', fontSize: 8, marginTop: 3, lineHeight: 11 }}
+                    >
+                      {banner.subtitle}
+                    </Text>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
+      </View>
+    )
+  }
+
   function FeedHeader() {
     return (
       <>
+        <HomeBannerSection />
         {canCreatePosts ? <CreatePostBox /> : null}
         <CompareSection />
         <RecentlyViewedSection />
@@ -3620,6 +3806,125 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
         initialIndex={mediaViewer.index}
         onClose={closeMediaViewer}
       />
+
+      <Modal
+        visible={Boolean(selectedBanner)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedBanner(null)}
+      >
+        <Pressable
+          onPress={() => setSelectedBanner(null)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.44)',
+            paddingHorizontal: 18,
+            justifyContent: 'center',
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 22,
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: '#dbe4ee',
+            }}
+          >
+            {selectedBanner?.image_url ? (
+              <Image
+                source={{ uri: selectedBanner.image_url }}
+                style={{ width: '100%', height: 220, backgroundColor: '#dbe4ee' }}
+                resizeMode="cover"
+              />
+            ) : null}
+
+            <View style={{ padding: 16 }}>
+              <View
+                style={{
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 999,
+                  backgroundColor: selectedBanner?.kind === 'offer' ? '#fff7ed' : '#eff6ff',
+                  marginBottom: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: selectedBanner?.kind === 'offer' ? '#c2410c' : '#1d4ed8',
+                    fontSize: 10,
+                    fontWeight: '900',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {selectedBanner?.kind || 'banner'}
+                </Text>
+              </View>
+
+              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900', lineHeight: 24 }}>
+                {selectedBanner?.title || 'Featured banner'}
+              </Text>
+
+              {selectedBanner?.subtitle ? (
+                <Text style={{ color: '#64748b', fontSize: 13, lineHeight: 20, marginTop: 8 }}>
+                  {selectedBanner.subtitle}
+                </Text>
+              ) : null}
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  onPress={() => setSelectedBanner(null)}
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    borderRadius: 14,
+                    backgroundColor: '#e2e8f0',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#334155', fontSize: 13, fontWeight: '900' }}>
+                    Close
+                  </Text>
+                </TouchableOpacity>
+
+                {selectedBanner?.target_property_id ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const linkedProperty = properties.find(
+                        (item) => String(item.id) === String(selectedBanner.target_property_id)
+                      )
+
+                      setSelectedBanner(null)
+
+                      if (linkedProperty) {
+                        navigation.navigate('Property', { property: linkedProperty })
+                        return
+                      }
+
+                      Alert.alert('Post unavailable', 'This linked post could not be opened right now.')
+                    }}
+                    style={{
+                      flex: 1.2,
+                      minHeight: 44,
+                      borderRadius: 14,
+                      backgroundColor: '#2563eb',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>
+                      {selectedBanner?.cta_label || 'Open post'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ActionSheetModal
         visible={Boolean(actionSheetPost)}

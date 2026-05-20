@@ -33,6 +33,7 @@ import AdminUserDetailScreen from '../screens/AdminUserDetailScreen'
 import AdminUserPostsScreen from '../screens/AdminUserPostsScreen'
 import CustomerCareScreen from '../screens/CustomerCareScreen'
 import AdminReportsScreen from '../screens/AdminReportsScreen'
+import AdminBannersScreen from '../screens/AdminBannersScreen'
 import ReportIssueScreen from '../screens/ReportIssueScreen'
 import VisitRequestsScreen from '../screens/VisitRequestsScreen'
 import RecentlyViewedScreen from '../screens/RecentlyViewedScreen'
@@ -518,6 +519,11 @@ export default function AppNavigator() {
           name="AdminReports"
           component={AdminReportsScreen}
           options={{ title: 'Report Queue' }}
+        />
+        <Stack.Screen
+          name="AdminBanners"
+          component={AdminBannersScreen}
+          options={{ title: 'Home Banners' }}
         />
         <Stack.Screen
           name="AdminUserDetail"

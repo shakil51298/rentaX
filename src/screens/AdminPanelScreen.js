@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
@@ -80,29 +80,31 @@ function SummaryTile({ label, value, tint, icon }) {
       style={{
         flex: 1,
         backgroundColor: '#fff',
-        borderRadius: 16,
+        borderRadius: 14,
         borderWidth: 1,
         borderColor: '#e2e8f0',
-        padding: 14,
+        paddingHorizontal: 10,
+        paddingVertical: 11,
+        minHeight: 96,
       }}
     >
       <View
         style={{
-          width: 34,
-          height: 34,
-          borderRadius: 17,
+          width: 30,
+          height: 30,
+          borderRadius: 15,
           backgroundColor: tint,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Ionicons name={icon} size={17} color="#fff" />
+        <Ionicons name={icon} size={15} color="#fff" />
       </View>
 
-      <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '900', marginTop: 12 }}>
+      <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900', marginTop: 10 }}>
         {value}
       </Text>
-      <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12, fontWeight: '800' }}>
+      <Text style={{ color: '#64748b', marginTop: 3, fontSize: 10, fontWeight: '800', lineHeight: 13 }}>
         {label}
       </Text>
     </View>
@@ -279,12 +281,36 @@ export default function AdminPanelScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
-      <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={{ color: '#64748b', lineHeight: 20, marginBottom: 14 }}>
           Manage reviews and keep an eye on everyone using Rental X from one place.
         </Text>
 
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('AdminBanners')}
+          activeOpacity={0.86}
+          style={{
+            alignSelf: 'flex-start',
+            marginBottom: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderRadius: 14,
+            backgroundColor: '#ede9fe',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <Ionicons name="images-outline" size={16} color="#7c3aed" />
+          <Text style={{ color: '#6d28d9', fontSize: 12, fontWeight: '900' }}>
+            Manage home banners
+          </Text>
+        </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
           <SummaryTile
             label="Pending reviews"
             value={totalReviewCount}
@@ -297,16 +323,12 @@ export default function AdminPanelScreen({ navigation }) {
             tint="#dc2626"
             icon="flag"
           />
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
           <SummaryTile
             label="Registered users"
             value={counts.totalUsers}
             tint="#16a34a"
             icon="people"
           />
-          <View style={{ flex: 1 }} />
         </View>
 
         <HubCard
@@ -335,7 +357,7 @@ export default function AdminPanelScreen({ navigation }) {
           tint="#16a34a"
           onPress={() => navigation.navigate('AdminUsers')}
         />
-      </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
