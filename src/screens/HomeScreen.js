@@ -31,7 +31,6 @@ import MediaViewer from '../components/common/MediaViewer'
 import ActionSheetModal from '../components/common/ActionSheetModal'
 import PostCard from '../components/home/PostCard'
 import CommentItem from '../components/home/CommentItem'
-import Avatar from '../components/common/Avatar'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import {
@@ -2403,74 +2402,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }).current
 
   const showInitialLoader = loading && properties.length === 0
-  const canCreatePosts = currentUser?.user_metadata?.user_type === 'property_owner'
   const showFilteredEmptyState = !showInitialLoader && visibleProperties.length === 0
-
-  function CreatePostBox() {
-    const composerName = getUserDisplayName(currentUser) || 'Property owner'
-    const composerPrompt =
-      currentUser?.user_metadata?.user_type === 'property_owner'
-        ? 'Post your rental ad, photos, rent, and location'
-        : 'Share your latest rental update'
-
-    return (
-      <View
-        style={{
-          backgroundColor: '#fff',
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          marginBottom: 8,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Avatar
-            profile={{
-              display_name: composerName,
-              email: currentUser?.email,
-              avatar_url: getUserAvatarUrl(currentUser),
-            }}
-            name={composerName}
-            size={46}
-            backgroundColor="#dbeafe"
-            textColor="#1d4ed8"
-          />
-
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CreatePost')}
-            style={{
-              flex: 1,
-              marginLeft: 10,
-              borderWidth: 1,
-              borderColor: '#dbe4ee',
-              borderRadius: 26,
-              paddingVertical: 11,
-              paddingHorizontal: 16,
-              backgroundColor: '#f8fafc',
-            }}
-          >
-            <Text style={{ color: '#475569', fontSize: 14, fontWeight: '700' }}>
-              {composerPrompt}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CreatePost')}
-            style={{
-              marginLeft: 10,
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              backgroundColor: '#ecfdf5',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="images" size={22} color="#16a34a" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    )
-  }
 
   function getBrowsePreviewMedia(property) {
     return property?.image_url || property?.media?.[0]?.uri || null
@@ -2788,7 +2720,6 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     return (
       <>
         <HomeBannerSection />
-        {canCreatePosts ? <CreatePostBox /> : null}
         <CompareSection />
         <RecentlyViewedSection />
       </>

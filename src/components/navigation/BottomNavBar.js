@@ -47,6 +47,7 @@ export default function BottomNavBar({
   messageUnreadCount,
   notificationUnreadCount,
   onTabPress,
+  userType = 'renter',
 }) {
   const insets = useSafeAreaInsets()
   const [counts, setCounts] = useState({
@@ -178,10 +179,14 @@ export default function BottomNavBar({
     }
   }, [messageUnreadCount, notificationUnreadCount])
 
+  const isOwner = userType === 'property_owner'
+
   const tabs = [
     { key: 'home', icon: 'home', inactiveIcon: 'home-outline', screen: 'Home' },
     { key: 'chat', icon: 'chatbubble', inactiveIcon: 'chatbubble-outline', screen: 'Chat' },
-    { key: 'favorite', icon: 'heart', inactiveIcon: 'heart-outline', screen: 'Favorite' },
+    isOwner
+      ? { key: 'create', icon: 'add-circle', inactiveIcon: 'add-circle-outline', screen: 'CreatePost' }
+      : { key: 'favorite', icon: 'heart', inactiveIcon: 'heart-outline', screen: 'Favorite' },
     {
       key: 'notifications',
       icon: 'notifications',
@@ -205,7 +210,7 @@ export default function BottomNavBar({
       }}
     >
       {tabs.map((tab) => {
-        const isActive = activeTab === tab.key
+        const isActive = tab.key === 'create' ? false : activeTab === tab.key
         const color = isActive ? '#1877F2' : '#111'
         const badgeCount =
           tab.key === 'chat'

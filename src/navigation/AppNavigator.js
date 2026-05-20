@@ -141,6 +141,57 @@ function GuestLockedScreen({
 }
 
 function MainTabsNavigator({ guestMode = false }) {
+  const [userType, setUserType] = useState('renter')
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadUserType() {
+      if (guestMode) {
+        if (isMounted) {
+          setUserType('renter')
+        }
+        return
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!isMounted) return
+
+      if (!user?.id) {
+        setUserType('renter')
+        return
+      }
+
+      const metadataUserType = user.user_metadata?.user_type || 'renter'
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('user_type')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!isMounted) return
+
+      setUserType(profile?.user_type || metadataUserType || 'renter')
+    }
+
+    loadUserType()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      loadUserType()
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [guestMode])
+
   function HomeTabScreen(props) {
     return <HomeScreen {...props} embeddedTabShell guestMode={guestMode} />
   }
@@ -210,7 +261,13 @@ function MainTabsNavigator({ guestMode = false }) {
         <BottomNavBar
           navigation={navigation}
           activeTab={TAB_ACTIVE_KEYS[state.routes[state.index]?.name] || 'home'}
+          userType={userType}
           onTabPress={(_tabKey, { screen }) => {
+            if (screen === 'CreatePost') {
+              navigation.getParent()?.navigate('CreatePost')
+              return true
+            }
+
             const targetRoute = state.routes.find((route) => route.name === screen)
             const event = navigation.emit({
               type: 'tabPress',
