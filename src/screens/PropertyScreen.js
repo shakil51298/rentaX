@@ -1101,7 +1101,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
 
               <View style={{ marginLeft: 10, flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#111827' }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: theme.text }}>
                     {ownerDisplayName}
                   </Text>
 
@@ -1116,7 +1116,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 </View>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 3 }}>
-                  <Text style={{ color: '#777', fontSize: 12 }}>
+                  <Text style={{ color: theme.mutedText, fontSize: 12 }}>
                     {timeAgo(post.created_at)}
                   </Text>
 
@@ -1162,45 +1162,45 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   <View
                     style={{
-                      backgroundColor: '#f8fafc',
+                      backgroundColor: theme.surfaceMuted,
                       borderRadius: 999,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
+                      borderColor: theme.border,
                       paddingHorizontal: 8,
                       paddingVertical: 4,
                     }}
                   >
-                    <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
+                    <Text style={{ color: theme.text, fontSize: 10, fontWeight: '900' }}>
                       {ownerResponseRateLabel}
                     </Text>
                   </View>
 
                   <View
                     style={{
-                      backgroundColor: '#f8fafc',
+                      backgroundColor: theme.surfaceMuted,
                       borderRadius: 999,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
+                      borderColor: theme.border,
                       paddingHorizontal: 8,
                       paddingVertical: 4,
                     }}
                   >
-                    <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
+                    <Text style={{ color: theme.text, fontSize: 10, fontWeight: '900' }}>
                       {ownerResponseQuality.usuallyRepliesLabel}
                     </Text>
                   </View>
 
                   <View
                     style={{
-                      backgroundColor: '#f8fafc',
+                      backgroundColor: theme.surfaceMuted,
                       borderRadius: 999,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
+                      borderColor: theme.border,
                       paddingHorizontal: 8,
                       paddingVertical: 4,
                     }}
                   >
-                    <Text style={{ color: '#334155', fontSize: 10, fontWeight: '900' }}>
+                    <Text style={{ color: theme.text, fontSize: 10, fontWeight: '900' }}>
                       {ownerActiveListingsCount} active listing{ownerActiveListingsCount === 1 ? '' : 's'}
                     </Text>
                   </View>
@@ -1209,15 +1209,15 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
             </TouchableOpacity>
 
             <TouchableOpacity onPress={openMoreActions} hitSlop={10}>
-              <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+              <Ionicons name="ellipsis-horizontal" size={22} color={theme.mutedText} />
             </TouchableOpacity>
           </View>
 
           <View style={{ paddingHorizontal: 14, marginTop: 10 }}>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: '#0f172a', lineHeight: 26 }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: theme.text, lineHeight: 26 }}>
               {post.title}
             </Text>
-            <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 23, color: '#334155' }}>
+            <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 23, color: theme.text }}>
               {post.description || 'No description added'}
             </Text>
           </View>
@@ -1228,15 +1228,15 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 <View
                   key={chip}
                   style={{
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderRadius: 999,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                   }}
                 >
-                  <Text style={{ color: '#475569', fontSize: 11, fontWeight: '800' }}>{chip}</Text>
+                  <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{chip}</Text>
                 </View>
               ))}
             </View>
@@ -1246,14 +1246,14 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
             style={{
               marginTop: 14,
               marginHorizontal: 14,
-              backgroundColor: '#f8fafc',
+              backgroundColor: theme.surfaceMuted,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               padding: 14,
             }}
           >
-            <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900', marginBottom: 10 }}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900', marginBottom: 10 }}>
               Property details
             </Text>
 
@@ -1268,12 +1268,12 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                     paddingVertical: 9,
                   }}
                 >
-                  <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '700', flex: 1 }}>
+                  <Text style={{ color: theme.mutedText, fontSize: 13, fontWeight: '700', flex: 1 }}>
                     {row.label}
                   </Text>
                   <Text
                     style={{
-                      color: '#0f172a',
+                      color: theme.text,
                       fontSize: 13,
                       fontWeight: '800',
                       flex: 1.35,
@@ -1284,7 +1284,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                   </Text>
                 </View>
                 {index < propertyDetailRows.length - 1 ? (
-                  <View style={{ height: 1, backgroundColor: '#e2e8f0' }} />
+                  <View style={{ height: 1, backgroundColor: theme.border }} />
                 ) : null}
               </View>
             ))}
@@ -1351,11 +1351,11 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               paddingVertical: 10,
             }}
           >
-            <Text style={{ color: '#666' }}>
+            <Text style={{ color: theme.mutedText }}>
               {post.property_reactions?.length ? `👍 ${post.property_reactions.length}` : ''}
             </Text>
 
-            <Text style={{ color: '#666' }}>
+            <Text style={{ color: theme.mutedText }}>
               👁 {post.view_count || 0} · 💬 {post.property_comments?.length || 0} · ❤️ {post.property_favorites?.length || 0}
             </Text>
           </View>
@@ -1364,7 +1364,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
             style={{
               flexDirection: 'row',
               borderTopWidth: 1,
-              borderTopColor: '#eee',
+              borderTopColor: theme.border,
             }}
           >
             <TouchableOpacity
@@ -1374,7 +1374,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               <Ionicons
                 name={myReaction ? 'thumbs-up' : 'thumbs-up-outline'}
                 size={22}
-                color={myReaction ? '#1877F2' : '#555'}
+                color={myReaction ? theme.accent : theme.mutedText}
               />
             </TouchableOpacity>
 
@@ -1396,7 +1396,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               }}
               style={{ flex: 1, paddingVertical: 13, alignItems: 'center' }}
             >
-              <Ionicons name="chatbubble-outline" size={22} color="#555" />
+              <Ionicons name="chatbubble-outline" size={22} color={theme.mutedText} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1406,7 +1406,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               <Ionicons
                 name={isFavorite ? 'heart' : 'heart-outline'}
                 size={23}
-                color={isFavorite ? 'red' : '#555'}
+                color={isFavorite ? 'red' : theme.mutedText}
               />
             </TouchableOpacity>
 
@@ -1414,7 +1414,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               onPress={sharePost}
               style={{ flex: 1, paddingVertical: 13, alignItems: 'center' }}
             >
-              <Ionicons name="share-social-outline" size={22} color="#555" />
+              <Ionicons name="share-social-outline" size={22} color={theme.mutedText} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1424,16 +1424,16 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
             {visitRequest ? (
               <View
                 style={{
-                  backgroundColor: '#fff',
+                  backgroundColor: theme.surface,
                   borderRadius: 14,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   padding: 14,
                   marginBottom: 12,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15 }}>
                     Visit request
                   </Text>
 
@@ -1454,18 +1454,18 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                   </View>
                 </View>
 
-                <Text style={{ color: '#334155', marginTop: 10, lineHeight: 20 }}>
+                <Text style={{ color: theme.text, marginTop: 10, lineHeight: 20 }}>
                   Preferred time: {formatVisitDateTime(visitRequest.requested_for)}
                 </Text>
 
                 {visitRequest.owner_proposed_for ? (
-                  <Text style={{ color: '#334155', marginTop: 6, lineHeight: 20 }}>
+                  <Text style={{ color: theme.text, marginTop: 6, lineHeight: 20 }}>
                     Owner time: {formatVisitDateTime(visitRequest.owner_proposed_for)}
                   </Text>
                 ) : null}
 
                 {visitRequest.owner_response_note ? (
-                  <Text style={{ color: '#475569', marginTop: 6, lineHeight: 20 }}>
+                  <Text style={{ color: theme.mutedText, marginTop: 6, lineHeight: 20 }}>
                     Response: {visitRequest.owner_response_note}
                   </Text>
                 ) : null}
@@ -1507,7 +1507,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               }}
               style={{
                 marginTop: 10,
-                backgroundColor: '#111827',
+                backgroundColor: theme.accent,
                 borderRadius: 12,
                 paddingVertical: 13,
                 alignItems: 'center',
@@ -1528,9 +1528,9 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                   flex: 1,
                   minHeight: 42,
                   borderRadius: 12,
-                  backgroundColor: isCompared ? '#eff6ff' : '#f8fafc',
+                  backgroundColor: isCompared ? theme.accentSoft : theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: isCompared ? '#bfdbfe' : '#dbe4ee',
+                  borderColor: isCompared ? theme.accent : theme.border,
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
@@ -1539,9 +1539,9 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 <Ionicons
                   name={isCompared ? 'git-compare' : 'git-compare-outline'}
                   size={16}
-                  color={isCompared ? '#2563eb' : '#475569'}
+                  color={isCompared ? theme.accent : theme.mutedText}
                 />
-                <Text style={{ color: isCompared ? '#2563eb' : '#475569', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                <Text style={{ color: isCompared ? theme.accent : theme.mutedText, fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
                   {isCompared ? 'In compare' : 'Add to compare'}
                 </Text>
               </TouchableOpacity>
@@ -1553,16 +1553,16 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                     flex: 1,
                     minHeight: 42,
                     borderRadius: 12,
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderWidth: 1,
-                    borderColor: '#dbe4ee',
+                    borderColor: theme.border,
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexDirection: 'row',
                   }}
                 >
-                  <Ionicons name="open-outline" size={16} color="#475569" />
-                  <Text style={{ color: '#475569', fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
+                  <Ionicons name="open-outline" size={16} color={theme.mutedText} />
+                  <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '900', marginLeft: 6 }}>
                     Open compare
                   </Text>
                 </TouchableOpacity>
@@ -1732,22 +1732,22 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
 
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 20,
               padding: 18,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 18 }}>
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18 }}>
               Schedule a visit
             </Text>
-            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>
               Ask the owner for a visit time. They can accept it, reject it, or propose a better time.
             </Text>
 
             <View style={{ marginTop: 14 }}>
-              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
                 Preferred date
               </Text>
               <TextInput
@@ -1756,19 +1756,19 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor="#94a3b8"
                 style={{
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 14,
                   paddingHorizontal: 13,
                   paddingVertical: 12,
-                  color: '#0f172a',
+                  color: theme.text,
                 }}
               />
             </View>
 
             <View style={{ marginTop: 12 }}>
-              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
                 Preferred time
               </Text>
               <TextInput
@@ -1777,19 +1777,19 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 placeholder="HH:MM"
                 placeholderTextColor="#94a3b8"
                 style={{
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 14,
                   paddingHorizontal: 13,
                   paddingVertical: 12,
-                  color: '#0f172a',
+                  color: theme.text,
                 }}
               />
             </View>
 
             <View style={{ marginTop: 12 }}>
-              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
                 Note for the owner
               </Text>
               <TextInput
@@ -1800,13 +1800,13 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 multiline
                 style={{
                   minHeight: 90,
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 14,
                   paddingHorizontal: 13,
                   paddingVertical: 12,
-                  color: '#0f172a',
+                  color: theme.text,
                   textAlignVertical: 'top',
                 }}
               />
@@ -1819,12 +1819,12 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                   flex: 1,
                   minHeight: 44,
                   borderRadius: 14,
-                  backgroundColor: '#e2e8f0',
+                  backgroundColor: theme.surfaceMuted,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: '#334155', fontWeight: '900' }}>Cancel</Text>
+                <Text style={{ color: theme.text, fontWeight: '900' }}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
