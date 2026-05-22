@@ -2437,7 +2437,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     if (!recentlyViewedProperties.length || recentlyViewedHidden) return null
 
     return (
-      <View style={{ backgroundColor: '#fff', paddingTop: 10, paddingBottom: 12, marginBottom: 8 }}>
+      <View style={{ backgroundColor: theme.surface, paddingTop: 10, paddingBottom: 12, marginBottom: 8 }}>
         <View
           style={{
             paddingHorizontal: 16,
@@ -2448,17 +2448,17 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           }}
         >
           <View>
-            <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
               Recently viewed
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
               Jump back into rentals you already checked.
             </Text>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <TouchableOpacity onPress={() => navigation.navigate('RecentlyViewed')}>
-              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>See all</Text>
+              <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>See all</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -2473,12 +2473,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 borderRadius: 999,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: '#f1f5f9',
+                backgroundColor: theme.surfaceMuted,
                 borderWidth: 1,
-                borderColor: '#dbe4ee',
+                borderColor: theme.border,
               }}
             >
-              <Ionicons name="close" size={13} color="#64748b" />
+              <Ionicons name="close" size={13} color={theme.mutedText} />
             </TouchableOpacity>
           </View>
         </View>
@@ -2500,15 +2500,15 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   width: 124,
                   borderRadius: 14,
                   borderWidth: 1,
-                  borderColor: '#dbe4ee',
-                  backgroundColor: '#f8fafc',
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
                   overflow: 'hidden',
                 }}
               >
                 {mediaUri ? (
                   <Image
                     source={{ uri: mediaUri }}
-                    style={{ width: '100%', height: 56, backgroundColor: '#dbe4ee' }}
+                    style={{ width: '100%', height: 56, backgroundColor: theme.surfaceMuted }}
                     resizeMode="cover"
                   />
                 ) : (
@@ -2516,20 +2516,20 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     style={{
                       width: '100%',
                       height: 56,
-                      backgroundColor: '#e2e8f0',
+                      backgroundColor: theme.surfaceMuted,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="home-outline" size={18} color="#64748b" />
+                    <Ionicons name="home-outline" size={18} color={theme.mutedText} />
                   </View>
                 )}
 
                 <View style={{ paddingHorizontal: 8, paddingVertical: 7 }}>
-                  <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 10, fontWeight: '900', lineHeight: 13 }}>
+                  <Text numberOfLines={2} style={{ color: theme.text, fontSize: 10, fontWeight: '900', lineHeight: 13 }}>
                     {item.title || 'Rental post'}
                   </Text>
-                  <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 9, marginTop: 3 }}>
+                  <Text numberOfLines={1} style={{ color: theme.mutedText, fontSize: 9, marginTop: 3 }}>
                     {item.location || 'Location not added'}
                   </Text>
                   <Text style={{ color: '#ea580c', fontSize: 9, fontWeight: '900', marginTop: 4 }}>
@@ -2548,7 +2548,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     if (!comparedProperties.length) return null
 
     return (
-      <View style={{ backgroundColor: '#fff', paddingTop: 2, paddingBottom: 12, marginBottom: 8 }}>
+      <View style={{ backgroundColor: theme.surface, paddingTop: 2, paddingBottom: 12, marginBottom: 8 }}>
         <View
           style={{
             paddingHorizontal: 16,
@@ -2559,16 +2559,16 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           }}
         >
           <View>
-            <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
               Compare rentals
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
               {comparedProperties.length} of 5 selected for side-by-side comparison.
             </Text>
           </View>
 
           <TouchableOpacity onPress={() => navigation.navigate('CompareProperties')}>
-            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>Open</Text>
+            <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>Open</Text>
           </TouchableOpacity>
         </View>
 
@@ -2589,15 +2589,15 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   width: 148,
                   borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: '#dbe4ee',
-                  backgroundColor: '#f8fafc',
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
                   overflow: 'hidden',
                 }}
               >
                 {mediaUri ? (
                   <Image
                     source={{ uri: mediaUri }}
-                    style={{ width: '100%', height: 78, backgroundColor: '#dbe4ee' }}
+                    style={{ width: '100%', height: 78, backgroundColor: theme.surfaceMuted }}
                     resizeMode="cover"
                   />
                 ) : (
@@ -2605,17 +2605,17 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     style={{
                       width: '100%',
                       height: 78,
-                      backgroundColor: '#e2e8f0',
+                      backgroundColor: theme.surfaceMuted,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="git-compare-outline" size={22} color="#64748b" />
+                    <Ionicons name="git-compare-outline" size={22} color={theme.mutedText} />
                   </View>
                 )}
 
                 <View style={{ padding: 10 }}>
-                  <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 12, fontWeight: '900', lineHeight: 17 }}>
+                  <Text numberOfLines={2} style={{ color: theme.text, fontSize: 12, fontWeight: '900', lineHeight: 17 }}>
                     {item.title || 'Rental post'}
                   </Text>
                   <Text style={{ color: '#ea580c', fontSize: 11, fontWeight: '900', marginTop: 7 }}>
@@ -2634,7 +2634,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     if (!homeBanners.length) return null
 
     return (
-      <View style={{ backgroundColor: '#fff', paddingTop: 8, paddingBottom: 12, marginBottom: 8 }}>
+      <View style={{ backgroundColor: theme.surface, paddingTop: 8, paddingBottom: 12, marginBottom: 8 }}>
         <View
           style={{
             paddingHorizontal: 16,
@@ -2645,10 +2645,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           }}
         >
           <View>
-            <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
               Featured now
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
               Fresh posts and offers picked for the home feed.
             </Text>
           </View>
@@ -2658,12 +2658,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               height: 24,
               borderRadius: 12,
               paddingHorizontal: 7,
-              backgroundColor: '#eff6ff',
+              backgroundColor: theme.accentSoft,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+            <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>
               {homeBanners.length}
             </Text>
           </View>
@@ -2696,14 +2696,14 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   width: homeBannerCardWidth,
                   borderRadius: 14,
                   borderWidth: 1,
-                  borderColor: '#dbe4ee',
-                  backgroundColor: '#dbe4ee',
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
                   overflow: 'hidden',
                 }}
               >
                 <Image
                   source={{ uri: banner.image_url }}
-                  style={{ width: '100%', height: 84, backgroundColor: '#dbe4ee' }}
+                  style={{ width: '100%', height: 84, backgroundColor: theme.surfaceMuted }}
                   resizeMode="cover"
                 />
 
@@ -2810,17 +2810,17 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               width: 26,
               height: 26,
               borderRadius: 13,
-              backgroundColor: '#f1f5f9',
+              backgroundColor: theme.surfaceMuted,
               alignItems: 'center',
               justifyContent: 'center',
               marginRight: 7,
             }}
           >
-            <Ionicons name="location-outline" size={14} color="#1877F2" />
+            <Ionicons name="location-outline" size={14} color={theme.accent} />
           </View>
 
           <Text
-            style={{ color: '#334155', fontSize: 12, fontWeight: '700', flexShrink: 1 }}
+            style={{ color: theme.text, fontSize: 12, fontWeight: '700', flexShrink: 1 }}
             numberOfLines={1}
             ellipsizeMode="tail"
           >
@@ -2835,7 +2835,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               width: 38,
               height: 38,
               borderRadius: 19,
-              backgroundColor: comparedProperties.length ? '#eff6ff' : '#f1f1f1',
+              backgroundColor: comparedProperties.length ? theme.accentSoft : theme.surfaceMuted,
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -2843,7 +2843,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             <Ionicons
               name="git-compare-outline"
               size={18}
-              color={comparedProperties.length ? '#2563eb' : '#111'}
+              color={comparedProperties.length ? theme.accent : theme.text}
             />
             {comparedProperties.length ? (
               <View
@@ -2854,7 +2854,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   minWidth: 18,
                   height: 18,
                   borderRadius: 9,
-                  backgroundColor: '#2563eb',
+                  backgroundColor: theme.accent,
                   alignItems: 'center',
                   justifyContent: 'center',
                   paddingHorizontal: 4,
@@ -2873,7 +2873,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               width: 38,
               height: 38,
               borderRadius: 19,
-              backgroundColor: activeFilterCount ? '#eff6ff' : '#f1f1f1',
+              backgroundColor: activeFilterCount ? theme.accentSoft : theme.surfaceMuted,
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -2881,7 +2881,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             <Ionicons
               name="options-outline"
               size={19}
-              color={activeFilterCount ? '#2563eb' : '#111'}
+              color={activeFilterCount ? theme.accent : theme.text}
             />
             {activeFilterCount ? (
               <View
@@ -2892,7 +2892,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   minWidth: 18,
                   height: 18,
                   borderRadius: 9,
-                  backgroundColor: '#2563eb',
+                  backgroundColor: theme.accent,
                   alignItems: 'center',
                   justifyContent: 'center',
                   paddingHorizontal: 4,
@@ -2911,7 +2911,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               width: 38,
               height: 38,
               borderRadius: 19,
-              backgroundColor: appliedSearchQuery ? '#eff6ff' : '#f1f1f1',
+              backgroundColor: appliedSearchQuery ? theme.accentSoft : theme.surfaceMuted,
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -2919,7 +2919,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             <Ionicons
               name="search"
               size={20}
-              color={appliedSearchQuery ? '#2563eb' : '#111'}
+              color={appliedSearchQuery ? theme.accent : theme.text}
             />
           </TouchableOpacity>
         </View>
@@ -2928,11 +2928,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       {appliedSearchQuery ? (
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             paddingHorizontal: 16,
             paddingBottom: 10,
             borderBottomWidth: 1,
-            borderBottomColor: '#eee',
+            borderBottomColor: theme.border,
           }}
         >
           <View
@@ -2940,21 +2940,21 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              backgroundColor: '#eff6ff',
+              backgroundColor: theme.accentSoft,
               borderRadius: 14,
               paddingHorizontal: 12,
               paddingVertical: 10,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
-              <Ionicons name="search" size={15} color="#2563eb" style={{ marginRight: 7 }} />
-              <Text numberOfLines={1} style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '800', flexShrink: 1 }}>
+              <Ionicons name="search" size={15} color={theme.accent} style={{ marginRight: 7 }} />
+              <Text numberOfLines={1} style={{ color: theme.accentStrong, fontSize: 12, fontWeight: '800', flexShrink: 1 }}>
                 Searching: {appliedSearchQuery}
               </Text>
             </View>
 
             <TouchableOpacity onPress={clearSearch}>
-              <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>Clear</Text>
+              <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '900' }}>Clear</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2963,11 +2963,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
       {savedSearches.length > 0 ? (
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             paddingTop: 4,
             paddingBottom: 12,
             borderBottomWidth: 1,
-            borderBottomColor: '#eee',
+            borderBottomColor: theme.border,
           }}
         >
           <View
@@ -2980,10 +2980,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             }}
           >
             <View>
-              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                 Active rental alerts
               </Text>
-              <Text style={{ color: '#64748b', fontSize: 11, marginTop: 3 }}>
+              <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
                 These alerts watch quietly in the background while filters stay separate.
               </Text>
             </View>
@@ -2994,12 +2994,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 height: 24,
                 borderRadius: 12,
                 paddingHorizontal: 7,
-                backgroundColor: '#eff6ff',
+                backgroundColor: theme.accentSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+              <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>
                 {savedSearches.length}
               </Text>
             </View>
@@ -3018,8 +3018,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   maxWidth: 220,
                   borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: '#dbe4ee',
-                  backgroundColor: '#f8fafc',
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
                   paddingHorizontal: 12,
                   paddingVertical: 10,
                 }}
@@ -3030,18 +3030,18 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                       width: 28,
                       height: 28,
                       borderRadius: 14,
-                      backgroundColor: '#eff6ff',
+                      backgroundColor: theme.accentSoft,
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginRight: 8,
                     }}
                   >
-                    <Ionicons name="notifications-outline" size={14} color="#2563eb" />
+                    <Ionicons name="notifications-outline" size={14} color={theme.accent} />
                   </View>
 
                   <Text
                     numberOfLines={2}
-                    style={{ flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '900', lineHeight: 16 }}
+                    style={{ flex: 1, color: theme.text, fontSize: 12, fontWeight: '900', lineHeight: 16 }}
                   >
                     {item.display_name}
                   </Text>
@@ -3051,11 +3051,11 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{ marginLeft: 6 }}
                   >
-                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                    <Ionicons name="close-circle" size={18} color={theme.mutedText} />
                   </TouchableOpacity>
                 </View>
 
-                <Text numberOfLines={2} style={{ color: '#64748b', fontSize: 10, marginTop: 8, lineHeight: 14 }}>
+                <Text numberOfLines={2} style={{ color: theme.mutedText, fontSize: 10, marginTop: 8, lineHeight: 14 }}>
                   Alert is on. You will only be notified when a new matching rental is posted.
                 </Text>
               </View>

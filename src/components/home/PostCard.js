@@ -7,6 +7,7 @@ import { timeAgo } from '../../lib/time'
 import { getProfileName } from '../../lib/userDisplay'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../../lib/verification'
 import { isUrgentProperty } from '../../lib/propertyLifecycle'
+import { useAppSettings } from '../../lib/appSettings'
 
 function getStatusMeta(status) {
   if (status === 'rented') {
@@ -87,6 +88,7 @@ export default function PostCard({
   onPressMore,
   onOpenPost,
 }) {
+  const { theme } = useAppSettings()
   const [expanded, setExpanded] = useState(false)
   const totalReacts = item.property_reactions?.length || 0
   const totalComments = item.property_comments?.length || 0
@@ -124,7 +126,7 @@ export default function PostCard({
   const handleOpenPost = () => onOpenPost?.(item)
 
   return (
-    <View style={{ backgroundColor: '#fff', marginBottom: 10, paddingTop: 12 }}>
+    <View style={{ backgroundColor: theme.surface, marginBottom: 10, paddingTop: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
         <TouchableOpacity
           onPress={() => onOpenOwnerProfile(item)}
@@ -141,7 +143,7 @@ export default function PostCard({
 
           <View style={{ marginLeft: 10, flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 15, fontWeight: '700' }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>
                 {ownerDisplayName}
               </Text>
 
@@ -156,7 +158,7 @@ export default function PostCard({
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 12, color: '#777', marginRight: 8 }}>
+              <Text style={{ fontSize: 12, color: theme.mutedText, marginRight: 8 }}>
                 {timeAgo(item.created_at)}
               </Text>
 
@@ -250,7 +252,7 @@ export default function PostCard({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderRadius: 999,
                     paddingHorizontal: 8,
                     paddingVertical: 3,
@@ -261,13 +263,13 @@ export default function PostCard({
                   <Ionicons
                     name="location-outline"
                     size={11}
-                    color="#64748b"
+                    color={theme.mutedText}
                     style={{ marginRight: 4 }}
                   />
                   <Text
                     numberOfLines={1}
                     ellipsizeMode="tail"
-                    style={{ fontSize: 11, fontWeight: '700', color: '#475569', flexShrink: 1 }}
+                    style={{ fontSize: 11, fontWeight: '700', color: theme.text, flexShrink: 1 }}
                   >
                     {locationLabel}
                   </Text>
@@ -299,10 +301,10 @@ export default function PostCard({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{ paddingLeft: 10, paddingVertical: 6 }}
           >
-            <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+            <Ionicons name="ellipsis-horizontal" size={22} color={theme.mutedText} />
           </TouchableOpacity>
         ) : (
-          <Ionicons name="ellipsis-horizontal" size={22} color="#555" />
+          <Ionicons name="ellipsis-horizontal" size={22} color={theme.mutedText} />
         )}
       </View>
 
@@ -312,7 +314,7 @@ export default function PostCard({
         disabled={!onOpenPost}
       >
         <Text
-          style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21 }}
+          style={{ paddingHorizontal: 14, marginTop: 10, fontSize: 15, lineHeight: 21, color: theme.text }}
           numberOfLines={expanded ? undefined : 6}
         >
           {contentText}
@@ -325,15 +327,15 @@ export default function PostCard({
             <View
               key={chip}
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderRadius: 999,
                 paddingHorizontal: 9,
                 paddingVertical: 5,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
               }}
             >
-              <Text style={{ color: '#475569', fontSize: 11, fontWeight: '800' }}>{chip}</Text>
+              <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{chip}</Text>
             </View>
           ))}
         </View>
@@ -344,7 +346,7 @@ export default function PostCard({
           onPress={() => setExpanded((current) => !current)}
           style={{ paddingHorizontal: 14, marginTop: 6 }}
         >
-          <Text style={{ color: '#1877F2', fontWeight: '800' }}>
+          <Text style={{ color: theme.accent, fontWeight: '800' }}>
             {expanded ? 'less' : 'more...'}
           </Text>
         </TouchableOpacity>
@@ -373,7 +375,7 @@ export default function PostCard({
               ) : (
                 <Image
                   source={{ uri: mediaItem.uri }}
-                  style={{ width: '100%', height: 130, backgroundColor: '#eee' }}
+                  style={{ width: '100%', height: 130, backgroundColor: theme.surfaceMuted }}
                   resizeMode="cover"
                   resizeMethod="resize"
                   fadeDuration={120}
@@ -411,11 +413,11 @@ export default function PostCard({
           paddingVertical: 9,
         }}
       >
-        <Text style={{ color: '#666' }}>
+        <Text style={{ color: theme.mutedText }}>
           {totalReacts > 0 ? `👍 ${totalReacts}` : ''}
         </Text>
 
-        <Text style={{ color: '#666' }}>
+        <Text style={{ color: theme.mutedText }}>
           👁 {item.view_count || 0} · 💬 {totalComments} · ❤️ {totalFavorites}
         </Text>
       </View>
@@ -424,7 +426,7 @@ export default function PostCard({
         style={{
           flexDirection: 'row',
           borderTopWidth: 1,
-          borderTopColor: '#eee',
+          borderTopColor: theme.border,
         }}
       >
         <TouchableOpacity
@@ -434,7 +436,7 @@ export default function PostCard({
           <Ionicons
             name={myReaction ? 'thumbs-up' : 'thumbs-up-outline'}
             size={22}
-            color={myReaction ? '#1877F2' : '#555'}
+            color={myReaction ? theme.accent : theme.mutedText}
           />
         </TouchableOpacity>
 
@@ -442,7 +444,7 @@ export default function PostCard({
           onPress={() => onOpenComments(item)}
           style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
         >
-          <Ionicons name="chatbubble-outline" size={22} color="#555" />
+          <Ionicons name="chatbubble-outline" size={22} color={theme.mutedText} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -452,7 +454,7 @@ export default function PostCard({
           <Ionicons
             name={isFavorite ? 'heart' : 'heart-outline'}
             size={23}
-            color={isFavorite ? 'red' : '#555'}
+            color={isFavorite ? 'red' : theme.mutedText}
           />
         </TouchableOpacity>
 
@@ -460,7 +462,7 @@ export default function PostCard({
           onPress={() => onShare(item)}
           style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
         >
-          <Ionicons name="share-social-outline" size={22} color="#555" />
+          <Ionicons name="share-social-outline" size={22} color={theme.mutedText} />
         </TouchableOpacity>
       </View>
     </View>

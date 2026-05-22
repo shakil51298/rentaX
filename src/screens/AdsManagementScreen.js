@@ -511,10 +511,10 @@ export default function AdsManagementScreen({ navigation }) {
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 18,
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: theme.border,
             padding: 16,
             marginBottom: 18,
           }}
@@ -528,10 +528,10 @@ export default function AdsManagementScreen({ navigation }) {
             }}
           >
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#0f172a' }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: theme.text }}>
                 Ads Management
               </Text>
-              <Text style={{ color: '#64748b', marginTop: 4 }}>
+              <Text style={{ color: theme.mutedText, marginTop: 4 }}>
                 {posts.length} {posts.length === 1 ? 'post' : 'posts'} published
               </Text>
             </View>
@@ -540,7 +540,7 @@ export default function AdsManagementScreen({ navigation }) {
               <TouchableOpacity
                 onPress={() => navigation.navigate('CreatePost')}
                 style={{
-                  backgroundColor: '#1877F2',
+                  backgroundColor: theme.accent,
                   borderRadius: 14,
                   paddingHorizontal: 14,
                   paddingVertical: 10,
@@ -610,8 +610,8 @@ export default function AdsManagementScreen({ navigation }) {
               style={{
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: '#dbeafe',
-                backgroundColor: '#eff6ff',
+                borderColor: theme.border,
+                backgroundColor: theme.accentSoft,
                 paddingHorizontal: 14,
                 paddingVertical: 13,
                 flexDirection: 'row',
@@ -626,20 +626,20 @@ export default function AdsManagementScreen({ navigation }) {
                     width: 38,
                     height: 38,
                     borderRadius: 19,
-                    backgroundColor: '#dbeafe',
+                    backgroundColor: theme.surface,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 10,
                   }}
                 >
-                  <Ionicons name="calendar-outline" size={18} color="#2563eb" />
+                  <Ionicons name="calendar-outline" size={18} color={theme.accent} />
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 14 }}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }}>
                     Visit requests
                   </Text>
-                  <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
+                  <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 12 }}>
                     Review pending renter visit times and respond quickly.
                   </Text>
                 </View>
@@ -650,13 +650,13 @@ export default function AdsManagementScreen({ navigation }) {
                   minWidth: 28,
                   height: 28,
                   borderRadius: 14,
-                  backgroundColor: pendingVisitCount ? '#1877F2' : '#dbeafe',
+                  backgroundColor: pendingVisitCount ? theme.accent : theme.surface,
                   alignItems: 'center',
                   justifyContent: 'center',
                   paddingHorizontal: 7,
                 }}
               >
-                <Text style={{ color: pendingVisitCount ? '#fff' : '#1d4ed8', fontWeight: '900', fontSize: 12 }}>
+                <Text style={{ color: pendingVisitCount ? '#fff' : theme.accentStrong, fontWeight: '900', fontSize: 12 }}>
                   {pendingVisitCount}
                 </Text>
               </View>
@@ -666,34 +666,34 @@ export default function AdsManagementScreen({ navigation }) {
           {userType !== 'property_owner' ? (
             <View
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 padding: 14,
               }}
             >
-              <Text style={{ color: '#334155', lineHeight: 20 }}>
+              <Text style={{ color: theme.text, lineHeight: 20 }}>
                 Switch your account type to Property owner from Settings to create and manage ads here.
               </Text>
             </View>
           ) : posts.length === 0 ? (
             <View
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 paddingVertical: 22,
                 paddingHorizontal: 16,
                 alignItems: 'center',
               }}
             >
-              <Ionicons name="newspaper-outline" size={26} color="#94a3b8" />
-              <Text style={{ color: '#0f172a', fontWeight: '800', marginTop: 10 }}>
+              <Ionicons name="newspaper-outline" size={26} color={theme.mutedText} />
+              <Text style={{ color: theme.text, fontWeight: '800', marginTop: 10 }}>
                 No ads yet
               </Text>
-              <Text style={{ color: '#64748b', marginTop: 6, textAlign: 'center' }}>
+              <Text style={{ color: theme.mutedText, marginTop: 6, textAlign: 'center' }}>
                 Your property posts will appear here as soon as you publish one.
               </Text>
             </View>

@@ -19,6 +19,7 @@ import {
   getCaseStatusMeta,
   submitPropertyAppeal,
 } from '../lib/reporting'
+import { useAppSettings } from '../lib/appSettings'
 
 function formatDateTime(value) {
   if (!value) return 'Not available'
@@ -32,7 +33,7 @@ function formatDateTime(value) {
   })
 }
 
-function DetailRow({ icon, label, value }) {
+function DetailRow({ icon, label, value, theme }) {
   return (
     <View
       style={{
@@ -41,7 +42,7 @@ function DetailRow({ icon, label, value }) {
         gap: 10,
         paddingVertical: 9,
         borderBottomWidth: 1,
-        borderBottomColor: '#eef2f7',
+        borderBottomColor: theme.border,
       }}
     >
       <View
@@ -49,18 +50,18 @@ function DetailRow({ icon, label, value }) {
           width: 28,
           height: 28,
           borderRadius: 14,
-          backgroundColor: '#eff6ff',
+          backgroundColor: theme.accentSoft,
           alignItems: 'center',
           justifyContent: 'center',
           marginTop: 1,
         }}
       >
-        <Ionicons name={icon} size={14} color="#2563eb" />
+        <Ionicons name={icon} size={14} color={theme.accent} />
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '800' }}>{label}</Text>
-        <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>
+        <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800' }}>{label}</Text>
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', marginTop: 4 }}>
           {value || 'Not available'}
         </Text>
       </View>
@@ -68,14 +69,14 @@ function DetailRow({ icon, label, value }) {
   )
 }
 
-function HistoryCard({ icon, title, subtitle, meta, tint = '#2563eb', background = '#eff6ff' }) {
+function HistoryCard({ icon, title, subtitle, meta, tint = '#2563eb', background = '#eff6ff', theme }) {
   return (
     <View
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 14,
         marginTop: 10,
       }}
@@ -96,14 +97,14 @@ function HistoryCard({ icon, title, subtitle, meta, tint = '#2563eb', background
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>{title}</Text>
-          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3, lineHeight: 18 }}>
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>{title}</Text>
+          <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 3, lineHeight: 18 }}>
             {subtitle}
           </Text>
         </View>
       </View>
 
-      <Text style={{ color: '#94a3b8', fontSize: 11.5, fontWeight: '700', marginTop: 9 }}>
+      <Text style={{ color: theme.mutedText, fontSize: 11.5, fontWeight: '700', marginTop: 9 }}>
         {meta}
       </Text>
     </View>
@@ -111,6 +112,7 @@ function HistoryCard({ icon, title, subtitle, meta, tint = '#2563eb', background
 }
 
 export default function CustomerCareScreen({ route }) {
+  const { theme } = useAppSettings()
   const initialProperty = route?.params?.property || null
   const notification = route?.params?.notification || null
   const propertyId = initialProperty?.id || notification?.property_id || null
@@ -212,14 +214,14 @@ export default function CustomerCareScreen({ route }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center' }}>
+        <ActivityIndicator color={theme.accent} />
       </SafeAreaView>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 28 }}
@@ -228,10 +230,10 @@ export default function CustomerCareScreen({ route }) {
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 22,
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: theme.border,
             padding: 18,
           }}
         >
@@ -248,10 +250,10 @@ export default function CustomerCareScreen({ route }) {
             <Ionicons name={caseMeta.icon} size={24} color={caseMeta.tint} />
           </View>
 
-          <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '900', marginTop: 16 }}>
+          <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900', marginTop: 16 }}>
             Customer Care
           </Text>
-          <Text style={{ color: '#64748b', lineHeight: 21, marginTop: 8 }}>
+          <Text style={{ color: theme.mutedText, lineHeight: 21, marginTop: 8 }}>
             Track your moderation case, review the admin reply, and send an appeal if something still needs attention.
           </Text>
 
@@ -269,34 +271,34 @@ export default function CustomerCareScreen({ route }) {
             <Text style={{ color: caseMeta.tint, fontSize: 16, fontWeight: '900', marginTop: 4 }}>
               {caseMeta.label}
             </Text>
-            <Text style={{ color: '#475569', lineHeight: 19, marginTop: 7 }}>
+            <Text style={{ color: theme.text, lineHeight: 19, marginTop: 7 }}>
               {currentCase?.admin_reply || property?.admin_ban_reason || notification?.body || 'We are reviewing this issue with your listing.'}
             </Text>
           </View>
 
           <View style={{ marginTop: 12 }}>
-            <DetailRow icon="home-outline" label="Ad title" value={property?.title || notification?.title} />
-            <DetailRow icon="location-outline" label="Location" value={property?.location} />
-            <DetailRow icon="cash-outline" label="Rent amount" value={priceLabel} />
-            <DetailRow icon="flag-outline" label="Case reason" value={currentCase ? formatReportReason(currentCase.reason) : 'Moderation review'} />
-            <DetailRow icon="time-outline" label="Case opened" value={formatDateTime(currentCase?.created_at || property?.admin_banned_at)} />
-            <DetailRow icon="mail-open-outline" label="Last admin reply" value={formatDateTime(currentCase?.admin_replied_at)} />
+            <DetailRow icon="home-outline" label="Ad title" value={property?.title || notification?.title} theme={theme} />
+            <DetailRow icon="location-outline" label="Location" value={property?.location} theme={theme} />
+            <DetailRow icon="cash-outline" label="Rent amount" value={priceLabel} theme={theme} />
+            <DetailRow icon="flag-outline" label="Case reason" value={currentCase ? formatReportReason(currentCase.reason) : 'Moderation review'} theme={theme} />
+            <DetailRow icon="time-outline" label="Case opened" value={formatDateTime(currentCase?.created_at || property?.admin_banned_at)} theme={theme} />
+            <DetailRow icon="mail-open-outline" label="Last admin reply" value={formatDateTime(currentCase?.admin_replied_at)} theme={theme} />
           </View>
         </View>
 
         {currentCase && currentCase.case_status !== 'resolved' ? (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 22,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               padding: 18,
               marginTop: 14,
             }}
           >
-            <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>Submit an appeal</Text>
-            <Text style={{ color: '#64748b', lineHeight: 20, marginTop: 8 }}>
+            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Submit an appeal</Text>
+            <Text style={{ color: theme.mutedText, lineHeight: 20, marginTop: 8 }}>
               Tell admin why you believe the case should be reviewed again or what has been fixed already.
             </Text>
 
@@ -311,11 +313,11 @@ export default function CustomerCareScreen({ route }) {
                 minHeight: 120,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: '#dbe4ee',
-                backgroundColor: '#f8fafc',
+                borderColor: theme.border,
+                backgroundColor: theme.surfaceMuted,
                 paddingHorizontal: 13,
                 paddingVertical: 12,
-                color: '#0f172a',
+                color: theme.text,
                 fontSize: 14,
               }}
             />
@@ -345,16 +347,16 @@ export default function CustomerCareScreen({ route }) {
 
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 22,
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: theme.border,
             padding: 18,
             marginTop: 14,
           }}
         >
-          <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>Case history</Text>
-          <Text style={{ color: '#64748b', lineHeight: 20, marginTop: 8 }}>
+          <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Case history</Text>
+          <Text style={{ color: theme.mutedText, lineHeight: 20, marginTop: 8 }}>
             A small history of your moderated listings and reports you submitted.
           </Text>
 
@@ -369,6 +371,7 @@ export default function CustomerCareScreen({ route }) {
                 title={item.property?.title || 'Moderated property case'}
                 subtitle={`${meta.label} · ${formatReportReason(item.reason)}${item.admin_reply ? ` · ${item.admin_reply}` : ''}`}
                 meta={formatDateTime(item.updated_at || item.created_at)}
+                theme={theme}
               />
             )
           })}
@@ -380,6 +383,7 @@ export default function CustomerCareScreen({ route }) {
               title={item.property?.title || 'Property report'}
               subtitle={`You reported this post for ${formatReportReason(item.reason).toLowerCase()}.`}
               meta={formatDateTime(item.created_at)}
+              theme={theme}
             />
           ))}
 
@@ -390,11 +394,12 @@ export default function CustomerCareScreen({ route }) {
               title={item.target_profile?.display_name || item.target_profile?.email || 'User report'}
               subtitle={`You reported this account for ${formatReportReason(item.reason).toLowerCase()}.`}
               meta={formatDateTime(item.created_at)}
+              theme={theme}
             />
           ))}
 
           {!history.propertyCases.length && !history.submittedPropertyReports.length && !history.submittedUserReports.length ? (
-            <Text style={{ color: '#64748b', marginTop: 12 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 12 }}>
               No case history yet.
             </Text>
           ) : null}

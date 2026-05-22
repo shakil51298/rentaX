@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import Avatar from '../common/Avatar'
 import { getCommentAuthorName, getCommentAvatarUrl } from '../../lib/commentUtils'
 import { timeAgo } from '../../lib/time'
+import { useAppSettings } from '../../lib/appSettings'
 
 const CommentItem = memo(function CommentItem({
   comment,
@@ -14,6 +15,7 @@ const CommentItem = memo(function CommentItem({
   onOpenProfile,
   depth = 0,
 }) {
+  const { theme } = useAppSettings()
   const authorName = getCommentAuthorName(comment)
   const avatarUrl = getCommentAvatarUrl(comment)
   const likes = comment.property_comment_likes || []
@@ -48,7 +50,7 @@ const CommentItem = memo(function CommentItem({
               }
             }}
             style={{
-              backgroundColor: '#f0f2f5',
+              backgroundColor: theme.surfaceMuted,
               borderRadius: 14,
               paddingHorizontal: 12,
               paddingVertical: 8,
@@ -60,7 +62,7 @@ const CommentItem = memo(function CommentItem({
               onPress={() => onOpenProfile(comment)}
               style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}
             >
-              <Text style={{ fontWeight: '700', fontSize: 13 }}>
+              <Text style={{ fontWeight: '700', fontSize: 13, color: theme.text }}>
                 {authorName}
               </Text>
 
@@ -74,7 +76,7 @@ const CommentItem = memo(function CommentItem({
               ) : null}
             </TouchableOpacity>
 
-            <Text style={{ marginTop: 3, fontSize: 14, lineHeight: 19 }}>
+            <Text style={{ marginTop: 3, fontSize: 14, lineHeight: 19, color: theme.text }}>
               {comment.comment}
             </Text>
           </TouchableOpacity>
@@ -88,14 +90,14 @@ const CommentItem = memo(function CommentItem({
               paddingLeft: 8,
             }}
           >
-            <Text style={{ color: '#777', fontSize: 12 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 12 }}>
               {timeAgo(comment.created_at)}
             </Text>
 
             <TouchableOpacity onPress={() => onLike(comment)}>
               <Text
                 style={{
-                  color: isLiked ? '#1877F2' : '#666',
+                  color: isLiked ? theme.accent : theme.mutedText,
                   fontWeight: '700',
                   fontSize: 12,
                 }}
@@ -105,13 +107,13 @@ const CommentItem = memo(function CommentItem({
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => onReply(comment)}>
-              <Text style={{ color: '#666', fontWeight: '700', fontSize: 12 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '700', fontSize: 12 }}>
                 Reply
               </Text>
             </TouchableOpacity>
 
             {likes.length > 0 ? (
-              <Text style={{ color: '#777', fontSize: 12 }}>
+              <Text style={{ color: theme.mutedText, fontSize: 12 }}>
                 👍 {likes.length}
               </Text>
             ) : null}

@@ -1,5 +1,6 @@
 import { Image, Text, View } from 'react-native'
 import { getAvatarSource, getProfileName } from '../../lib/userDisplay'
+import { useAppSettings } from '../../lib/appSettings'
 
 export default function Avatar({
   profile,
@@ -11,9 +12,13 @@ export default function Avatar({
   borderWidth = 0,
   borderColor = '#fff',
 }) {
+  const { theme } = useAppSettings()
   const resolvedName = name || getProfileName(profile, 'User')
   const resolvedUri = uri || getAvatarSource(profile)
   const initial = resolvedName?.trim()?.charAt(0)?.toUpperCase() || 'U'
+  const resolvedBackgroundColor = backgroundColor === '#dbeafe' ? theme.accentSoft : backgroundColor
+  const resolvedTextColor = textColor === '#1d4ed8' ? theme.accentStrong : textColor
+  const resolvedBorderColor = borderColor === '#fff' ? theme.surface : borderColor
 
   if (resolvedUri) {
     return (
@@ -23,9 +28,9 @@ export default function Avatar({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: '#e5e7eb',
+          backgroundColor: theme.surfaceMuted,
           borderWidth,
-          borderColor,
+          borderColor: resolvedBorderColor,
         }}
       />
     )
@@ -37,14 +42,14 @@ export default function Avatar({
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor,
+        backgroundColor: resolvedBackgroundColor,
         borderWidth,
-        borderColor,
+        borderColor: resolvedBorderColor,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: textColor, fontWeight: '900', fontSize: size * 0.38 }}>
+      <Text style={{ color: resolvedTextColor, fontWeight: '900', fontSize: size * 0.38 }}>
         {initial}
       </Text>
     </View>

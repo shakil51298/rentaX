@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons'
 import Avatar from '../common/Avatar'
 import { formatClock } from '../../lib/chatUtils'
 import { getProfileName } from '../../lib/userDisplay'
+import { useAppSettings } from '../../lib/appSettings'
 
 export default function ConversationRow({
   item,
@@ -13,6 +14,7 @@ export default function ConversationRow({
   selected = false,
   selectionMode = false,
 }) {
+  const { theme } = useAppSettings()
   const profile = item.other_profile
   const name = getProfileName(profile)
   const isLastMine = item.last_sender_id === currentUserId
@@ -33,9 +35,9 @@ export default function ConversationRow({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 13,
-        backgroundColor: selected ? '#eff6ff' : '#fff',
+        backgroundColor: selected ? theme.accentSoft : theme.surface,
         borderBottomWidth: 1,
-        borderBottomColor: selected ? '#bfdbfe' : '#eef2f7',
+        borderBottomColor: selected ? theme.border : theme.surfaceMuted,
       }}
     >
       <View>
@@ -52,7 +54,7 @@ export default function ConversationRow({
               borderRadius: 8,
               backgroundColor: '#22c55e',
               borderWidth: 2,
-              borderColor: '#fff',
+              borderColor: theme.surface,
             }}
           />
         ) : null}
@@ -62,7 +64,7 @@ export default function ConversationRow({
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
             <Text
-              style={{ color: '#111827', fontSize: 16, fontWeight: '900', flexShrink: 1 }}
+              style={{ color: theme.text, fontSize: 16, fontWeight: '900', flexShrink: 1 }}
               numberOfLines={1}
             >
               {name}
@@ -78,7 +80,7 @@ export default function ConversationRow({
             ) : null}
           </View>
 
-          <Text style={{ color: '#64748b', fontSize: 12, marginLeft: 8 }}>
+          <Text style={{ color: theme.mutedText, fontSize: 12, marginLeft: 8 }}>
             {formatClock(item.last_message_at || item.created_at)}
           </Text>
         </View>
@@ -88,7 +90,7 @@ export default function ConversationRow({
             <Ionicons
               name="checkmark-done"
               size={15}
-              color="#64748b"
+              color={theme.mutedText}
               style={{ marginRight: 4 }}
             />
           ) : null}
@@ -97,7 +99,7 @@ export default function ConversationRow({
             <Ionicons
               name={isVideoCall ? 'videocam-outline' : 'call-outline'}
               size={14}
-              color="#64748b"
+              color={theme.mutedText}
               style={{ marginRight: 4 }}
             />
           ) : null}
@@ -105,7 +107,7 @@ export default function ConversationRow({
           <Text
             style={{
               flex: 1,
-              color: item.unread_count ? '#111827' : '#64748b',
+              color: item.unread_count ? theme.text : theme.mutedText,
               fontWeight: item.unread_count ? '800' : '500',
             }}
             numberOfLines={1}
@@ -122,7 +124,7 @@ export default function ConversationRow({
             height: 22,
             borderRadius: 11,
             paddingHorizontal: 6,
-            backgroundColor: '#1877F2',
+            backgroundColor: theme.accent,
             alignItems: 'center',
             justifyContent: 'center',
             marginLeft: 8,
@@ -145,7 +147,7 @@ export default function ConversationRow({
           <Ionicons
             name={selected ? 'checkmark-circle' : 'ellipse-outline'}
             size={22}
-            color={selected ? '#1877F2' : '#94a3b8'}
+            color={selected ? theme.accent : theme.mutedText}
           />
         </View>
       ) : null}

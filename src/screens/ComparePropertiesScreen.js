@@ -15,6 +15,7 @@ import {
   loadComparedProperties,
   removeComparedProperty,
 } from '../lib/propertyBrowse'
+import { useAppSettings } from '../lib/appSettings'
 
 const DETAIL_ROWS = [
   { label: 'Rent', key: 'price', formatter: (item) => (item?.price ? `৳ ${item.price}` : '—') },
@@ -46,6 +47,7 @@ function getComparableValue(item, key) {
 }
 
 export default function ComparePropertiesScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [items, setItems] = useState([])
   const [refreshing, setRefreshing] = useState(false)
   const [storageUserId, setStorageUserId] = useState('guest')
@@ -83,25 +85,25 @@ export default function ComparePropertiesScreen({ navigation }) {
   }, [items])
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f4f8' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         contentContainerStyle={{ padding: 14, paddingBottom: 26 }}
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 18,
             borderWidth: 1,
-            borderColor: '#dbe4ee',
+            borderColor: theme.border,
             padding: 14,
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '900' }}>
+          <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
             Compare properties
           </Text>
-          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4, lineHeight: 16 }}>
+          <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 4, lineHeight: 16 }}>
             Compare up to {COMPARE_LIMIT} rentals side by side and spot the important differences quickly.
           </Text>
         </View>
@@ -109,30 +111,30 @@ export default function ComparePropertiesScreen({ navigation }) {
         {items.length === 0 ? (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#dbe4ee',
+              borderColor: theme.border,
               paddingVertical: 34,
               paddingHorizontal: 20,
               alignItems: 'center',
             }}
           >
-            <Ionicons name="git-compare-outline" size={34} color="#94a3b8" />
-            <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900', marginTop: 10 }}>
+            <Ionicons name="git-compare-outline" size={34} color={theme.mutedText} />
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900', marginTop: 10 }}>
               No properties in compare yet
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 5, textAlign: 'center', lineHeight: 16 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 5, textAlign: 'center', lineHeight: 16 }}>
               Add properties from the feed or a property page, then compare them side by side here.
             </Text>
           </View>
         ) : (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#dbe4ee',
+              borderColor: theme.border,
               overflow: 'hidden',
             }}
           >
@@ -141,16 +143,16 @@ export default function ComparePropertiesScreen({ navigation }) {
                 <View
                   style={{
                     width: 118,
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderRightWidth: 1,
-                    borderRightColor: '#e2e8f0',
+                    borderRightColor: theme.border,
                   }}
                 >
                   <View style={{ height: 206, justifyContent: 'flex-end', padding: 12 }}>
-                    <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                       Details
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 10, marginTop: 4, lineHeight: 14 }}>
+                    <Text style={{ color: theme.mutedText, fontSize: 10, marginTop: 4, lineHeight: 14 }}>
                       Rows with different values are highlighted.
                     </Text>
                   </View>
@@ -164,10 +166,10 @@ export default function ComparePropertiesScreen({ navigation }) {
                         paddingVertical: 10,
                         justifyContent: 'center',
                         borderTopWidth: 1,
-                        borderTopColor: '#e2e8f0',
+                        borderTopColor: theme.border,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800' }}>
+                      <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800' }}>
                         {row.label}
                       </Text>
                     </View>
@@ -183,7 +185,7 @@ export default function ComparePropertiesScreen({ navigation }) {
                       style={{
                         width: 198,
                         borderRightWidth: 1,
-                        borderRightColor: '#e2e8f0',
+                        borderRightColor: theme.border,
                       }}
                     >
                       <View style={{ padding: 12 }}>
@@ -194,7 +196,7 @@ export default function ComparePropertiesScreen({ navigation }) {
                           {imageUri ? (
                             <Image
                               source={{ uri: imageUri }}
-                              style={{ width: '100%', height: 108, borderRadius: 14, backgroundColor: '#dbe4ee' }}
+                              style={{ width: '100%', height: 108, borderRadius: 14, backgroundColor: theme.surfaceMuted }}
                               resizeMode="cover"
                             />
                           ) : (
@@ -203,21 +205,21 @@ export default function ComparePropertiesScreen({ navigation }) {
                                 width: '100%',
                                 height: 108,
                                 borderRadius: 14,
-                                backgroundColor: '#e2e8f0',
+                                backgroundColor: theme.surfaceMuted,
                                 alignItems: 'center',
                                 justifyContent: 'center',
                               }}
                             >
-                              <Ionicons name="home-outline" size={28} color="#64748b" />
+                              <Ionicons name="home-outline" size={28} color={theme.mutedText} />
                             </View>
                           )}
                         </TouchableOpacity>
 
                         <View style={{ marginTop: 10, minHeight: 74 }}>
-                          <Text numberOfLines={2} style={{ color: '#0f172a', fontSize: 13, fontWeight: '900', lineHeight: 18 }}>
+                          <Text numberOfLines={2} style={{ color: theme.text, fontSize: 13, fontWeight: '900', lineHeight: 18 }}>
                             {item.title || 'Rental post'}
                           </Text>
-                          <Text numberOfLines={2} style={{ color: '#64748b', fontSize: 10, marginTop: 5, lineHeight: 14 }}>
+                          <Text numberOfLines={2} style={{ color: theme.mutedText, fontSize: 10, marginTop: 5, lineHeight: 14 }}>
                             {item.location || 'Location not added'}
                           </Text>
                         </View>
@@ -229,12 +231,12 @@ export default function ComparePropertiesScreen({ navigation }) {
                               flex: 1,
                               minHeight: 34,
                               borderRadius: 12,
-                              backgroundColor: '#eff6ff',
+                              backgroundColor: theme.accentSoft,
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>Open</Text>
+                            <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>Open</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -243,14 +245,14 @@ export default function ComparePropertiesScreen({ navigation }) {
                               width: 34,
                               height: 34,
                               borderRadius: 12,
-                              backgroundColor: '#f8fafc',
+                              backgroundColor: theme.surfaceMuted,
                               borderWidth: 1,
-                              borderColor: '#e2e8f0',
+                              borderColor: theme.border,
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            <Ionicons name="close" size={16} color="#475569" />
+                            <Ionicons name="close" size={16} color={theme.mutedText} />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -267,11 +269,11 @@ export default function ComparePropertiesScreen({ navigation }) {
                               paddingVertical: 10,
                               justifyContent: 'center',
                               borderTopWidth: 1,
-                              borderTopColor: '#e2e8f0',
-                              backgroundColor: isDifferent ? '#fff7ed' : '#fff',
+                              borderTopColor: theme.border,
+                              backgroundColor: isDifferent ? '#fff7ed' : theme.surface,
                             }}
                           >
-                            <Text style={{ color: isDifferent ? '#9a3412' : '#0f172a', fontSize: 11, fontWeight: '800', lineHeight: 16 }}>
+                            <Text style={{ color: isDifferent ? '#9a3412' : theme.text, fontSize: 11, fontWeight: '800', lineHeight: 16 }}>
                               {row.formatter(item)}
                             </Text>
                           </View>

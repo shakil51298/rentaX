@@ -21,13 +21,14 @@ import { ensureUserProfileRecord } from '../lib/profileSync'
 import { notifySavedSearchMatchesForProperty } from '../lib/savedSearches'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { isPrimaryAdmin } from '../lib/admin'
+import { useAppSettings } from '../lib/appSettings'
 
-function Field({ label, placeholder, multiline, keyboardType, value, onChangeText }) {
+function Field({ label, placeholder, multiline, keyboardType, value, onChangeText, theme }) {
   return (
     <View style={{ marginBottom: 11 }}>
       <Text
         style={{
-          color: '#334155',
+          color: theme.mutedText,
           fontSize: 11,
           fontWeight: '800',
           marginBottom: 6,
@@ -38,21 +39,21 @@ function Field({ label, placeholder, multiline, keyboardType, value, onChangeTex
 
       <TextInput
         placeholder={placeholder}
-        placeholderTextColor="#94a3b8"
+        placeholderTextColor={theme.mutedText}
         value={value}
         onChangeText={onChangeText}
         multiline={multiline}
         keyboardType={keyboardType}
         style={{
-          backgroundColor: '#f8fafc',
+          backgroundColor: theme.surfaceMuted,
           borderRadius: 14,
           borderWidth: 1,
-          borderColor: '#e2e8f0',
+          borderColor: theme.border,
           paddingHorizontal: 12,
           paddingVertical: multiline ? 11 : 10,
           minHeight: multiline ? 96 : 42,
           textAlignVertical: multiline ? 'top' : 'center',
-          color: '#0f172a',
+          color: theme.text,
           fontSize: 13,
         }}
       />
@@ -60,12 +61,12 @@ function Field({ label, placeholder, multiline, keyboardType, value, onChangeTex
   )
 }
 
-function OptionField({ label, value, onChange, options }) {
+function OptionField({ label, value, onChange, options, theme }) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text
         style={{
-          color: '#334155',
+          color: theme.mutedText,
           fontSize: 11,
           fontWeight: '800',
           marginBottom: 6,
@@ -87,8 +88,8 @@ function OptionField({ label, value, onChange, options }) {
                 minHeight: 38,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: selected ? '#bfdbfe' : '#dbe4ee',
-                backgroundColor: selected ? '#eff6ff' : '#fff',
+                borderColor: selected ? theme.accent : theme.border,
+                backgroundColor: selected ? theme.accentSoft : theme.surface,
                 alignItems: 'center',
                 justifyContent: 'center',
                 paddingHorizontal: 12,
@@ -98,7 +99,7 @@ function OptionField({ label, value, onChange, options }) {
             >
               <Text
                 style={{
-                  color: selected ? '#2563eb' : '#475569',
+                  color: selected ? theme.accent : theme.text,
                   fontSize: 11,
                   fontWeight: '900',
                 }}
@@ -119,12 +120,14 @@ function BooleanField({
   onChange,
   trueLabel = 'Yes',
   falseLabel = 'No',
+  theme,
 }) {
   return (
     <OptionField
       label={label}
       value={value ? 'yes' : 'no'}
       onChange={(nextValue) => onChange(nextValue === 'yes')}
+      theme={theme}
       options={[
         { value: 'no', label: falseLabel },
         { value: 'yes', label: trueLabel },
@@ -197,12 +200,12 @@ function buildCalendarDays(monthDate) {
   return cells
 }
 
-function CalendarField({ label, value, helperText, onPress }) {
+function CalendarField({ label, value, helperText, onPress, theme }) {
   return (
     <View style={{ marginBottom: 11 }}>
       <Text
         style={{
-          color: '#334155',
+          color: theme.mutedText,
           fontSize: 11,
           fontWeight: '800',
           marginBottom: 6,
@@ -215,10 +218,10 @@ function CalendarField({ label, value, helperText, onPress }) {
         onPress={onPress}
         activeOpacity={0.88}
         style={{
-          backgroundColor: '#f8fafc',
+          backgroundColor: theme.surfaceMuted,
           borderRadius: 14,
           borderWidth: 1,
-          borderColor: '#e2e8f0',
+          borderColor: theme.border,
           paddingHorizontal: 12,
           minHeight: 42,
           flexDirection: 'row',
@@ -226,10 +229,10 @@ function CalendarField({ label, value, helperText, onPress }) {
           justifyContent: 'space-between',
         }}
       >
-        <Text style={{ color: value ? '#0f172a' : '#94a3b8', fontSize: 13 }}>
+        <Text style={{ color: value ? theme.text : theme.mutedText, fontSize: 13 }}>
           {value || helperText}
         </Text>
-        <Ionicons name="calendar-outline" size={16} color="#2563eb" />
+        <Ionicons name="calendar-outline" size={16} color={theme.accent} />
       </TouchableOpacity>
     </View>
   )
@@ -240,6 +243,7 @@ function CalendarModal({
   value,
   onClose,
   onSelect,
+  theme,
 }) {
   const initialDate = parseDateValue(value) || new Date()
   const [visibleMonth, setVisibleMonth] = useState(
@@ -282,10 +286,10 @@ function CalendarModal({
         <Pressable
           onPress={(event) => event.stopPropagation()}
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 20,
             borderWidth: 1,
-            borderColor: '#dbe4ee',
+            borderColor: theme.border,
             padding: 14,
           }}
         >
@@ -297,15 +301,15 @@ function CalendarModal({
                 width: 34,
                 height: 34,
                 borderRadius: 17,
-                backgroundColor: '#eff6ff',
+                backgroundColor: theme.accentSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="chevron-back" size={18} color="#2563eb" />
+              <Ionicons name="chevron-back" size={18} color={theme.accent} />
             </TouchableOpacity>
 
-            <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900' }}>
               {CALENDAR_MONTHS[visibleMonth.getMonth()]} {visibleMonth.getFullYear()}
             </Text>
 
@@ -316,19 +320,19 @@ function CalendarModal({
                 width: 34,
                 height: 34,
                 borderRadius: 17,
-                backgroundColor: '#eff6ff',
+                backgroundColor: theme.accentSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+              <Ionicons name="chevron-forward" size={18} color={theme.accent} />
             </TouchableOpacity>
           </View>
 
           <View style={{ flexDirection: 'row', marginTop: 14 }}>
             {CALENDAR_WEEKDAYS.map((day) => (
               <View key={day} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={{ color: '#64748b', fontSize: 10, fontWeight: '800' }}>{day}</Text>
+                <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '800' }}>{day}</Text>
               </View>
             ))}
           </View>
@@ -356,14 +360,14 @@ function CalendarModal({
                             borderRadius: 17,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: isSelected ? '#2563eb' : isToday ? '#eff6ff' : 'transparent',
+                            backgroundColor: isSelected ? theme.accent : isToday ? theme.accentSoft : 'transparent',
                             borderWidth: isToday && !isSelected ? 1 : 0,
-                            borderColor: isToday ? '#bfdbfe' : 'transparent',
+                            borderColor: isToday ? theme.accent : 'transparent',
                           }}
                         >
                           <Text
                             style={{
-                              color: isSelected ? '#fff' : '#0f172a',
+                              color: isSelected ? '#fff' : theme.text,
                               fontSize: 12,
                               fontWeight: isSelected ? '900' : '700',
                             }}
@@ -392,12 +396,12 @@ function CalendarModal({
                 flex: 1,
                 minHeight: 40,
                 borderRadius: 13,
-                backgroundColor: '#eff6ff',
+                backgroundColor: theme.accentSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>Today</Text>
+              <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>Today</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -407,14 +411,14 @@ function CalendarModal({
                 flex: 1,
                 minHeight: 40,
                 borderRadius: 13,
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#475569', fontSize: 11, fontWeight: '900' }}>Close</Text>
+              <Text style={{ color: theme.text, fontSize: 11, fontWeight: '900' }}>Close</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -423,7 +427,7 @@ function CalendarModal({
   )
 }
 
-function MediaTile({ item, index, selected, onPress, onRemove }) {
+function MediaTile({ item, index, selected, onPress, onRemove, theme }) {
   return (
     <TouchableOpacity
       activeOpacity={0.88}
@@ -442,7 +446,7 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
             overflow: 'hidden',
             backgroundColor: '#0f172a',
             borderWidth: selected ? 2 : 1,
-            borderColor: selected ? '#1877F2' : '#dbe4ee',
+            borderColor: selected ? theme.accent : theme.border,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -450,7 +454,7 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
           <Ionicons name="videocam" size={22} color="#fff" />
           <Text
             style={{
-              color: '#cbd5e1',
+              color: theme.mutedText,
               fontSize: 10,
               fontWeight: '800',
               marginTop: 4,
@@ -466,9 +470,9 @@ function MediaTile({ item, index, selected, onPress, onRemove }) {
             width: 78,
             height: 78,
             borderRadius: 14,
-            backgroundColor: '#e2e8f0',
+            backgroundColor: theme.surfaceMuted,
             borderWidth: selected ? 2 : 1,
-            borderColor: selected ? '#1877F2' : '#dbe4ee',
+            borderColor: selected ? theme.accent : theme.border,
           }}
         />
       )}
@@ -499,6 +503,7 @@ function isRemoteUri(uri) {
 }
 
 export default function CreatePostScreen({ navigation, route }) {
+  const { theme } = useAppSettings()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
@@ -836,7 +841,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#eef4fb' }}
+      style={{ flex: 1, backgroundColor: theme.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
@@ -846,11 +851,11 @@ export default function CreatePostScreen({ navigation, route }) {
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 20,
             padding: 14,
             borderWidth: 1,
-            borderColor: '#dbe4ee',
+            borderColor: theme.border,
           }}
         >
           <View
@@ -868,10 +873,10 @@ export default function CreatePostScreen({ navigation, route }) {
             />
 
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900' }}>
                 {composerName}
               </Text>
-              <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
+              <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 12 }}>
                 {composerSubtitle}
               </Text>
             </View>
@@ -881,16 +886,17 @@ export default function CreatePostScreen({ navigation, route }) {
                 paddingHorizontal: 10,
                 paddingVertical: 6,
                 borderRadius: 999,
-                backgroundColor: '#eff6ff',
+                backgroundColor: theme.accentSoft,
               }}
             >
-              <Text style={{ color: '#2563eb', fontSize: 10, fontWeight: '800' }}>
+              <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '800' }}>
                 {isEditing ? 'Editing' : 'New post'}
               </Text>
             </View>
           </View>
 
           <Field
+            theme={theme}
             label="Property title"
             placeholder="2 bedroom apartment near Bashundhara"
             value={title}
@@ -898,6 +904,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <Field
+            theme={theme}
             label="Description"
             placeholder="Tell renters about the rooms, washroom, security, nearby transport, and anything helpful."
             value={description}
@@ -906,6 +913,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <Field
+            theme={theme}
             label="Monthly rent"
             placeholder="25000"
             value={price}
@@ -916,6 +924,7 @@ export default function CreatePostScreen({ navigation, route }) {
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
             <View style={{ flex: 1 }}>
               <Field
+                theme={theme}
                 label="Bedrooms"
                 placeholder="2"
                 value={beds}
@@ -926,6 +935,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
             <View style={{ flex: 1 }}>
               <Field
+                theme={theme}
                 label="Bathrooms"
                 placeholder="1"
                 value={baths}
@@ -938,6 +948,7 @@ export default function CreatePostScreen({ navigation, route }) {
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 0 }}>
             <View style={{ flex: 1 }}>
               <Field
+                theme={theme}
                 label="Size (sq ft)"
                 placeholder="1200"
                 value={sizeSqft}
@@ -948,6 +959,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
             <View style={{ flex: 1 }}>
               <Field
+                theme={theme}
                 label="Floor"
                 placeholder="3"
                 value={floorNo}
@@ -958,6 +970,7 @@ export default function CreatePostScreen({ navigation, route }) {
           </View>
 
           <CalendarField
+            theme={theme}
             label="Available from"
             value={availableFrom}
             helperText="Choose move-in date"
@@ -965,6 +978,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <Field
+            theme={theme}
             label="Facing direction"
             placeholder="South facing"
             value={facingDirection}
@@ -972,6 +986,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <OptionField
+            theme={theme}
             label="Furnishing"
             value={furnishingStatus}
             onChange={setFurnishingStatus}
@@ -982,6 +997,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <OptionField
+            theme={theme}
             label="Preferred tenant"
             value={tenantType}
             onChange={setTenantType}
@@ -993,6 +1009,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Parking"
             value={parking}
             onChange={setParking}
@@ -1001,6 +1018,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Lift"
             value={liftAvailable}
             onChange={setLiftAvailable}
@@ -1009,6 +1027,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Generator backup"
             value={generatorBackup}
             onChange={setGeneratorBackup}
@@ -1017,6 +1036,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Gas"
             value={gasAvailable}
             onChange={setGasAvailable}
@@ -1025,6 +1045,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Balcony"
             value={hasBalcony}
             onChange={setHasBalcony}
@@ -1033,6 +1054,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Service charge"
             value={serviceChargeIncluded}
             onChange={setServiceChargeIncluded}
@@ -1041,6 +1063,7 @@ export default function CreatePostScreen({ navigation, route }) {
           />
 
           <BooleanField
+            theme={theme}
             label="Pets"
             value={petFriendly}
             onChange={setPetFriendly}
@@ -1051,7 +1074,7 @@ export default function CreatePostScreen({ navigation, route }) {
           <View style={{ marginBottom: 16 }}>
             <Text
               style={{
-                color: '#334155',
+                color: theme.mutedText,
                 fontSize: 11,
                 fontWeight: '800',
                 marginBottom: 6,
@@ -1062,17 +1085,17 @@ export default function CreatePostScreen({ navigation, route }) {
 
             <View
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 padding: 10,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TextInput
                   placeholder="Dhaka, Bashundhara R/A"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={theme.mutedText}
                   value={location}
                   onChangeText={(value) => {
                     setLocation(value)
@@ -1088,7 +1111,7 @@ export default function CreatePostScreen({ navigation, route }) {
                   }}
                   style={{
                     flex: 1,
-                    color: '#0f172a',
+                    color: theme.text,
                     fontSize: 13,
                     minHeight: 22,
                     paddingVertical: 4,
@@ -1111,20 +1134,20 @@ export default function CreatePostScreen({ navigation, route }) {
                     height: 34,
                     paddingHorizontal: 10,
                     borderRadius: 12,
-                    backgroundColor: '#eff6ff',
+                    backgroundColor: theme.accentSoft,
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Ionicons name="map-outline" size={14} color="#2563eb" />
-                  <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900', marginLeft: 5 }}>
+                  <Ionicons name="map-outline" size={14} color={theme.accent} />
+                  <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900', marginLeft: 5 }}>
                     Pick map
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={{ color: '#64748b', fontSize: 10, marginTop: 7, lineHeight: 14 }}>
+              <Text style={{ color: theme.mutedText, fontSize: 10, marginTop: 7, lineHeight: 14 }}>
                 {locationHelperText}
               </Text>
             </View>
@@ -1132,10 +1155,10 @@ export default function CreatePostScreen({ navigation, route }) {
 
           <View
             style={{
-              backgroundColor: '#f8fafc',
+              backgroundColor: theme.surfaceMuted,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               padding: 12,
               marginBottom: 14,
             }}
@@ -1149,10 +1172,10 @@ export default function CreatePostScreen({ navigation, route }) {
               }}
             >
               <View>
-                <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                   Photos and videos
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 3, fontSize: 11, lineHeight: 16 }}>
+                <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 16 }}>
                   Add clear media so renters can understand the property fast.
                 </Text>
               </View>
@@ -1183,7 +1206,7 @@ export default function CreatePostScreen({ navigation, route }) {
                     height: 176,
                     borderRadius: 16,
                     overflow: 'hidden',
-                    backgroundColor: '#dbeafe',
+                    backgroundColor: theme.accentSoft,
                     marginBottom: 12,
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1200,7 +1223,7 @@ export default function CreatePostScreen({ navigation, route }) {
                       }}
                     >
                       <Ionicons name="play-circle" size={44} color="#fff" />
-                      <Text style={{ color: '#e2e8f0', fontWeight: '800', fontSize: 12, marginTop: 8 }}>
+                      <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginTop: 8 }}>
                         Video ready to upload
                       </Text>
                     </View>
@@ -1236,6 +1259,7 @@ export default function CreatePostScreen({ navigation, route }) {
                       item={item}
                       index={index}
                       selected={previewIndex === index}
+                      theme={theme}
                       onPress={() => setPreviewIndex(index)}
                       onRemove={removeMedia}
                     />
@@ -1248,7 +1272,7 @@ export default function CreatePostScreen({ navigation, route }) {
                 activeOpacity={0.88}
                 style={{
                   borderWidth: 1.5,
-                  borderColor: '#cbd5e1',
+                  borderColor: theme.border,
                   borderStyle: 'dashed',
                   borderRadius: 16,
                   paddingVertical: 22,
@@ -1261,19 +1285,19 @@ export default function CreatePostScreen({ navigation, route }) {
                     width: 46,
                     height: 46,
                     borderRadius: 23,
-                    backgroundColor: '#e0edff',
+                    backgroundColor: theme.accentSoft,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginBottom: 10,
                   }}
                 >
-                  <Ionicons name="camera-outline" size={20} color="#2563eb" />
+                  <Ionicons name="camera-outline" size={20} color={theme.accent} />
                 </View>
 
-                <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '900' }}>
+                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                   Add property media
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 5, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
+                <Text style={{ color: theme.mutedText, marginTop: 5, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
                   Photos, room videos, washroom, balcony, parking, or surroundings.
                 </Text>
               </TouchableOpacity>
@@ -1315,6 +1339,7 @@ export default function CreatePostScreen({ navigation, route }) {
       </ScrollView>
 
       <CalendarModal
+        theme={theme}
         visible={availableFromPickerVisible}
         value={availableFrom}
         onClose={() => setAvailableFromPickerVisible(false)}

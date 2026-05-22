@@ -14,6 +14,7 @@ import {
   clearRecentlyViewedProperties,
   loadRecentlyViewedProperties,
 } from '../lib/propertyBrowse'
+import { useAppSettings } from '../lib/appSettings'
 
 function getCoverImage(property) {
   return property?.image_url || property?.media?.[0]?.uri || null
@@ -28,6 +29,7 @@ function getMetaLine(property) {
 }
 
 export default function RecentlyViewedScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [items, setItems] = useState([])
   const [refreshing, setRefreshing] = useState(false)
 
@@ -59,17 +61,17 @@ export default function RecentlyViewedScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f4f8' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView
         contentContainerStyle={{ padding: 14, paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 18,
             borderWidth: 1,
-            borderColor: '#dbe4ee',
+            borderColor: theme.border,
             padding: 14,
             marginBottom: 12,
             flexDirection: 'row',
@@ -78,10 +80,10 @@ export default function RecentlyViewedScreen({ navigation }) {
           }}
         >
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
               Recently viewed
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4, lineHeight: 16 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 4, lineHeight: 16 }}>
               Pick up where you left off and compare rentals you already checked.
             </Text>
           </View>
@@ -93,14 +95,14 @@ export default function RecentlyViewedScreen({ navigation }) {
                 minHeight: 34,
                 paddingHorizontal: 12,
                 borderRadius: 12,
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderWidth: 1,
-                borderColor: '#dbe4ee',
+                borderColor: theme.border,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#475569', fontSize: 11, fontWeight: '900' }}>Clear</Text>
+              <Text style={{ color: theme.text, fontSize: 11, fontWeight: '900' }}>Clear</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -108,20 +110,20 @@ export default function RecentlyViewedScreen({ navigation }) {
         {items.length === 0 ? (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#dbe4ee',
+              borderColor: theme.border,
               paddingVertical: 34,
               paddingHorizontal: 20,
               alignItems: 'center',
             }}
           >
-            <Ionicons name="time-outline" size={34} color="#94a3b8" />
-            <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900', marginTop: 10 }}>
+            <Ionicons name="time-outline" size={34} color={theme.mutedText} />
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900', marginTop: 10 }}>
               Nothing viewed yet
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 5, textAlign: 'center', lineHeight: 16 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 5, textAlign: 'center', lineHeight: 16 }}>
               Open rental posts and they will appear here automatically.
             </Text>
           </View>
@@ -136,10 +138,10 @@ export default function RecentlyViewedScreen({ navigation }) {
                 onPress={() => navigation.navigate('Property', { property: item })}
                 activeOpacity={0.88}
                 style={{
-                  backgroundColor: '#fff',
+                  backgroundColor: theme.surface,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: '#dbe4ee',
+                  borderColor: theme.border,
                   overflow: 'hidden',
                   marginBottom: 12,
                 }}
@@ -147,7 +149,7 @@ export default function RecentlyViewedScreen({ navigation }) {
                 {imageUri ? (
                   <Image
                     source={{ uri: imageUri }}
-                    style={{ width: '100%', height: 146, backgroundColor: '#dbe4ee' }}
+                    style={{ width: '100%', height: 146, backgroundColor: theme.surfaceMuted }}
                     resizeMode="cover"
                   />
                 ) : (
@@ -155,18 +157,18 @@ export default function RecentlyViewedScreen({ navigation }) {
                     style={{
                       width: '100%',
                       height: 146,
-                      backgroundColor: '#e2e8f0',
+                      backgroundColor: theme.surfaceMuted,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="home-outline" size={32} color="#64748b" />
+                    <Ionicons name="home-outline" size={32} color={theme.mutedText} />
                   </View>
                 )}
 
                 <View style={{ padding: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                    <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900', flex: 1, paddingRight: 10 }}>
+                    <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900', flex: 1, paddingRight: 10 }}>
                       {item.title || 'Rental post'}
                     </Text>
                     <Text style={{ color: '#ea580c', fontSize: 12, fontWeight: '900' }}>
@@ -174,12 +176,12 @@ export default function RecentlyViewedScreen({ navigation }) {
                     </Text>
                   </View>
 
-                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 6 }}>
+                  <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 6 }}>
                     {item.location || 'Location not added'}
                   </Text>
 
                   {metaLine ? (
-                    <Text style={{ color: '#475569', fontSize: 11, marginTop: 6 }}>
+                    <Text style={{ color: theme.text, fontSize: 11, marginTop: 6 }}>
                       {metaLine}
                     </Text>
                   ) : null}
@@ -192,11 +194,11 @@ export default function RecentlyViewedScreen({ navigation }) {
                       justifyContent: 'space-between',
                     }}
                   >
-                    <Text style={{ color: '#94a3b8', fontSize: 10, fontWeight: '800' }}>
+                    <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '800' }}>
                       Viewed {new Date(item.viewed_at || item.created_at || Date.now()).toLocaleDateString()}
                     </Text>
 
-                    <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+                    <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>
                       Open
                     </Text>
                   </View>

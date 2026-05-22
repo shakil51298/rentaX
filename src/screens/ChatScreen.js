@@ -1907,11 +1907,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           padding: 24,
         }}
       >
-        <Ionicons name="lock-closed-outline" size={42} color="#64748b" />
-        <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+        <Ionicons name="lock-closed-outline" size={42} color={theme.mutedText} />
+        <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 12 }}>
           Sign in required
         </Text>
-        <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
+        <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 6 }}>
           Please login again to use Rental X messaging.
         </Text>
       </SafeAreaView>
@@ -1929,7 +1929,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               paddingHorizontal: 16,
               paddingVertical: 14,
               borderBottomWidth: 1,
-              borderBottomColor: '#e5e7eb',
+              borderBottomColor: theme.border,
             }}
           >
             {selectionMode ? (
@@ -1945,14 +1945,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     marginRight: 10,
                   }}
                 >
-                  <Ionicons name="close" size={24} color="#111827" />
+                  <Ionicons name="close" size={24} color={theme.text} />
                 </TouchableOpacity>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#111827', fontSize: 24, fontWeight: '900' }}>
+                  <Text style={{ color: theme.text, fontSize: 24, fontWeight: '900' }}>
                     {selectedConversationIds.length} selected
                   </Text>
-                  <Text style={{ color: '#64748b', marginTop: 3 }}>
+                  <Text style={{ color: theme.mutedText, marginTop: 3 }}>
                     Choose chats to remove from your list
                   </Text>
                 </View>
@@ -1973,10 +1973,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </View>
             ) : (
               <>
-                <Text style={{ color: '#111827', fontSize: 26, fontWeight: '900' }}>
+                <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900' }}>
                   Messages
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 3 }}>
+                <Text style={{ color: theme.mutedText, marginTop: 3 }}>
                   Chat with property owners and renters
                 </Text>
               </>
@@ -1986,16 +1986,16 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           {activeConversationRows.length ? (
             <View
               style={{
-                backgroundColor: '#fff',
+                backgroundColor: theme.surface,
                 paddingTop: 10,
                 paddingBottom: 10,
                 borderBottomWidth: 1,
-                borderBottomColor: '#e5e7eb',
+                borderBottomColor: theme.border,
               }}
             >
               <Text
                 style={{
-                  color: '#64748b',
+                  color: theme.mutedText,
                   fontSize: 12,
                   fontWeight: '800',
                   paddingHorizontal: 16,
@@ -2044,14 +2044,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                             borderRadius: 7,
                             backgroundColor: '#22c55e',
                             borderWidth: 2,
-                            borderColor: '#fff',
+                            borderColor: theme.surface,
                           }}
                         />
                       </View>
 
                       <Text
                         style={{
-                          color: '#111827',
+                          color: theme.text,
                           fontSize: 11,
                           fontWeight: '700',
                           marginTop: 6,
@@ -2097,11 +2097,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             onRefresh={() => loadConversationList(currentUser)}
             ListEmptyComponent={
               <View style={{ alignItems: 'center', padding: 34 }}>
-                <Ionicons name="chatbubbles-outline" size={48} color="#94a3b8" />
-                <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+                <Ionicons name="chatbubbles-outline" size={48} color={theme.mutedText} />
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 12 }}>
                   No messages yet
                 </Text>
-                <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
+                <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 6 }}>
                   Open a property or owner profile and tap Message to start.
                 </Text>
               </View>
@@ -2126,9 +2126,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderBottomWidth: 1,
-            borderBottomColor: '#e5e7eb',
+            borderBottomColor: theme.border,
             paddingHorizontal: 10,
             paddingVertical: 9,
             flexDirection: 'row',
@@ -2146,7 +2146,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               marginRight: 4,
             }}
           >
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
           </TouchableOpacity>
 
           <Pressable
@@ -2167,7 +2167,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             <View style={{ flex: 1, marginLeft: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text
-                  style={{ color: '#111827', fontSize: 16, fontWeight: '900', flexShrink: 1 }}
+                  style={{ color: theme.text, fontSize: 16, fontWeight: '900', flexShrink: 1 }}
                   numberOfLines={1}
                 >
                   {otherUserName}
@@ -2184,7 +2184,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </View>
               <Text
                 style={{
-                  color: chatStatusText === 'Online' ? '#16a34a' : '#64748b',
+                  color: chatStatusText === 'Online' ? '#16a34a' : theme.mutedText,
                   fontSize: 12,
                   fontWeight: chatStatusText === 'typing...' ? '800' : '500',
                 }}
@@ -2237,17 +2237,17 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         {conversationProperty?.title ? (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               paddingHorizontal: 14,
               paddingVertical: 8,
               borderBottomWidth: 1,
-              borderBottomColor: '#e5e7eb',
+              borderBottomColor: theme.border,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '700' }}>
+            <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '700' }}>
               Property
             </Text>
-            <Text style={{ color: '#111827', fontWeight: '900' }} numberOfLines={1}>
+            <Text style={{ color: theme.text, fontWeight: '900' }} numberOfLines={1}>
               {conversationProperty.title}
             </Text>
           </View>
@@ -2323,11 +2323,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             }}
             ListEmptyComponent={
               <View style={{ alignItems: 'center', paddingHorizontal: 32, paddingTop: 80 }}>
-                <Ionicons name="chatbubble-ellipses-outline" size={48} color="#94a3b8" />
-                <Text style={{ color: '#111827', fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+                <Ionicons name="chatbubble-ellipses-outline" size={48} color={theme.mutedText} />
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 12 }}>
                   Start chatting
                 </Text>
-                <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 6 }}>
+                <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 6 }}>
                   Send a message, photo, video, or voice note.
                 </Text>
               </View>
@@ -2431,10 +2431,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </TouchableOpacity>
 
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                <Text style={{ color: theme.text, fontWeight: '900' }}>
                   Review your voice message
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
+                <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 12 }}>
                   {formatDuration(Math.floor((voicePreviewStatus?.currentTime || 0) * 1000))} / {formatDuration(pendingVoiceNote.durationMillis)}
                 </Text>
               </View>
@@ -2473,15 +2473,15 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 style={{
                   flex: 1,
                   borderRadius: 12,
-                  backgroundColor: '#fff',
+                  backgroundColor: theme.surface,
                   borderWidth: 1,
-                  borderColor: '#cbd5e1',
+                  borderColor: theme.border,
                   paddingVertical: 10,
                   alignItems: 'center',
                   marginRight: 8,
                 }}
               >
-                <Text style={{ color: '#475569', fontWeight: '800' }}>Delete</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}>Delete</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -2509,12 +2509,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             paddingHorizontal: 10,
             paddingTop: 8,
             paddingBottom: Math.max(insets.bottom, 10),
             borderTopWidth: 1,
-            borderTopColor: '#e5e7eb',
+            borderTopColor: theme.border,
           }}
         >
           {replyTarget ? (
@@ -2544,7 +2544,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       borderRadius: 10,
                       marginRight: 10,
                       flexShrink: 0,
-                      backgroundColor: '#dbeafe',
+                      backgroundColor: theme.accentSoft,
                     }}
                     resizeMode="cover"
                   />
@@ -2556,7 +2556,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       borderRadius: 10,
                       marginRight: 10,
                       flexShrink: 0,
-                      backgroundColor: '#dbeafe',
+                      backgroundColor: theme.accentSoft,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
@@ -2571,7 +2571,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       borderRadius: 10,
                       marginRight: 10,
                       flexShrink: 0,
-                      backgroundColor: '#dbeafe',
+                      backgroundColor: theme.accentSoft,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
@@ -2586,7 +2586,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       borderRadius: 10,
                       marginRight: 10,
                       flexShrink: 0,
-                      backgroundColor: '#dbeafe',
+                      backgroundColor: theme.accentSoft,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
@@ -2603,7 +2603,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     Replying to {replyTarget.sender_id === currentUser?.id ? 'yourself' : otherUserName}
                   </Text>
                   <Text
-                    style={{ color: '#0f172a', marginTop: 4, fontSize: 12, lineHeight: 17 }}
+                    style={{ color: theme.text, marginTop: 4, fontSize: 12, lineHeight: 17 }}
                     numberOfLines={2}
                   >
                     {getReplySnippet(replyTarget)}
@@ -2622,7 +2622,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   marginLeft: 8,
                 }}
               >
-                <Ionicons name="close" size={20} color="#475569" />
+                <Ionicons name="close" size={20} color={theme.mutedText} />
               </TouchableOpacity>
             </View>
           ) : null}
@@ -2703,7 +2703,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 paddingTop: 10,
                 paddingBottom: 10,
                 textAlignVertical: 'top',
-                color: '#111827',
+                color: theme.text,
                 fontSize: 15,
               }}
             />

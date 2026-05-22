@@ -117,14 +117,14 @@ function shouldOpenCommentSheet(type) {
   return ['property_comment', 'comment_reply', 'comment_like'].includes(type)
 }
 
-function Avatar({ name, uri }) {
+function Avatar({ name, uri, theme }) {
   const initial = name?.trim()?.charAt(0)?.toUpperCase() || 'U'
 
   if (uri) {
     return (
       <Image
         source={{ uri }}
-        style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#ddd' }}
+        style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: theme.surfaceMuted }}
       />
     )
   }
@@ -135,12 +135,12 @@ function Avatar({ name, uri }) {
         width: 46,
         height: 46,
         borderRadius: 23,
-        backgroundColor: '#dbeafe',
+        backgroundColor: theme.accentSoft,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#1d4ed8', fontWeight: '900' }}>{initial}</Text>
+      <Text style={{ color: theme.accentStrong, fontWeight: '900' }}>{initial}</Text>
     </View>
   )
 }
@@ -454,10 +454,10 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
         onPress={() => openNotification(item)}
         activeOpacity={0.82}
         style={{
-          backgroundColor: item.is_read ? '#fff' : '#eef6ff',
+          backgroundColor: item.is_read ? theme.surface : theme.accentSoft,
           borderRadius: 12,
           borderWidth: 1,
-          borderColor: item.is_read ? '#e5e7eb' : '#bfdbfe',
+          borderColor: item.is_read ? theme.border : theme.accent,
           padding: 12,
           marginBottom: 10,
           flexDirection: 'row',
@@ -465,7 +465,7 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
         }}
       >
         <View>
-          <Avatar name={actorName} uri={item.actor_profile?.avatar_url} />
+          <Avatar name={actorName} uri={item.actor_profile?.avatar_url} theme={theme} />
 
           <View
             style={{
@@ -479,7 +479,7 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 2,
-              borderColor: '#fff',
+              borderColor: theme.surface,
             }}
           >
             <Ionicons name={getNotificationIcon(item.type)} size={11} color="#fff" />
@@ -487,19 +487,19 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
         </View>
 
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={{ color: '#111827', lineHeight: 20 }}>
+          <Text style={{ color: theme.text, lineHeight: 20 }}>
             <Text style={{ fontWeight: '900' }}>{actorName}</Text>
             {' '}
             {item.body || item.title || 'sent you a notification'}
           </Text>
 
           {item.property?.title ? (
-            <Text style={{ color: '#64748b', marginTop: 4 }} numberOfLines={1}>
+            <Text style={{ color: theme.mutedText, marginTop: 4 }} numberOfLines={1}>
               {item.property.title}
             </Text>
           ) : null}
 
-          <Text style={{ color: '#1877F2', fontSize: 12, marginTop: 6, fontWeight: '700' }}>
+          <Text style={{ color: theme.accent, fontSize: 12, marginTop: 6, fontWeight: '700' }}>
             {timeAgo(item.created_at)}
           </Text>
         </View>
@@ -510,7 +510,7 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
               width: 10,
               height: 10,
               borderRadius: 5,
-              backgroundColor: '#1877F2',
+              backgroundColor: theme.accent,
               marginTop: 8,
             }}
           />
@@ -533,17 +533,17 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
       <View style={{ flex: 1 }}>
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             paddingHorizontal: 16,
             paddingVertical: 14,
             borderBottomWidth: 1,
-            borderBottomColor: '#e5e7eb',
+            borderBottomColor: theme.border,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <Text style={{ fontSize: 24, fontWeight: '900', color: '#111827' }}>
+          <Text style={{ fontSize: 24, fontWeight: '900', color: theme.text }}>
             Notifications
           </Text>
 
@@ -554,12 +554,12 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
               paddingHorizontal: 12,
               paddingVertical: 8,
               borderRadius: 18,
-              backgroundColor: unreadCount > 0 ? '#1877F2' : '#e5e7eb',
+              backgroundColor: unreadCount > 0 ? theme.accent : theme.surfaceMuted,
             }}
           >
             <Text
               style={{
-                color: unreadCount > 0 ? '#fff' : '#6b7280',
+                color: unreadCount > 0 ? '#fff' : theme.mutedText,
                 fontWeight: '800',
                 fontSize: 12,
               }}
@@ -577,7 +577,7 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
           onRefresh={loadNotifications}
           contentContainerStyle={{ padding: 14, paddingBottom: 28 }}
           ListEmptyComponent={
-            <Text style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>
+            <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 40 }}>
               No notifications yet
             </Text>
           }

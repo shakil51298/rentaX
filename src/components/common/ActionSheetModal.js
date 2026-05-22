@@ -1,5 +1,6 @@
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useAppSettings } from '../../lib/appSettings'
 
 const ACTION_TONES = [
   { tint: '#2563eb', background: '#dbeafe' },
@@ -20,7 +21,7 @@ function getActionTone(index, danger) {
   return ACTION_TONES[index % ACTION_TONES.length]
 }
 
-function ActionItem({ icon, title, subtitle, danger, disabled, onPress, index }) {
+function ActionItem({ icon, title, subtitle, danger, disabled, onPress, index, theme }) {
   const tone = getActionTone(index, danger)
 
   return (
@@ -50,11 +51,11 @@ function ActionItem({ icon, title, subtitle, danger, disabled, onPress, index })
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ color: danger ? '#dc2626' : '#0f172a', fontWeight: '800', fontSize: 13.5 }}>
+        <Text style={{ color: danger ? '#dc2626' : theme.text, fontWeight: '800', fontSize: 13.5 }}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ color: '#64748b', marginTop: 2, fontSize: 11, lineHeight: 15 }}>
+          <Text style={{ color: theme.mutedText, marginTop: 2, fontSize: 11, lineHeight: 15 }}>
             {subtitle}
           </Text>
         ) : null}
@@ -71,6 +72,8 @@ export default function ActionSheetModal({
   onClose,
   closeLabel = 'Close',
 }) {
+  const { theme } = useAppSettings()
+
   return (
     <Modal
       visible={visible}
@@ -92,10 +95,10 @@ export default function ActionSheetModal({
         <Pressable
           onPress={(event) => event.stopPropagation()}
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 20,
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: theme.border,
             maxHeight: '72%',
             overflow: 'hidden',
           }}
@@ -118,16 +121,16 @@ export default function ActionSheetModal({
                 width: 38,
                 height: 4,
                 borderRadius: 999,
-                backgroundColor: '#cbd5e1',
+                backgroundColor: theme.border,
                 marginBottom: 10,
               }}
             />
 
-            <Text style={{ color: '#0f172a', fontSize: 15, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900' }}>
               {title}
             </Text>
             {subtitle ? (
-              <Text style={{ color: '#64748b', marginTop: 3, fontSize: 11.5, lineHeight: 17 }}>
+              <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11.5, lineHeight: 17 }}>
                 {subtitle}
               </Text>
             ) : null}
@@ -135,9 +138,9 @@ export default function ActionSheetModal({
             <View style={{ marginTop: 10 }}>
               {actions.map((action, index) => (
                 <View key={`${action.title}-${index}`}>
-                  <ActionItem {...action} index={index} />
+                  <ActionItem {...action} index={index} theme={theme} />
                   {index < actions.length - 1 ? (
-                    <View style={{ height: 1, backgroundColor: '#f1f5f9' }} />
+                    <View style={{ height: 1, backgroundColor: theme.surfaceMuted }} />
                   ) : null}
                 </View>
               ))}
@@ -149,14 +152,14 @@ export default function ActionSheetModal({
               style={{
                 marginTop: 6,
                 borderRadius: 14,
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 paddingVertical: 11,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#334155', fontWeight: '800', fontSize: 12.5 }}>{closeLabel}</Text>
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 12.5 }}>{closeLabel}</Text>
             </TouchableOpacity>
           </ScrollView>
         </Pressable>

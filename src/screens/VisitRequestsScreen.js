@@ -24,8 +24,9 @@ import {
   buildVisitTimestamp,
 } from '../lib/visitScheduling'
 import { getProfileName } from '../lib/userDisplay'
+import { useAppSettings } from '../lib/appSettings'
 
-function SummaryCard({ label, value, tone = '#1877F2', bg = '#eff6ff' }) {
+function SummaryCard({ label, value, tone = '#1877F2', bg = '#eff6ff', theme }) {
   return (
     <View
       style={{
@@ -36,13 +37,14 @@ function SummaryCard({ label, value, tone = '#1877F2', bg = '#eff6ff' }) {
         paddingHorizontal: 14,
       }}
     >
-      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800' }}>{label}</Text>
+      <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800' }}>{label}</Text>
       <Text style={{ color: tone, fontSize: 22, fontWeight: '900', marginTop: 6 }}>{value}</Text>
     </View>
   )
 }
 
 export default function VisitRequestsScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [requests, setRequests] = useState([])
@@ -258,55 +260,55 @@ export default function VisitRequestsScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 18,
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: theme.border,
             padding: 16,
             marginBottom: 16,
           }}
         >
-          <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '900' }}>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>
             Visit Requests
           </Text>
-          <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+          <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>
             Review renter visit requests, accept a preferred time, or propose a new time.
           </Text>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-            <SummaryCard label="Pending" value={pendingCount} tone="#b45309" bg="#fef3c7" />
-            <SummaryCard label="Confirmed" value={confirmedCount} tone="#15803d" bg="#dcfce7" />
+            <SummaryCard label="Pending" value={pendingCount} tone="#b45309" bg="#fef3c7" theme={theme} />
+            <SummaryCard label="Confirmed" value={confirmedCount} tone="#15803d" bg="#dcfce7" theme={theme} />
           </View>
         </View>
 
         {requests.length === 0 ? (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               paddingVertical: 28,
               paddingHorizontal: 18,
               alignItems: 'center',
             }}
           >
-            <Ionicons name="calendar-outline" size={28} color="#94a3b8" />
-            <Text style={{ color: '#0f172a', fontWeight: '900', marginTop: 10 }}>
+            <Ionicons name="calendar-outline" size={28} color={theme.mutedText} />
+            <Text style={{ color: theme.text, fontWeight: '900', marginTop: 10 }}>
               No visit requests yet
             </Text>
-            <Text style={{ color: '#64748b', marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
               When renters request a visit time for one of your properties, they will appear here.
             </Text>
           </View>
@@ -319,10 +321,10 @@ export default function VisitRequestsScreen({ navigation }) {
               <View
                 key={item.id}
                 style={{
-                  backgroundColor: '#fff',
+                  backgroundColor: theme.surface,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   padding: 16,
                   marginBottom: 14,
                 }}
@@ -331,10 +333,10 @@ export default function VisitRequestsScreen({ navigation }) {
                   <Avatar profile={item.requester_profile} name={requesterName} size={44} />
 
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15 }}>
                       {requesterName}
                     </Text>
-                    <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                    <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12 }}>
                       {item.property?.title || 'Property'}
                     </Text>
                   </View>
@@ -360,31 +362,31 @@ export default function VisitRequestsScreen({ navigation }) {
                   style={{
                     marginTop: 14,
                     borderRadius: 14,
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     padding: 12,
                     gap: 8,
                   }}
                 >
-                  <Text style={{ color: '#0f172a', fontWeight: '800' }}>
+                  <Text style={{ color: theme.text, fontWeight: '800' }}>
                     Requested time: {formatVisitDateTime(item.requested_for)}
                   </Text>
 
                   {item.owner_proposed_for ? (
-                    <Text style={{ color: '#334155', lineHeight: 19 }}>
+                    <Text style={{ color: theme.text, lineHeight: 19 }}>
                       Owner time: {formatVisitDateTime(item.owner_proposed_for)}
                     </Text>
                   ) : null}
 
                   {item.request_message ? (
-                    <Text style={{ color: '#475569', lineHeight: 19 }}>
+                    <Text style={{ color: theme.mutedText, lineHeight: 19 }}>
                       Note: {item.request_message}
                     </Text>
                   ) : null}
 
                   {item.owner_response_note ? (
-                    <Text style={{ color: '#475569', lineHeight: 19 }}>
+                    <Text style={{ color: theme.mutedText, lineHeight: 19 }}>
                       Owner response: {item.owner_response_note}
                     </Text>
                   ) : null}
@@ -396,13 +398,13 @@ export default function VisitRequestsScreen({ navigation }) {
                     style={{
                       flex: 1,
                       borderRadius: 12,
-                      backgroundColor: '#f1f5f9',
+                      backgroundColor: theme.surfaceMuted,
                       alignItems: 'center',
                       justifyContent: 'center',
                       minHeight: 42,
                     }}
                   >
-                    <Text style={{ color: '#334155', fontWeight: '900', fontSize: 12 }}>View property</Text>
+                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 12 }}>View property</Text>
                   </TouchableOpacity>
 
                   {item.status === 'pending' ? (
@@ -493,20 +495,20 @@ export default function VisitRequestsScreen({ navigation }) {
 
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 20,
               padding: 18,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 18 }}>Reschedule visit</Text>
-            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18 }}>Reschedule visit</Text>
+            <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>
               Propose a better time for this visit request.
             </Text>
 
             <View style={{ marginTop: 14 }}>
-              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
                 New date
               </Text>
               <TextInput
@@ -515,19 +517,19 @@ export default function VisitRequestsScreen({ navigation }) {
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor="#94a3b8"
                 style={{
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 14,
                   paddingHorizontal: 13,
                   paddingVertical: 12,
-                  color: '#0f172a',
+                  color: theme.text,
                 }}
               />
             </View>
 
             <View style={{ marginTop: 12 }}>
-              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
                 New time
               </Text>
               <TextInput
@@ -536,19 +538,19 @@ export default function VisitRequestsScreen({ navigation }) {
                 placeholder="HH:MM"
                 placeholderTextColor="#94a3b8"
                 style={{
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 14,
                   paddingHorizontal: 13,
                   paddingVertical: 12,
-                  color: '#0f172a',
+                  color: theme.text,
                 }}
               />
             </View>
 
             <View style={{ marginTop: 12 }}>
-              <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
                 Note
               </Text>
               <TextInput
@@ -559,13 +561,13 @@ export default function VisitRequestsScreen({ navigation }) {
                 multiline
                 style={{
                   minHeight: 84,
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: theme.border,
                   borderRadius: 14,
                   paddingHorizontal: 13,
                   paddingVertical: 12,
-                  color: '#0f172a',
+                  color: theme.text,
                   textAlignVertical: 'top',
                 }}
               />
@@ -578,12 +580,12 @@ export default function VisitRequestsScreen({ navigation }) {
                   flex: 1,
                   minHeight: 44,
                   borderRadius: 14,
-                  backgroundColor: '#e2e8f0',
+                  backgroundColor: theme.surfaceMuted,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: '#334155', fontWeight: '900' }}>Cancel</Text>
+                <Text style={{ color: theme.text, fontWeight: '900' }}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
