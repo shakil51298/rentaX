@@ -190,6 +190,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     blocked: 0,
   })
   const [adminPanelCount, setAdminPanelCount] = useState(0)
+  const [generalSettingsExpanded, setGeneralSettingsExpanded] = useState(false)
   const [imageViewer, setImageViewer] = useState({
     visible: false,
     title: '',
@@ -548,148 +549,185 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                   borderRadius: 18,
                   borderWidth: 1,
                   borderColor: theme.border,
-                  padding: 16,
-                  gap: 14,
+                  overflow: 'hidden',
                 }}
               >
-                <View>
-                  <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
-                    {t('profileGeneralSettings', 'General settings')}
-                  </Text>
-                  <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
-                    {t('profileGeneralSettingsSubtitle', 'Change the app theme and switch between Bangla and English.')}
-                  </Text>
-                </View>
-
-                <View
+                <TouchableOpacity
+                  onPress={() => setGeneralSettingsExpanded((current) => !current)}
+                  activeOpacity={0.86}
                   style={{
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    backgroundColor: theme.surfaceMuted,
-                    padding: 12,
-                    gap: 12,
+                    paddingHorizontal: 16,
+                    paddingVertical: 15,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                   }}
                 >
-                  <View>
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
-                      {t('settingsAppearanceTitle', 'Appearance')}
-                    </Text>
-                    <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
-                      {t('settingsAppearanceSubtitle', 'Choose a light or dark look for the app.')}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    {APP_APPEARANCE_MODES.map((option) => (
-                      <LanguageOption
-                        key={option.id}
-                        label={t(option.labelKey, option.id)}
-                        selected={appearanceMode === option.id}
-                        onPress={() => setAppearanceMode(option.id)}
-                        theme={theme}
-                      />
-                    ))}
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    backgroundColor: theme.surfaceMuted,
-                    padding: 12,
-                    gap: 12,
-                  }}
-                >
-                  <View>
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
-                      {t('settingsThemeTitle', 'Theme')}
-                    </Text>
-                    <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
-                      {t('settingsThemeSubtitle', 'Pick the colors and button style you want across the app.')}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 }}>
-                    {APP_THEMES.map((preset) => (
-                      <ThemeSwatch
-                        key={preset.id}
-                        preset={preset}
-                        selected={themeId === preset.id}
-                        theme={theme}
-                        title={t(preset.nameKey, preset.id)}
-                        onPress={() => setThemeId(preset.id)}
-                      />
-                    ))}
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
                     <View
                       style={{
-                        flex: 1,
-                        minHeight: 40,
-                        borderRadius: 13,
-                        backgroundColor: theme.accent,
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.accentSoft,
                         alignItems: 'center',
                         justifyContent: 'center',
+                        marginRight: 12,
                       }}
                     >
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>
-                        {t('settingsPreviewPrimary', 'Primary')}
+                      <Ionicons name="color-palette-outline" size={20} color={theme.accent} />
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                        {t('profileGeneralSettings', 'General settings')}
+                      </Text>
+                      <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
+                        {t('profileGeneralSettingsSubtitle', 'Change the app theme and switch between Bangla and English.')}
                       </Text>
                     </View>
+                  </View>
+
+                  <Ionicons
+                    name={generalSettingsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={theme.mutedText}
+                  />
+                </TouchableOpacity>
+
+                {generalSettingsExpanded ? (
+                  <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 14 }}>
                     <View
                       style={{
-                        flex: 1,
-                        minHeight: 40,
-                        borderRadius: 13,
-                        backgroundColor: theme.accentSoft,
+                        borderRadius: 16,
                         borderWidth: 1,
                         borderColor: theme.border,
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        backgroundColor: theme.surfaceMuted,
+                        padding: 12,
+                        gap: 12,
                       }}
                     >
-                      <Text style={{ color: theme.accentStrong, fontSize: 12, fontWeight: '900' }}>
-                        {t('settingsPreviewSoft', 'Soft')}
-                      </Text>
+                      <View>
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                          {t('settingsAppearanceTitle', 'Appearance')}
+                        </Text>
+                        <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
+                          {t('settingsAppearanceSubtitle', 'Choose a light or dark look for the app.')}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        {APP_APPEARANCE_MODES.map((option) => (
+                          <LanguageOption
+                            key={option.id}
+                            label={t(option.labelKey, option.id)}
+                            selected={appearanceMode === option.id}
+                            onPress={() => setAppearanceMode(option.id)}
+                            theme={theme}
+                          />
+                        ))}
+                      </View>
+                    </View>
+
+                    <View
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        padding: 12,
+                        gap: 12,
+                      }}
+                    >
+                      <View>
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                          {t('settingsThemeTitle', 'Theme')}
+                        </Text>
+                        <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
+                          {t('settingsThemeSubtitle', 'Pick the colors and button style you want across the app.')}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 }}>
+                        {APP_THEMES.map((preset) => (
+                          <ThemeSwatch
+                            key={preset.id}
+                            preset={preset}
+                            selected={themeId === preset.id}
+                            theme={theme}
+                            title={t(preset.nameKey, preset.id)}
+                            onPress={() => setThemeId(preset.id)}
+                          />
+                        ))}
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View
+                          style={{
+                            flex: 1,
+                            minHeight: 40,
+                            borderRadius: 13,
+                            backgroundColor: theme.accent,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>
+                            {t('settingsPreviewPrimary', 'Primary')}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            flex: 1,
+                            minHeight: 40,
+                            borderRadius: 13,
+                            backgroundColor: theme.accentSoft,
+                            borderWidth: 1,
+                            borderColor: theme.border,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{ color: theme.accentStrong, fontSize: 12, fontWeight: '900' }}>
+                            {t('settingsPreviewSoft', 'Soft')}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        padding: 12,
+                        gap: 12,
+                      }}
+                    >
+                      <View>
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                          {t('settingsLanguageTitle', 'Language')}
+                        </Text>
+                        <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
+                          {t('settingsLanguageSubtitle', 'Switch app text between English and Bangla.')}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        {APP_LANGUAGES.map((option) => (
+                          <LanguageOption
+                            key={option.id}
+                            label={option.label}
+                            selected={language === option.id}
+                            onPress={() => setLanguage(option.id)}
+                            theme={theme}
+                          />
+                        ))}
+                      </View>
                     </View>
                   </View>
-                </View>
-
-                <View
-                  style={{
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    backgroundColor: theme.surfaceMuted,
-                    padding: 12,
-                    gap: 12,
-                  }}
-                >
-                  <View>
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
-                      {t('settingsLanguageTitle', 'Language')}
-                    </Text>
-                    <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
-                      {t('settingsLanguageSubtitle', 'Switch app text between English and Bangla.')}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    {APP_LANGUAGES.map((option) => (
-                      <LanguageOption
-                        key={option.id}
-                        label={option.label}
-                        selected={language === option.id}
-                        onPress={() => setLanguage(option.id)}
-                        theme={theme}
-                      />
-                    ))}
-                  </View>
-                </View>
+                ) : null}
               </View>
 
               <ActionCard
