@@ -33,6 +33,15 @@ function getOwnerName(owner, profile) {
   return profile?.display_name || owner?.name || displayNameFromEmail(owner?.email)
 }
 
+function maskPhoneNumber(value) {
+  const text = String(value || '').trim()
+
+  if (!text) return ''
+  if (text.length <= 5) return text[0] + '*'.repeat(Math.max(text.length - 1, 0))
+
+  return `${text.slice(0, 3)}${'*'.repeat(Math.max(text.length - 5, 3))}${text.slice(-2)}`
+}
+
 function Avatar({ name, uri, size = 96, theme }) {
   const initial = name?.trim()?.charAt(0)?.toUpperCase() || 'O'
 
@@ -104,6 +113,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const [followers, setFollowers] = useState(0)
   const [following, setFollowing] = useState(0)
   const [isFollowing, setIsFollowing] = useState(false)
+  const [showPhone, setShowPhone] = useState(false)
   const [responseQuality, setResponseQuality] = useState(getEmptyOwnerResponseQuality())
   const [loading, setLoading] = useState(true)
   const [imageViewer, setImageViewer] = useState({
@@ -614,9 +624,16 @@ export default function OwnerProfileScreen({ route, navigation }) {
 
               <View style={{ marginTop: 12, gap: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="at-outline" size={17} color={theme.mutedText} />
+                  <Text style={{ color: theme.mutedText, marginLeft: 8 }}>
+                    {profile?.rentalx_id ? `@${profile.rentalx_id}` : 'ID not added'}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Ionicons name="location-outline" size={17} color={theme.mutedText} />
                   <Text style={{ color: theme.mutedText, marginLeft: 8 }}>
-                    {profile?.location || 'Location not added'}
+                    {profile?.location || 'Region not added'}
                   </Text>
                 </View>
 
@@ -629,9 +646,33 @@ export default function OwnerProfileScreen({ route, navigation }) {
 
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Ionicons name="call-outline" size={17} color={theme.mutedText} />
-                  <Text style={{ color: theme.mutedText, marginLeft: 8 }}>
-                    {profile?.phone || 'Phone not added'}
+                  <Text style={{ color: theme.mutedText, marginLeft: 8, flex: 1 }}>
+                    {profile?.phone
+                      ? showPhone
+                        ? profile.phone
+                        : maskPhoneNumber(profile.phone)
+                      : 'Phone not added'}
                   </Text>
+                  {profile?.phone ? (
+                    <TouchableOpacity
+                      onPress={() => setShowPhone((current) => !current)}
+                      activeOpacity={0.86}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        backgroundColor: theme.surfaceMuted,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons
+                        name={showPhone ? 'eye-off-outline' : 'eye-outline'}
+                        size={17}
+                        color={theme.mutedText}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             </View>

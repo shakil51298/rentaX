@@ -311,6 +311,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     setLoginEmail(user.email || '')
     const fallbackProfile = {
       display_name: metadata.name || metadata.full_name || displayNameFromEmail(user.email),
+      rentalx_id: metadata.rentalx_id || buildRentalXId(user.id || user.email),
       avatar_url: metadata.avatar_url || metadata.picture || null,
       cover_url: metadata.cover_url || null,
       is_verified: false,
@@ -319,7 +320,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
 
     const { data: dbProfile } = await supabase
       .from('user_profiles')
-      .select('display_name, avatar_url, cover_url, is_verified, owner_verification_status')
+      .select('display_name, rentalx_id, avatar_url, cover_url, is_verified, owner_verification_status')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -448,7 +449,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
 
   const displayName = profile?.display_name || displayNameFromEmail(email)
   const avatarUrl = profile?.avatar_url || null
-  const rentalXId = buildRentalXId(currentUserId || email)
+  const rentalXId = profile?.rentalx_id || buildRentalXId(currentUserId || email)
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
 
   function openImageViewer(title, uri) {

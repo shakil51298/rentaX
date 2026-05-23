@@ -4,9 +4,10 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -24,10 +25,56 @@ const USER_TYPES = [
   { id: 'renter', title: 'Finding property' },
 ]
 
+const GENDER_OPTIONS = [
+  { id: 'male', title: 'Male' },
+  { id: 'female', title: 'Female' },
+]
+
 function displayNameFromEmail(email) {
   if (!email) return 'User'
 
   return email.split('@')[0]
+}
+
+function buildDefaultRentalXId(value) {
+  const cleanValue = String(value || 'rentalx-user').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const shortId = cleanValue.slice(-8).padStart(8, '0')
+
+  return `rx${shortId}`
+}
+
+function normalizeRentalXId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 24)
+}
+
+function getRentalXIdWaitMessage(updatedAt) {
+  if (!updatedAt) return null
+
+  const lastChangedAt = new Date(updatedAt).getTime()
+
+  if (!Number.isFinite(lastChangedAt)) return null
+
+  const nextChangeAt = lastChangedAt + (30 * 24 * 60 * 60 * 1000)
+  const remainingMs = nextChangeAt - Date.now()
+
+  if (remainingMs <= 0) return null
+
+  const remainingDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000))
+
+  return `You can change your Rental X ID again in ${remainingDays} day${remainingDays === 1 ? '' : 's'}.`
+}
+
+function maskPhoneNumber(value) {
+  const text = String(value || '').trim()
+
+  if (!text) return ''
+  if (text.length <= 5) return text[0] + '*'.repeat(Math.max(text.length - 1, 0))
+
+  return `${text.slice(0, 3)}${'*'.repeat(Math.max(text.length - 5, 3))}${text.slice(-2)}`
 }
 
 function Field({
@@ -40,10 +87,11 @@ function Field({
   secureTextEntry,
   autoCapitalize,
   autoComplete,
+  theme,
 }) {
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ color: '#475569', fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+      <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
         {label}
       </Text>
 
@@ -56,18 +104,19 @@ function Field({
         secureTextEntry={secureTextEntry}
         autoCapitalize={autoCapitalize}
         autoComplete={autoComplete}
+        placeholderTextColor={theme.mutedText}
         blurOnSubmit={false}
         autoCorrect={false}
         style={{
-          backgroundColor: '#f8fafc',
+          backgroundColor: theme.surfaceMuted,
           borderWidth: 1,
-          borderColor: '#e2e8f0',
+          borderColor: theme.border,
           borderRadius: 14,
           paddingHorizontal: 13,
           paddingVertical: 12,
           minHeight: multiline ? 84 : undefined,
           textAlignVertical: multiline ? 'top' : 'center',
-          color: '#0f172a',
+          color: theme.text,
           fontSize: 14,
         }}
       />
@@ -75,72 +124,165 @@ function Field({
   )
 }
 
-function CollapsibleSection({ title, subtitle, icon, expanded, onPress, children }) {
+function RentalXIdField({ value, onChangeText, locked, helperText, theme }) {
   return (
-    <View style={{ gap: 10 }}>
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.86}
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+        ID
+      </Text>
+
+      <View
         style={{
+          minHeight: 46,
+          backgroundColor: theme.surfaceMuted,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 14,
+          paddingHorizontal: 13,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          backgroundColor: '#fff',
-          borderRadius: 18,
-          borderWidth: 1,
-          borderColor: '#e2e8f0',
-          paddingHorizontal: 14,
-          paddingVertical: 13,
+          opacity: locked ? 0.76 : 1,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 12 }}>
-          <View
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 17,
-              backgroundColor: '#eff6ff',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 12,
-            }}
-          >
-            <Ionicons name={icon} size={17} color="#2563eb" />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '900', color: '#0f172a' }}>
-              {title}
-            </Text>
-            {subtitle ? (
-              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2, lineHeight: 17 }}>
-                {subtitle}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color="#334155"
+        <Text style={{ color: theme.mutedText, fontSize: 14, fontWeight: '900', marginRight: 4 }}>
+          @
+        </Text>
+        <TextInput
+          value={value}
+          onChangeText={(nextValue) => onChangeText(normalizeRentalXId(nextValue))}
+          editable={!locked}
+          placeholder="your_id"
+          placeholderTextColor={theme.mutedText}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{
+            flex: 1,
+            color: locked ? theme.mutedText : theme.text,
+            fontSize: 14,
+            fontWeight: '800',
+            paddingVertical: 0,
+          }}
         />
-      </TouchableOpacity>
+        {locked ? (
+          <Ionicons name="lock-closed-outline" size={16} color={theme.mutedText} />
+        ) : null}
+      </View>
 
-      {expanded ? children : null}
+      <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 5, lineHeight: 16 }}>
+        {helperText || 'People can find you with this ID. You can change it once every 30 days.'}
+      </Text>
     </View>
   )
 }
 
-function SectionCard({ children }) {
+function PhoneField({ value, onChangeText, showPhone, onToggleShow, theme }) {
+  const hiddenValue = maskPhoneNumber(value)
+
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+        Phone
+      </Text>
+
+      <View
+        style={{
+          minHeight: 46,
+          backgroundColor: theme.surfaceMuted,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 14,
+          paddingHorizontal: 13,
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}
+      >
+        {showPhone || !value ? (
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            placeholder="Contact phone"
+            placeholderTextColor={theme.mutedText}
+            keyboardType="phone-pad"
+            autoCorrect={false}
+            style={{
+              flex: 1,
+              color: theme.text,
+              fontSize: 14,
+              paddingVertical: 0,
+            }}
+          />
+        ) : (
+          <TouchableOpacity
+            onPress={() => onToggleShow(true)}
+            activeOpacity={0.86}
+            style={{ flex: 1, minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>
+              {hiddenValue}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          onPress={() => onToggleShow(!showPhone)}
+          activeOpacity={0.86}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 8,
+          }}
+        >
+          <Ionicons name={showPhone ? 'eye-off-outline' : 'eye-outline'} size={18} color={theme.mutedText} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
+
+function SelectField({ label, value, placeholder, onPress, icon = 'chevron-down', theme }) {
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+        {label}
+      </Text>
+
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.86}
+        style={{
+          minHeight: 46,
+          backgroundColor: theme.surfaceMuted,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 14,
+          paddingHorizontal: 13,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Text style={{ color: value ? theme.text : theme.mutedText, fontSize: 14, fontWeight: '700' }}>
+          {value || placeholder}
+        </Text>
+        <Ionicons name={icon} size={18} color={theme.mutedText} />
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+function SectionCard({ children, theme }) {
   return (
     <View
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 16,
         padding: 14,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
       }}
     >
       {children}
@@ -148,212 +290,144 @@ function SectionCard({ children }) {
   )
 }
 
-function ActionCard({ icon, title, subtitle, onPress }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.86}
-      style={{
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        padding: 14,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            backgroundColor: '#eff6ff',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name={icon} size={18} color="#2563eb" />
-        </View>
-
-        <View style={{ marginLeft: 12, flex: 1 }}>
-          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 14 }}>
-            {title}
-          </Text>
-          <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12, lineHeight: 17 }}>
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-
-      <Ionicons name="chevron-forward" size={18} color="#64748b" />
-    </TouchableOpacity>
-  )
-}
-
 function PhotoPickerCard({
   title,
-  subtitle,
   icon,
   imageUri,
   onPick,
-  onRemove,
+  theme,
+  variant = 'avatar',
 }) {
+  const isCover = variant === 'cover'
+  const thumbnailStyle = {
+    width: isCover ? 104 : 64,
+    height: isCover ? 58 : 64,
+    borderRadius: isCover ? 14 : 32,
+  }
+
   return (
     <View
       style={{
-        borderRadius: 16,
+        flex: 1,
+        borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
-        backgroundColor: '#f8fafc',
-        padding: 12,
-        marginBottom: 10,
+        borderColor: theme.border,
+        backgroundColor: theme.surfaceMuted,
+        paddingHorizontal: 10,
+        paddingVertical: 10,
+        alignItems: 'center',
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            backgroundColor: '#eff6ff',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name={icon} size={17} color="#2563eb" />
-        </View>
-
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 13 }}>{title}</Text>
-          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-        </View>
-      </View>
-
-      <View
+      <Text
         style={{
-          marginTop: 10,
-          borderRadius: 14,
+          color: theme.text,
+          fontWeight: '900',
+          fontSize: 12,
+          marginBottom: 8,
+        }}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
+
+      <TouchableOpacity
+        onPress={onPick}
+        activeOpacity={0.86}
+        style={{
+          ...thumbnailStyle,
           overflow: 'hidden',
           borderWidth: 1,
-          borderColor: '#dbe4f0',
-          backgroundColor: '#fff',
+          borderColor: theme.border,
+          backgroundColor: theme.hero,
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
         {imageUri ? (
           <Image
             source={{ uri: imageUri }}
-            style={{ width: '100%', height: 110, backgroundColor: '#dbeafe' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: theme.hero,
+            }}
             resizeMode="cover"
           />
         ) : (
-          <View
-            style={{
-              height: 110,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#eef4ff',
-            }}
-          >
-            <Ionicons name={icon} size={24} color="#93c5fd" />
-            <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '700', marginTop: 8 }}>
-              No image selected
-            </Text>
-          </View>
+          <Ionicons name={icon} size={isCover ? 22 : 24} color={theme.mutedText} />
         )}
-      </View>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-        <TouchableOpacity
-          onPress={onPick}
+        <View
           style={{
-            flex: 1,
-            minHeight: 40,
-            borderRadius: 12,
-            backgroundColor: '#1877F2',
+            position: 'absolute',
+            right: 4,
+            bottom: 4,
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            backgroundColor: theme.accent,
             alignItems: 'center',
             justifyContent: 'center',
+            borderWidth: 2,
+            borderColor: theme.surface,
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>
-            {imageUri ? 'Change image' : 'Upload image'}
-          </Text>
-        </TouchableOpacity>
+          <Ionicons name="camera" size={12} color="#fff" />
+        </View>
+      </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={onRemove}
-          disabled={!imageUri}
-          style={{
-            paddingHorizontal: 14,
-            minHeight: 40,
-            borderRadius: 12,
-            backgroundColor: imageUri ? '#e2e8f0' : '#f1f5f9',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: imageUri ? 1 : 0.6,
-          }}
-        >
-          <Text style={{ color: '#334155', fontWeight: '900', fontSize: 12 }}>Remove</Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '700', marginTop: 7 }}>
+        Tap to change
+      </Text>
     </View>
   )
 }
 
-function SettingRow({ title, subtitle, value, onValueChange }) {
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 10,
-      }}
-    >
-      <View style={{ flex: 1, paddingRight: 16 }}>
-        <Text style={{ color: '#111827', fontWeight: '800', fontSize: 13 }}>{title}</Text>
-        <Text style={{ color: '#64748b', marginTop: 3, lineHeight: 17, fontSize: 12 }}>{subtitle}</Text>
-      </View>
-
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: '#cbd5e1', true: '#93c5fd' }}
-        thumbColor={value ? '#1877F2' : '#f8fafc'}
-      />
-    </View>
-  )
-}
-
-export default function SettingsScreen({ navigation }) {
+export default function SettingsScreen({ navigation, route }) {
   const { theme } = useAppSettings()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [displayName, setDisplayName] = useState('')
+  const [gender, setGender] = useState('')
+  const [genderModalVisible, setGenderModalVisible] = useState(false)
+  const [rentalXId, setRentalXId] = useState('')
+  const [originalRentalXId, setOriginalRentalXId] = useState('')
+  const [rentalXIdUpdatedAt, setRentalXIdUpdatedAt] = useState(null)
   const [avatarUrl, setAvatarUrl] = useState('')
   const [coverUrl, setCoverUrl] = useState('')
   const [pendingAvatarAsset, setPendingAvatarAsset] = useState(null)
   const [pendingCoverAsset, setPendingCoverAsset] = useState(null)
   const [bio, setBio] = useState('')
   const [phone, setPhone] = useState('')
+  const [showPhone, setShowPhone] = useState(false)
   const [location, setLocation] = useState('')
+  const [selectedRegionMeta, setSelectedRegionMeta] = useState(null)
   const [userType, setUserType] = useState('renter')
   const [isVerified, setIsVerified] = useState(false)
   const [ownerVerificationStatus, setOwnerVerificationStatus] = useState('unverified')
-  const [profileExpanded, setProfileExpanded] = useState(true)
 
   useEffect(() => {
     loadUser()
   }, [])
 
+  useEffect(() => {
+    const selectedLocation = route?.params?.selectedLocation
+
+    if (!selectedLocation) return
+
+    setLocation(selectedLocation.areaLabel || selectedLocation.label || '')
+    setSelectedRegionMeta(selectedLocation)
+  }, [route?.params?.selectedLocationRequestId, route?.params?.selectedLocation])
+
   const profilePreviewUri = pendingAvatarAsset?.uri || avatarUrl || ''
   const coverPreviewUri = pendingCoverAsset?.uri || coverUrl || ''
+  const rentalXIdLockMessage = getRentalXIdWaitMessage(rentalXIdUpdatedAt)
+  const rentalXIdLocked = Boolean(originalRentalXId && rentalXIdLockMessage)
 
   async function loadUser() {
     setLoading(true)
+    const routeSelectedLocation = route?.params?.selectedLocation
 
     const {
       data: { user },
@@ -362,11 +436,18 @@ export default function SettingsScreen({ navigation }) {
     setUser(user)
 
     const metadata = user?.user_metadata || {}
+    const fallbackRentalXId = normalizeRentalXId(metadata.rentalx_id) || buildDefaultRentalXId(user?.id || user?.email)
+
     setDisplayName(metadata.name || metadata.full_name || displayNameFromEmail(user?.email))
+    setGender(metadata.gender || '')
+    setRentalXId(fallbackRentalXId)
+    setOriginalRentalXId(fallbackRentalXId)
+    setRentalXIdUpdatedAt(metadata.rentalx_id_updated_at || null)
     setAvatarUrl(metadata.avatar_url || metadata.picture || '')
     setCoverUrl(metadata.cover_url || '')
     setPendingAvatarAsset(null)
     setPendingCoverAsset(null)
+    setSelectedRegionMeta(routeSelectedLocation || null)
     setUserType(metadata.user_type || 'renter')
 
     if (user?.id) {
@@ -377,14 +458,30 @@ export default function SettingsScreen({ navigation }) {
         .maybeSingle()
 
       if (data) {
+        const nextRentalXId = normalizeRentalXId(data.rentalx_id) || fallbackRentalXId
+
         setDisplayName(data.display_name || metadata.name || displayNameFromEmail(user.email))
+        setGender(data.gender || metadata.gender || '')
+        setRentalXId(nextRentalXId)
+        setOriginalRentalXId(nextRentalXId)
+        setRentalXIdUpdatedAt(data.rentalx_id_updated_at || metadata.rentalx_id_updated_at || null)
         setAvatarUrl(data.avatar_url || metadata.avatar_url || '')
         setCoverUrl(data.cover_url || metadata.cover_url || '')
         setPendingAvatarAsset(null)
         setPendingCoverAsset(null)
         setBio(data.bio || '')
         setPhone(data.phone || '')
-        setLocation(data.location || '')
+        setLocation(routeSelectedLocation?.areaLabel || routeSelectedLocation?.label || data.location || '')
+        setSelectedRegionMeta(
+          routeSelectedLocation ||
+          (data.location
+            ? {
+                label: data.location,
+                areaLabel: data.location,
+                fullLabel: data.location,
+              }
+            : null)
+        )
         setUserType(data.user_type || metadata.user_type || 'renter')
         setIsVerified(Boolean(data.is_verified))
         setOwnerVerificationStatus(data.owner_verification_status || (data.is_verified ? 'verified' : 'unverified'))
@@ -403,13 +500,54 @@ export default function SettingsScreen({ navigation }) {
       return
     }
 
+    const normalizedRentalXId = normalizeRentalXId(rentalXId)
+
+    if (normalizedRentalXId.length < 4) {
+      Alert.alert('ID too short', 'Your Rental X ID should be at least 4 characters.')
+      return
+    }
+
+    const rentalXIdChanged = normalizedRentalXId !== originalRentalXId
+    const waitMessage = rentalXIdChanged ? getRentalXIdWaitMessage(rentalXIdUpdatedAt) : null
+
+    if (waitMessage) {
+      Alert.alert('ID change locked', waitMessage)
+      return
+    }
+
     setSaving(true)
 
     const selectedType = USER_TYPES.find((item) => item.id === userType)
+    const selectedGender = GENDER_OPTIONS.find((item) => item.id === gender)
     let nextAvatarUrl = avatarUrl.trim() || null
     let nextCoverUrl = coverUrl.trim() || null
+    const nextRentalXIdUpdatedAt = rentalXIdChanged
+      ? new Date().toISOString()
+      : rentalXIdUpdatedAt
 
     try {
+      const { data: existingIdUsers, error: idLookupError } = await supabase
+        .from('user_profiles')
+        .select('user_id')
+        .eq('rentalx_id', normalizedRentalXId)
+        .neq('user_id', user.id)
+        .limit(1)
+
+      if (idLookupError) {
+        setSaving(false)
+        Alert.alert(
+          'Database update needed',
+          'Run supabase-owner-profile-features.sql in Supabase, then try saving your Rental X ID again.'
+        )
+        return
+      }
+
+      if (existingIdUsers?.length) {
+        setSaving(false)
+        Alert.alert('ID already taken', 'Please choose another Rental X ID.')
+        return
+      }
+
       if (pendingAvatarAsset?.uri) {
         const uploadResult = await uploadMediaAsset({
           uri: pendingAvatarAsset.uri,
@@ -446,6 +584,10 @@ export default function SettingsScreen({ navigation }) {
         full_name: displayName.trim(),
         avatar_url: nextAvatarUrl,
         cover_url: nextCoverUrl,
+        gender,
+        gender_label: selectedGender?.title,
+        rentalx_id: normalizedRentalXId,
+        rentalx_id_updated_at: nextRentalXIdUpdatedAt,
         user_type: userType,
         user_type_label: selectedType?.title,
       },
@@ -457,21 +599,36 @@ export default function SettingsScreen({ navigation }) {
       return
     }
 
-    const { error } = await supabase.from('user_profiles').upsert(
-      {
-        user_id: user.id,
-        email: user.email,
-        display_name: displayName.trim(),
-        avatar_url: nextAvatarUrl,
-        cover_url: nextCoverUrl,
-        bio: bio.trim() || null,
-        phone: phone.trim() || null,
-        location: location.trim() || null,
-        user_type: userType,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id' }
-    )
+    const profilePayload = {
+      user_id: user.id,
+      email: user.email,
+      display_name: displayName.trim(),
+      gender: gender || null,
+      rentalx_id: normalizedRentalXId,
+      rentalx_id_updated_at: nextRentalXIdUpdatedAt,
+      avatar_url: nextAvatarUrl,
+      cover_url: nextCoverUrl,
+      bio: bio.trim() || null,
+      phone: phone.trim() || null,
+      location: location.trim() || null,
+      user_type: userType,
+      updated_at: new Date().toISOString(),
+    }
+
+    let { error } = await supabase.from('user_profiles').upsert(profilePayload, { onConflict: 'user_id' })
+
+    if (error && /gender|rentalx_id/i.test(String(error.message || ''))) {
+      const {
+        gender: _gender,
+        rentalx_id: _rentalXId,
+        rentalx_id_updated_at: _rentalXIdUpdatedAt,
+        ...profilePayloadWithoutNewFields
+      } = profilePayload
+      const retryResult = await supabase
+        .from('user_profiles')
+        .upsert(profilePayloadWithoutNewFields, { onConflict: 'user_id' })
+      error = retryResult.error
+    }
 
     setSaving(false)
 
@@ -485,6 +642,9 @@ export default function SettingsScreen({ navigation }) {
 
     setAvatarUrl(nextAvatarUrl || '')
     setCoverUrl(nextCoverUrl || '')
+    setRentalXId(normalizedRentalXId)
+    setOriginalRentalXId(normalizedRentalXId)
+    setRentalXIdUpdatedAt(nextRentalXIdUpdatedAt)
     setPendingAvatarAsset(null)
     setPendingCoverAsset(null)
     Alert.alert('Saved', 'Your profile was updated.')
@@ -533,18 +693,18 @@ export default function SettingsScreen({ navigation }) {
           keyboardDismissMode="none"
           automaticallyAdjustKeyboardInsets
         >
-          <View style={{ paddingHorizontal: 14, paddingTop: 6, paddingBottom: 14, gap: 14 }}>
+          <View style={{ paddingHorizontal: 14, paddingTop: 0, paddingBottom: 14, gap: 14 }}>
             <View
               style={{
-                backgroundColor: '#fff',
+                backgroundColor: theme.surface,
                 borderRadius: 18,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
-                padding: 12,
+                borderColor: theme.border,
+                padding: 10,
                 overflow: 'hidden',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800', marginBottom: 8 }}>
+              <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginBottom: 8 }}>
                 Preview
               </Text>
 
@@ -552,12 +712,12 @@ export default function SettingsScreen({ navigation }) {
                 style={{
                   borderRadius: 16,
                   overflow: 'hidden',
-                  backgroundColor: '#eff6ff',
+                  backgroundColor: theme.hero,
                   borderWidth: 1,
-                  borderColor: '#dbeafe',
+                  borderColor: theme.border,
                 }}
               >
-                <View style={{ height: 116, backgroundColor: '#dbeafe' }}>
+                <View style={{ height: 116, backgroundColor: theme.hero }}>
                   {coverPreviewUri ? (
                     <Image
                       source={{ uri: coverPreviewUri }}
@@ -570,11 +730,11 @@ export default function SettingsScreen({ navigation }) {
                         flex: 1,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: '#dbeafe',
+                        backgroundColor: theme.hero,
                       }}
                     >
-                      <Ionicons name="image-outline" size={28} color="#93c5fd" />
-                      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '700', marginTop: 6 }}>
+                      <Ionicons name="image-outline" size={28} color={theme.mutedText} />
+                      <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '700', marginTop: 6 }}>
                         Cover preview
                       </Text>
                     </View>
@@ -590,9 +750,9 @@ export default function SettingsScreen({ navigation }) {
                           width: 68,
                           height: 68,
                           borderRadius: 34,
-                          backgroundColor: '#ddd',
+                          backgroundColor: theme.surfaceMuted,
                           borderWidth: 3,
-                          borderColor: '#fff',
+                          borderColor: theme.surface,
                         }}
                       />
                     ) : (
@@ -601,14 +761,14 @@ export default function SettingsScreen({ navigation }) {
                           width: 68,
                           height: 68,
                           borderRadius: 34,
-                          backgroundColor: '#dbeafe',
+                          backgroundColor: theme.hero,
                           borderWidth: 3,
-                          borderColor: '#fff',
+                          borderColor: theme.surface,
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 24, fontWeight: '900', color: '#1d4ed8' }}>
+                        <Text style={{ fontSize: 24, fontWeight: '900', color: theme.heroText }}>
                           {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
                         </Text>
                       </View>
@@ -617,7 +777,7 @@ export default function SettingsScreen({ navigation }) {
                     <View style={{ flex: 1, minWidth: 0, marginLeft: 10, paddingBottom: 4 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
                         <Text
-                          style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: '900', color: '#111827' }}
+                          style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: '900', color: theme.text }}
                           numberOfLines={2}
                         >
                           {displayName || 'User'}
@@ -627,14 +787,14 @@ export default function SettingsScreen({ navigation }) {
                           <Ionicons
                             name="checkmark-circle"
                             size={17}
-                            color="#1877F2"
+                            color={theme.accent}
                             style={{ marginLeft: 6, flexShrink: 0 }}
                           />
                         ) : null}
                       </View>
 
                       <Text
-                        style={{ marginTop: 3, color: '#64748b', fontSize: 12 }}
+                        style={{ marginTop: 3, color: theme.mutedText, fontSize: 12 }}
                         numberOfLines={1}
                       >
                         {user?.email || ''}
@@ -645,126 +805,249 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </View>
 
-            <CollapsibleSection
-              title="Profile settings"
-              subtitle="Name, photos, bio, phone, location, and account type."
-              icon="person-outline"
-              expanded={profileExpanded}
-              onPress={() => setProfileExpanded((current) => !current)}
-            >
-              <SectionCard>
-                <Field
-                  label="Display name"
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  placeholder="Your public name"
-                />
+            <SectionCard theme={theme}>
+              <Field
+                label="Display name"
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Your public name"
+                theme={theme}
+              />
 
+              <SelectField
+                label="Gender"
+                value={GENDER_OPTIONS.find((item) => item.id === gender)?.title || ''}
+                placeholder="Select gender"
+                onPress={() => setGenderModalVisible(true)}
+                theme={theme}
+              />
+
+              <RentalXIdField
+                value={rentalXId}
+                onChangeText={setRentalXId}
+                locked={rentalXIdLocked}
+                helperText={rentalXIdLockMessage}
+                theme={theme}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                 <PhotoPickerCard
                   title="Profile photo"
-                  subtitle="Upload a square image and review it above before saving."
                   icon="person-circle-outline"
                   imageUri={profilePreviewUri}
                   onPick={() => pickImage('avatar')}
-                  onRemove={() => {
-                    setPendingAvatarAsset(null)
-                    setAvatarUrl('')
-                  }}
+                  theme={theme}
                 />
 
                 <PhotoPickerCard
                   title="Cover photo"
-                  subtitle="Upload a wide image and review how it pairs with your profile photo."
                   icon="image-outline"
                   imageUri={coverPreviewUri}
                   onPick={() => pickImage('cover')}
-                  onRemove={() => {
-                    setPendingCoverAsset(null)
-                    setCoverUrl('')
-                  }}
+                  theme={theme}
+                  variant="cover"
                 />
+              </View>
 
-                <Field
-                  label="Owner details / Bio"
-                  value={bio}
-                  onChangeText={setBio}
-                  placeholder="Tell renters about you or your properties"
-                  multiline
-                />
+              <Field
+                label="Owner details / Bio"
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Tell renters about you or your properties"
+                multiline
+                theme={theme}
+              />
 
-                <Field
-                  label="Phone"
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Contact phone"
-                  keyboardType="phone-pad"
-                />
+              <PhoneField
+                value={phone}
+                onChangeText={setPhone}
+                showPhone={showPhone}
+                onToggleShow={setShowPhone}
+                theme={theme}
+              />
 
-                <Field
-                  label="Location"
-                  value={location}
-                  onChangeText={setLocation}
-                  placeholder="City or area"
-                />
+              <SelectField
+                label="Region"
+                value={location}
+                placeholder="Select region from map"
+                icon="map-outline"
+                theme={theme}
+                onPress={() =>
+                  navigation.navigate('Location', {
+                    returnScreen: 'Settings',
+                    returnKey: route?.key,
+                    initialLabel: selectedRegionMeta?.fullLabel || location,
+                    initialLocation: selectedRegionMeta,
+                  })
+                }
+              />
 
-                <Text style={{ color: '#475569', fontWeight: '700', marginBottom: 8 }}>
-                  Account type
-                </Text>
+              <Text style={{ color: theme.mutedText, fontWeight: '700', marginBottom: 8 }}>
+                Account type
+              </Text>
 
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {USER_TYPES.map((item) => {
-                    const isSelected = userType === item.id
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {USER_TYPES.map((item) => {
+                  const isSelected = userType === item.id
 
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        onPress={() => setUserType(item.id)}
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => setUserType(item.id)}
+                      style={{
+                        flex: 1,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: isSelected ? theme.accent : theme.border,
+                        backgroundColor: isSelected ? theme.accentSoft : theme.surfaceMuted,
+                        paddingVertical: 11,
+                        paddingHorizontal: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text
                         style={{
-                          flex: 1,
-                          borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#1877F2' : '#e2e8f0',
-                          backgroundColor: isSelected ? '#eff6ff' : '#f8fafc',
-                          paddingVertical: 11,
-                          paddingHorizontal: 10,
-                          alignItems: 'center',
+                          color: isSelected ? theme.accent : theme.mutedText,
+                          fontWeight: '800',
+                          fontSize: 12,
+                          textAlign: 'center',
                         }}
                       >
-                        <Text
-                          style={{
-                            color: isSelected ? '#1877F2' : '#475569',
-                            fontWeight: '800',
-                            fontSize: 12,
-                            textAlign: 'center',
-                          }}
-                        >
-                          {item.title}
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
+                        {item.title}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
 
-                <TouchableOpacity
+              <TouchableOpacity
                 onPress={saveProfile}
                 disabled={saving}
                 style={{
-                  backgroundColor: saving ? '#8bbcf7' : '#1877F2',
+                  backgroundColor: theme.accent,
                   borderRadius: 14,
                   paddingVertical: 13,
                   alignItems: 'center',
                   marginTop: 14,
+                  opacity: saving ? 0.68 : 1,
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>
                   {saving ? 'Saving...' : 'Save profile'}
                 </Text>
               </TouchableOpacity>
-              </SectionCard>
-            </CollapsibleSection>
+            </SectionCard>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={genderModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGenderModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.42)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={() => setGenderModalVisible(false)}
+            style={{ position: 'absolute', inset: 0 }}
+          />
+
+          <View
+            style={{
+              backgroundColor: theme.surface,
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              borderWidth: 1,
+              borderColor: theme.border,
+              paddingHorizontal: 16,
+              paddingTop: 16,
+              paddingBottom: 24,
+              gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>
+                Select gender
+              </Text>
+              <TouchableOpacity
+                onPress={() => setGenderModalVisible(false)}
+                activeOpacity={0.86}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: theme.surfaceMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={19} color={theme.mutedText} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ gap: 10 }}>
+              {GENDER_OPTIONS.map((option) => {
+                const isSelected = gender === option.id
+
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    onPress={() => setGender(option.id)}
+                    activeOpacity={0.86}
+                    style={{
+                      minHeight: 48,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: isSelected ? theme.accent : theme.border,
+                      backgroundColor: isSelected ? theme.accentSoft : theme.surfaceMuted,
+                      paddingHorizontal: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? theme.accent : theme.text,
+                        fontSize: 14,
+                        fontWeight: '900',
+                      }}
+                    >
+                      {option.title}
+                    </Text>
+                    {isSelected ? (
+                      <Ionicons name="checkmark-circle" size={20} color={theme.accent} />
+                    ) : null}
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setGenderModalVisible(false)}
+              activeOpacity={0.86}
+              style={{
+                minHeight: 46,
+                borderRadius: 15,
+                backgroundColor: theme.accent,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>
+                Done
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

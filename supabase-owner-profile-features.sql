@@ -2,6 +2,9 @@ create table if not exists public.user_profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   email text,
   display_name text,
+  gender text,
+  rentalx_id text,
+  rentalx_id_updated_at timestamptz,
   avatar_url text,
   cover_url text,
   bio text,
@@ -15,6 +18,23 @@ create table if not exists public.user_profiles (
 
 alter table public.user_profiles
   add column if not exists cover_url text;
+
+alter table public.user_profiles
+  add column if not exists gender text;
+
+alter table public.user_profiles
+  add column if not exists rentalx_id text;
+
+alter table public.user_profiles
+  add column if not exists rentalx_id_updated_at timestamptz;
+
+update public.user_profiles
+set rentalx_id = 'rx' || right(replace(user_id::text, '-', ''), 10)
+where rentalx_id is null or rentalx_id = '';
+
+create unique index if not exists user_profiles_rentalx_id_unique_idx
+  on public.user_profiles (lower(rentalx_id))
+  where rentalx_id is not null and rentalx_id <> '';
 
 create table if not exists public.user_follows (
   id uuid primary key default gen_random_uuid(),
