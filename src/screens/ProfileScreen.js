@@ -1,10 +1,13 @@
 import { useCallback, useState, useEffect } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   ScrollView,
+  Switch,
   Text,
+  TextInput,
   Pressable,
   TouchableOpacity,
   View,
@@ -19,6 +22,7 @@ import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
+import { deactivateDevicePushToken } from '../lib/pushNotifications'
 import { APP_APPEARANCE_MODES, APP_LANGUAGES, APP_THEMES, useAppSettings } from '../lib/appSettings'
 
 function displayNameFromEmail(email) {
@@ -175,6 +179,75 @@ function LanguageOption({ label, selected, onPress, theme }) {
   )
 }
 
+function AccountField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  keyboardType,
+  autoCapitalize,
+  autoComplete,
+  theme,
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '900' }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.mutedText}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoComplete={autoComplete}
+        autoCorrect={false}
+        style={{
+          minHeight: 44,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: theme.border,
+          backgroundColor: theme.surfaceMuted,
+          color: theme.text,
+          paddingHorizontal: 12,
+          fontSize: 13,
+          fontWeight: '700',
+        }}
+      />
+    </View>
+  )
+}
+
+function AccountToggleRow({ title, subtitle, value, onValueChange, disabled, theme }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        paddingVertical: 10,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>{title}</Text>
+        <Text style={{ color: theme.mutedText, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+          {subtitle}
+        </Text>
+      </View>
+
+      <Switch
+        value={value}
+        disabled={disabled}
+        onValueChange={onValueChange}
+        trackColor={{ false: theme.border, true: theme.accentSoft }}
+        thumbColor={value ? theme.accent : theme.surface}
+      />
+    </View>
+  )
+}
+
 export default function ProfileScreen({ navigation, embeddedTabShell = false }) {
   const {
     theme,
@@ -198,6 +271,16 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
   })
   const [adminPanelCount, setAdminPanelCount] = useState(0)
   const [generalSettingsExpanded, setGeneralSettingsExpanded] = useState(false)
+  const [accountSettingsExpanded, setAccountSettingsExpanded] = useState(false)
+  const [notificationSettingsExpanded, setNotificationSettingsExpanded] = useState(false)
+  const [securitySettingsExpanded, setSecuritySettingsExpanded] = useState(false)
+  const [notifyMessages, setNotifyMessages] = useState(true)
+  const [notifyActivity, setNotifyActivity] = useState(true)
+  const [notificationSaving, setNotificationSaving] = useState(false)
+  const [securitySaving, setSecuritySaving] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [imageViewer, setImageViewer] = useState({
     visible: false,
     title: '',
@@ -215,6 +298,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       setCurrentUserId(null)
       setProfile(null)
       setEmail('')
+      setLoginEmail('')
       setLoading(false)
       return
     }
@@ -222,6 +306,9 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     setCurrentUserId(user.id)
 
     const metadata = user.user_metadata || {}
+    setNotifyMessages(metadata.notify_messages !== false)
+    setNotifyActivity(metadata.notify_activity !== false)
+    setLoginEmail(user.email || '')
     const fallbackProfile = {
       display_name: metadata.name || metadata.full_name || displayNameFromEmail(user.email),
       avatar_url: metadata.avatar_url || metadata.picture || null,
@@ -298,6 +385,8 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     loadAdminPanelCount()
   }, [embeddedTabShell, loadAdminPanelCount, loadProfile])
 
+  const showAdminPanel = isPrimaryAdmin(email)
+
   useEffect(() => {
     if (!showAdminPanel) return undefined
 
@@ -361,7 +450,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
   const avatarUrl = profile?.avatar_url || null
   const rentalXId = buildRentalXId(currentUserId || email)
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
-  const showAdminPanel = isPrimaryAdmin(email)
 
   function openImageViewer(title, uri) {
     if (!uri) return
@@ -390,6 +478,95 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       title: kind === 'following' ? t('profileFollowing', 'Following') : t('profileFollowers', 'Followers'),
       isOwnProfile: true,
     })
+  }
+
+  async function updateNotificationPreference(key, value) {
+    const previousMessages = notifyMessages
+    const previousActivity = notifyActivity
+    const nextMessages = key === 'notify_messages' ? value : notifyMessages
+    const nextActivity = key === 'notify_activity' ? value : notifyActivity
+
+    setNotifyMessages(nextMessages)
+    setNotifyActivity(nextActivity)
+    setNotificationSaving(true)
+
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        notify_messages: nextMessages,
+        notify_activity: nextActivity,
+      },
+    })
+
+    setNotificationSaving(false)
+
+    if (error) {
+      setNotifyMessages(previousMessages)
+      setNotifyActivity(previousActivity)
+      Alert.alert('Notification update failed', error.message)
+    }
+  }
+
+  async function saveSecuritySettings() {
+    const trimmedEmail = loginEmail.trim().toLowerCase()
+    const emailChanged = Boolean(trimmedEmail && trimmedEmail !== (email || '').toLowerCase())
+    const passwordChanged = Boolean(newPassword)
+
+    if (!emailChanged && !passwordChanged) {
+      Alert.alert('Nothing to update', 'Change your email or password first.')
+      return
+    }
+
+    if (passwordChanged) {
+      if (newPassword.length < 6) {
+        Alert.alert('Weak password', 'Use at least 6 characters for the new password.')
+        return
+      }
+
+      if (newPassword !== confirmPassword) {
+        Alert.alert('Password mismatch', 'Your password confirmation does not match.')
+        return
+      }
+    }
+
+    setSecuritySaving(true)
+
+    const payload = {}
+
+    if (emailChanged) {
+      payload.email = trimmedEmail
+    }
+
+    if (passwordChanged) {
+      payload.password = newPassword
+    }
+
+    const { error } = await supabase.auth.updateUser(payload)
+    setSecuritySaving(false)
+
+    if (error) {
+      Alert.alert('Security update failed', error.message)
+      return
+    }
+
+    setNewPassword('')
+    setConfirmPassword('')
+
+    if (emailChanged) {
+      setEmail(trimmedEmail)
+    }
+
+    Alert.alert(
+      'Security updated',
+      emailChanged
+        ? 'Check your email to confirm the new login address.'
+        : 'Your password was updated successfully.'
+    )
+  }
+
+  async function logout() {
+    await deactivateDevicePushToken()
+    await supabase.auth.signOut()
+    navigation.replace('Login')
   }
 
   if (loading) {
@@ -702,6 +879,266 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                         ))}
                       </View>
                     </View>
+                  </View>
+                ) : null}
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: theme.surface,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  overflow: 'hidden',
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => setAccountSettingsExpanded((current) => !current)}
+                  activeOpacity={0.86}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 15,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.accentSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 12,
+                      }}
+                    >
+                      <Ionicons name="settings-outline" size={20} color={theme.accent} />
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                        Account settings
+                      </Text>
+                      <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
+                        Verification, notifications, security, and logout.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Ionicons
+                    name={accountSettingsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={theme.mutedText}
+                  />
+                </TouchableOpacity>
+
+                {accountSettingsExpanded ? (
+                  <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('VerificationCenter')}
+                      activeOpacity={0.86}
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        padding: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Ionicons name="shield-checkmark-outline" size={19} color={theme.accent} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                          Verification center
+                        </Text>
+                        <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
+                          Manage your account verification.
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={17} color={theme.mutedText} />
+                    </TouchableOpacity>
+
+                    <View
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => setNotificationSettingsExpanded((current) => !current)}
+                        activeOpacity={0.86}
+                        style={{
+                          padding: 12,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Ionicons name="notifications-outline" size={19} color={theme.accent} />
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                            Notification settings
+                          </Text>
+                          <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
+                            Message and activity alerts.
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={notificationSettingsExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={17}
+                          color={theme.mutedText}
+                        />
+                      </TouchableOpacity>
+
+                      {notificationSettingsExpanded ? (
+                        <View
+                          style={{
+                            borderTopWidth: 1,
+                            borderTopColor: theme.border,
+                            paddingHorizontal: 12,
+                            paddingBottom: 6,
+                          }}
+                        >
+                          <AccountToggleRow
+                            title="Messages"
+                            subtitle="Notify me when someone sends a chat message."
+                            value={notifyMessages}
+                            disabled={notificationSaving}
+                            onValueChange={(value) => updateNotificationPreference('notify_messages', value)}
+                            theme={theme}
+                          />
+                          <View style={{ height: 1, backgroundColor: theme.border }} />
+                          <AccountToggleRow
+                            title="Post and comment activity"
+                            subtitle="Notify me about likes, replies, and post activity."
+                            value={notifyActivity}
+                            disabled={notificationSaving}
+                            onValueChange={(value) => updateNotificationPreference('notify_activity', value)}
+                            theme={theme}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View
+                      style={{
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => setSecuritySettingsExpanded((current) => !current)}
+                        activeOpacity={0.86}
+                        style={{
+                          padding: 12,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Ionicons name="lock-closed-outline" size={19} color={theme.accent} />
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                            Password and security
+                          </Text>
+                          <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
+                            Update login email and password.
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={securitySettingsExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={17}
+                          color={theme.mutedText}
+                        />
+                      </TouchableOpacity>
+
+                      {securitySettingsExpanded ? (
+                        <View
+                          style={{
+                            borderTopWidth: 1,
+                            borderTopColor: theme.border,
+                            padding: 12,
+                            gap: 12,
+                          }}
+                        >
+                          <AccountField
+                            label="Login email"
+                            value={loginEmail}
+                            onChangeText={setLoginEmail}
+                            placeholder="you@example.com"
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoComplete="email"
+                            theme={theme}
+                          />
+                          <AccountField
+                            label="New password"
+                            value={newPassword}
+                            onChangeText={setNewPassword}
+                            placeholder="At least 6 characters"
+                            secureTextEntry
+                            autoCapitalize="none"
+                            autoComplete="password-new"
+                            theme={theme}
+                          />
+                          <AccountField
+                            label="Confirm new password"
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            placeholder="Re-enter new password"
+                            secureTextEntry
+                            autoCapitalize="none"
+                            autoComplete="password-new"
+                            theme={theme}
+                          />
+
+                          <TouchableOpacity
+                            onPress={saveSecuritySettings}
+                            disabled={securitySaving}
+                            activeOpacity={0.86}
+                            style={{
+                              minHeight: 44,
+                              borderRadius: 14,
+                              backgroundColor: securitySaving ? theme.accentSoft : theme.accent,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>
+                              {securitySaving ? 'Updating...' : 'Update security'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={logout}
+                      activeOpacity={0.86}
+                      style={{
+                        minHeight: 46,
+                        borderRadius: 16,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                      }}
+                    >
+                      <Ionicons name="log-out-outline" size={18} color="#ef4444" />
+                      <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '900', marginLeft: 8 }}>
+                        Logout
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 ) : null}
               </View>

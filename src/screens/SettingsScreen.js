@@ -16,8 +16,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '../lib/supabase'
-import { deactivateDevicePushToken } from '../lib/pushNotifications'
-import { getVerificationMeta } from '../lib/verification'
 import { PROFILE_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { useAppSettings } from '../lib/appSettings'
 
@@ -345,15 +343,7 @@ export default function SettingsScreen({ navigation }) {
   const [userType, setUserType] = useState('renter')
   const [isVerified, setIsVerified] = useState(false)
   const [ownerVerificationStatus, setOwnerVerificationStatus] = useState('unverified')
-  const [notifyMessages, setNotifyMessages] = useState(true)
-  const [notifyActivity, setNotifyActivity] = useState(true)
-  const [profileExpanded, setProfileExpanded] = useState(false)
-  const [notificationExpanded, setNotificationExpanded] = useState(false)
-  const [securityExpanded, setSecurityExpanded] = useState(false)
-  const [securitySaving, setSecuritySaving] = useState(false)
-  const [loginEmail, setLoginEmail] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [profileExpanded, setProfileExpanded] = useState(true)
 
   useEffect(() => {
     loadUser()
@@ -378,9 +368,6 @@ export default function SettingsScreen({ navigation }) {
     setPendingAvatarAsset(null)
     setPendingCoverAsset(null)
     setUserType(metadata.user_type || 'renter')
-    setNotifyMessages(metadata.notify_messages !== false)
-    setNotifyActivity(metadata.notify_activity !== false)
-    setLoginEmail(user?.email || '')
 
     if (user?.id) {
       const { data } = await supabase
@@ -408,13 +395,6 @@ export default function SettingsScreen({ navigation }) {
 
     setLoading(false)
   }
-
-  const verificationMeta = getVerificationMeta(ownerVerificationStatus, {
-    verifiedLabel: 'Verified account',
-    pendingLabel: 'Verification pending',
-    rejectedLabel: 'Update verification info',
-    defaultLabel: 'Not verified yet',
-  })
 
   async function saveProfile() {
     if (!user) return
@@ -468,8 +448,6 @@ export default function SettingsScreen({ navigation }) {
         cover_url: nextCoverUrl,
         user_type: userType,
         user_type_label: selectedType?.title,
-        notify_messages: notifyMessages,
-        notify_activity: notifyActivity,
       },
     })
 
@@ -509,7 +487,7 @@ export default function SettingsScreen({ navigation }) {
     setCoverUrl(nextCoverUrl || '')
     setPendingAvatarAsset(null)
     setPendingCoverAsset(null)
-    Alert.alert('Saved', 'Your settings were updated.')
+    Alert.alert('Saved', 'Your profile was updated.')
     loadUser()
   }
 
@@ -531,77 +509,6 @@ export default function SettingsScreen({ navigation }) {
     } else {
       setPendingCoverAsset(asset)
     }
-  }
-
-  async function saveSecuritySettings() {
-    if (!user) return
-
-    const trimmedEmail = loginEmail.trim().toLowerCase()
-    const emailChanged = Boolean(trimmedEmail && trimmedEmail !== (user.email || '').toLowerCase())
-    const passwordChanged = Boolean(newPassword)
-
-    if (!emailChanged && !passwordChanged) {
-      Alert.alert('Nothing to update', 'Change your email or password first.')
-      return
-    }
-
-    if (passwordChanged) {
-      if (newPassword.length < 6) {
-        Alert.alert('Weak password', 'Use at least 6 characters for the new password.')
-        return
-      }
-
-      if (newPassword !== confirmPassword) {
-        Alert.alert('Password mismatch', 'Your password confirmation does not match.')
-        return
-      }
-    }
-
-    setSecuritySaving(true)
-
-    const payload = {}
-
-    if (emailChanged) {
-      payload.email = trimmedEmail
-    }
-
-    if (passwordChanged) {
-      payload.password = newPassword
-    }
-
-    const { error } = await supabase.auth.updateUser(payload)
-
-    setSecuritySaving(false)
-
-    if (error) {
-      Alert.alert('Security update failed', error.message)
-      return
-    }
-
-    setNewPassword('')
-    setConfirmPassword('')
-
-    if (emailChanged && passwordChanged) {
-      Alert.alert(
-        'Security updated',
-        'Your password was updated. Check your email to confirm the new login email address.'
-      )
-    } else if (emailChanged) {
-      Alert.alert(
-        'Email update started',
-        'Check your inbox and confirm the new email address to finish the change.'
-      )
-    } else {
-      Alert.alert('Password updated', 'Your password was updated successfully.')
-    }
-
-    loadUser()
-  }
-
-  async function logout() {
-    await deactivateDevicePushToken()
-    await supabase.auth.signOut()
-    navigation.replace('Login')
   }
 
   if (loading) {
@@ -738,13 +645,6 @@ export default function SettingsScreen({ navigation }) {
               </View>
             </View>
 
-            <ActionCard
-              icon="shield-checkmark-outline"
-              title="Verification center"
-              subtitle={verificationMeta.label}
-              onPress={() => navigation.navigate('VerificationCenter')}
-            />
-
             <CollapsibleSection
               title="Profile settings"
               subtitle="Name, photos, bio, phone, location, and account type."
@@ -844,116 +744,8 @@ export default function SettingsScreen({ navigation }) {
                     )
                   })}
                 </View>
-              </SectionCard>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              title="Notification settings"
-              subtitle="Control message alerts and activity updates."
-              icon="notifications-outline"
-              expanded={notificationExpanded}
-              onPress={() => setNotificationExpanded((current) => !current)}
-            >
-              <SectionCard>
-                <SettingRow
-                  title="Messages"
-                  subtitle="Get notified when someone sends you a new chat message."
-                  value={notifyMessages}
-                  onValueChange={setNotifyMessages}
-                />
-
-                <View style={{ height: 1, backgroundColor: '#e2e8f0' }} />
-
-                <SettingRow
-                  title="Post and comment activity"
-                  subtitle="Show alerts for likes, replies, and activity on your posts or comments."
-                  value={notifyActivity}
-                  onValueChange={setNotifyActivity}
-                />
-              </SectionCard>
-            </CollapsibleSection>
-
-            <CollapsibleSection
-              title="Password and security"
-              subtitle="Update login email and password safely."
-              icon="shield-checkmark-outline"
-              expanded={securityExpanded}
-              onPress={() => setSecurityExpanded((current) => !current)}
-            >
-              <SectionCard>
-                <Field
-                  label="Login email"
-                  value={loginEmail}
-                  onChangeText={setLoginEmail}
-                  placeholder="you@example.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                />
-
-                <Field
-                  label="New password"
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  placeholder="At least 6 characters"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoComplete="password-new"
-                />
-
-                <Field
-                  label="Confirm new password"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Re-enter new password"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoComplete="password-new"
-                />
-
-                <View
-                  style={{
-                    backgroundColor: '#f8fafc',
-                    borderRadius: 14,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    marginBottom: 12,
-                  }}
-                >
-                  <Text style={{ color: '#475569', lineHeight: 18, fontSize: 12 }}>
-                    Email changes may need inbox confirmation. Password updates apply after saving here.
-                  </Text>
-                </View>
 
                 <TouchableOpacity
-                  onPress={saveSecuritySettings}
-                  disabled={securitySaving}
-                  style={{
-                    backgroundColor: securitySaving ? '#8bbcf7' : '#1877F2',
-                    borderRadius: 14,
-                    paddingVertical: 13,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>
-                    {securitySaving ? 'Updating...' : 'Update security'}
-                  </Text>
-                </TouchableOpacity>
-              </SectionCard>
-            </CollapsibleSection>
-
-            <View
-              style={{
-                backgroundColor: '#fff',
-                borderRadius: 18,
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                padding: 12,
-                gap: 10,
-              }}
-            >
-              <TouchableOpacity
                 onPress={saveProfile}
                 disabled={saving}
                 style={{
@@ -961,25 +753,15 @@ export default function SettingsScreen({ navigation }) {
                   borderRadius: 14,
                   paddingVertical: 13,
                   alignItems: 'center',
+                  marginTop: 14,
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>
-                  {saving ? 'Saving...' : 'Save settings'}
+                  {saving ? 'Saving...' : 'Save profile'}
                 </Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={logout}
-                style={{
-                  backgroundColor: '#111827',
-                  paddingVertical: 13,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Logout</Text>
-              </TouchableOpacity>
-            </View>
+              </SectionCard>
+            </CollapsibleSection>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

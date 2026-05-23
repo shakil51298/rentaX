@@ -570,7 +570,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
-          options={{ title: t('stackSettings', 'Settings') }}
+          options={{ title: 'Profile' }}
         />
         <Stack.Screen
           name="VerificationCenter"
