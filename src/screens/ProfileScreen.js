@@ -27,6 +27,13 @@ function displayNameFromEmail(email) {
   return email.split('@')[0]
 }
 
+function buildRentalXId(value) {
+  const cleanValue = String(value || 'rentalx-user').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+  const shortId = cleanValue.slice(-8).padStart(8, '0')
+
+  return `RX-${shortId}`
+}
+
 function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
   return (
     <TouchableOpacity
@@ -352,7 +359,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
 
   const displayName = profile?.display_name || displayNameFromEmail(email)
   const avatarUrl = profile?.avatar_url || null
-  const coverUrl = profile?.cover_url || null
+  const rentalXId = buildRentalXId(currentUserId || email)
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
   const showAdminPanel = isPrimaryAdmin(email)
 
@@ -402,142 +409,111 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
             contentContainerStyle={{ paddingBottom: 140 }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={{ backgroundColor: theme.surface, paddingBottom: 18 }}>
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={() => openImageViewer('Cover photo', coverUrl)}
-                disabled={!coverUrl}
-                style={{ height: 96, backgroundColor: theme.accent }}
+            <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
+              <View
+                style={{
+                  backgroundColor: theme.surface,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  padding: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
               >
-                {coverUrl ? (
-                  <Image
-                    source={{ uri: coverUrl }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
-                ) : null}
-              </TouchableOpacity>
-
-              <View style={{ alignItems: 'center', marginTop: -30, paddingHorizontal: 18 }}>
-                {avatarUrl ? (
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={() => openImageViewer('Profile photo', avatarUrl)}
-                  >
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Settings')}
+                  activeOpacity={0.86}
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    minWidth: 0,
+                  }}
+                >
+                  {avatarUrl ? (
                     <Image
                       source={{ uri: avatarUrl }}
                       style={{
-                        width: 76,
-                        height: 76,
-                        borderRadius: 38,
-                        backgroundColor: '#ddd',
-                        borderWidth: 4,
-                        borderColor: '#fff',
+                        width: 62,
+                        height: 62,
+                        borderRadius: 31,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 2,
+                        borderColor: theme.border,
                       }}
                     />
-                  </TouchableOpacity>
-                ) : (
-                  <View
-                    style={{
-                      width: 76,
-                      height: 76,
-                      borderRadius: 38,
-                      backgroundColor: theme.hero,
-                      borderWidth: 4,
-                      borderColor: '#fff',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ fontSize: 26, fontWeight: '900', color: theme.heroText }}>
-                      {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
-                    </Text>
+                  ) : (
+                    <View
+                      style={{
+                        width: 62,
+                        height: 62,
+                        borderRadius: 31,
+                        backgroundColor: theme.hero,
+                        borderWidth: 2,
+                        borderColor: theme.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 22, fontWeight: '900', color: theme.heroText }}>
+                        {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{ color: theme.text, fontSize: 18, fontWeight: '900', flexShrink: 1 }}
+                      >
+                        {displayName || 'User'}
+                      </Text>
+
+                      {isVerifiedOwner ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={17}
+                          color={theme.accent}
+                          style={{ marginLeft: 5 }}
+                        />
+                      ) : null}
+                    </View>
+
+                    <View
+                      style={{
+                        alignSelf: 'flex-start',
+                        marginTop: 7,
+                        borderRadius: 999,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                      }}
+                    >
+                      <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '900' }}>
+                        Rental X ID  <Text style={{ color: theme.text }}>{rentalXId}</Text>
+                      </Text>
+                    </View>
                   </View>
-                )}
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-                  <Text style={{ fontSize: 20, fontWeight: '900', color: theme.text }}>
-                    {displayName || 'User'}
-                  </Text>
-
-                  {isVerifiedOwner ? (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={18}
-                      color={theme.accent}
-                      style={{ marginLeft: 6 }}
-                    />
-                  ) : null}
-                </View>
-
-                <Text style={{ marginTop: 3, color: theme.mutedText, fontSize: 13 }}>
-                  {email}
-                </Text>
+                </TouchableOpacity>
 
                 <View
                   style={{
-                    flexDirection: 'row',
-                    width: '100%',
-                    marginTop: 14,
+                    marginLeft: 12,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 16,
+                    backgroundColor: theme.accentSoft,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     borderWidth: 1,
                     borderColor: theme.border,
-                    borderRadius: 18,
-                    overflow: 'hidden',
                   }}
                 >
-                  <View
-                    style={{
-                      flex: 1,
-                      alignItems: 'center',
-                      paddingVertical: 14,
-                      backgroundColor: theme.surface,
-                    }}
-                  >
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
-                      {socialCounts.posts}
-                    </Text>
-                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
-                      {t('profilePosts', 'Posts')}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={() => openConnections('followers')}
-                    style={{
-                      flex: 1,
-                      alignItems: 'center',
-                      paddingVertical: 14,
-                      backgroundColor: theme.surface,
-                      borderLeftWidth: 1,
-                      borderLeftColor: theme.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
-                      {socialCounts.followers}
-                    </Text>
-                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
-                      {t('profileFollowers', 'Followers')}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => openConnections('following')}
-                    style={{
-                      flex: 1,
-                      alignItems: 'center',
-                      paddingVertical: 14,
-                      backgroundColor: theme.surface,
-                      borderLeftWidth: 1,
-                      borderLeftColor: theme.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
-                      {socialCounts.following}
-                    </Text>
-                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
-                      {t('profileFollowing', 'Following')}
-                    </Text>
-                  </TouchableOpacity>
+                  <Ionicons name="qr-code-outline" size={22} color={theme.accent} />
                 </View>
               </View>
             </View>
@@ -748,14 +724,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                   onPress={() => navigation.navigate('AdminPanel')}
                 />
               ) : null}
-
-              <ActionCard
-                icon="settings-outline"
-                title={t('profileSettings', 'Settings')}
-                subtitle={t('profileSettingsSubtitle', 'Profile, notifications, password, security, and account type.')}
-                theme={theme}
-                onPress={() => navigation.navigate('Settings')}
-              />
             </View>
           </ScrollView>
 
