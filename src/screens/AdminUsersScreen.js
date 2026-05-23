@@ -6,13 +6,14 @@ import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
 import { getOwnerVerificationStatus } from '../lib/verification'
+import { useAppSettings } from '../lib/appSettings'
 
-function UserAvatar({ item }) {
+function UserAvatar({ item, theme }) {
   if (item.avatar_url) {
     return (
       <Image
         source={{ uri: item.avatar_url }}
-        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#e2e8f0' }}
+        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.surfaceMuted }}
       />
     )
   }
@@ -25,12 +26,12 @@ function UserAvatar({ item }) {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#dbeafe',
+        backgroundColor: theme.hero,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#1d4ed8', fontSize: 15, fontWeight: '900' }}>{initial}</Text>
+      <Text style={{ color: theme.heroText, fontSize: 15, fontWeight: '900' }}>{initial}</Text>
     </View>
   )
 }
@@ -53,6 +54,7 @@ function StatusPill({ label, tint, bg }) {
 }
 
 export default function AdminUsersScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
   const [users, setUsers] = useState([])
@@ -131,27 +133,27 @@ export default function AdminUsersScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   if (!authorized) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               padding: 16,
             }}
           >
-            <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '900' }}>Admin only</Text>
-            <Text style={{ color: '#64748b', marginTop: 8, lineHeight: 20 }}>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>Admin only</Text>
+            <Text style={{ color: theme.mutedText, marginTop: 8, lineHeight: 20 }}>
               This user list is only available for your first-level admin account.
             </Text>
           </View>
@@ -161,7 +163,7 @@ export default function AdminUsersScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
@@ -170,10 +172,10 @@ export default function AdminUsersScreen({ navigation }) {
       >
         <View
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 16,
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: theme.border,
             paddingHorizontal: 12,
             paddingVertical: 10,
             marginBottom: 14,
@@ -181,20 +183,20 @@ export default function AdminUsersScreen({ navigation }) {
             alignItems: 'center',
           }}
         >
-          <Ionicons name="search-outline" size={16} color="#64748b" style={{ marginRight: 8 }} />
+          <Ionicons name="search-outline" size={16} color={theme.mutedText} style={{ marginRight: 8 }} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search users, email, location"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={theme.mutedText}
             style={{
               flex: 1,
-              color: '#0f172a',
+              color: theme.text,
               fontSize: 13,
               paddingVertical: 2,
             }}
           />
-          <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800', marginLeft: 8 }}>
+          <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginLeft: 8 }}>
             {filteredUsers.length}/{users.length}
           </Text>
         </View>
@@ -215,51 +217,51 @@ export default function AdminUsersScreen({ navigation }) {
               }
               activeOpacity={0.86}
               style={{
-                backgroundColor: '#fff',
+                backgroundColor: theme.surface,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 padding: 12,
                 marginBottom: 10,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                <UserAvatar item={item} />
+                <UserAvatar item={item} theme={theme} />
 
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>
+                    <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
                       {item.display_name || item.email || 'User'}
                     </Text>
                     {ownerStatus === 'verified' ? (
                       <Ionicons
                         name="checkmark-circle"
                         size={14}
-                        color="#1877F2"
+                        color={theme.accent}
                         style={{ marginLeft: 6 }}
                       />
                     ) : null}
                   </View>
 
-                  <Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>
+                  <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 12 }}>
                     {item.email || 'No email'}
                   </Text>
 
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    <StatusPill label={userTypeLabel} tint="#475569" bg="#f8fafc" />
+                    <StatusPill label={userTypeLabel} tint={theme.mutedText} bg={theme.surfaceMuted} />
                     {ownerStatus === 'verified' ? (
-                      <StatusPill label="Verified owner" tint="#2563eb" bg="#eff6ff" />
+                      <StatusPill label="Verified owner" tint={theme.accent} bg={theme.accentSoft} />
                     ) : null}
                   </View>
 
                   {item.location ? (
-                    <Text style={{ color: '#64748b', marginTop: 8, lineHeight: 17, fontSize: 12 }}>
+                    <Text style={{ color: theme.mutedText, marginTop: 8, lineHeight: 17, fontSize: 12 }}>
                       {item.location}
                     </Text>
                   ) : null}
                 </View>
 
-                <Ionicons name="chevron-forward" size={18} color="#94a3b8" style={{ marginLeft: 8, marginTop: 2 }} />
+                <Ionicons name="chevron-forward" size={18} color={theme.mutedText} style={{ marginLeft: 8, marginTop: 2 }} />
               </View>
             </TouchableOpacity>
           )
@@ -268,17 +270,17 @@ export default function AdminUsersScreen({ navigation }) {
         {!filteredUsers.length ? (
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               padding: 16,
             }}
           >
-            <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
               No users found
             </Text>
-            <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12, lineHeight: 18 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
               Try another name, email, or location.
             </Text>
           </View>

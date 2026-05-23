@@ -15,6 +15,17 @@ import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus, getVerificationMeta } from '../lib/verification'
+import { useAppSettings } from '../lib/appSettings'
+
+function withAlpha(hexColor, alphaHex) {
+  const cleanHex = String(hexColor || '').replace('#', '')
+
+  if (cleanHex.length !== 6) {
+    return `#000000${alphaHex}`
+  }
+
+  return `#${cleanHex}${alphaHex}`
+}
 
 function formatDate(value) {
   if (!value) return 'Not available'
@@ -26,12 +37,12 @@ function formatDate(value) {
   }
 }
 
-function Avatar({ user }) {
+function Avatar({ user, theme }) {
   if (user?.avatar_url) {
     return (
       <Image
         source={{ uri: user.avatar_url }}
-        style={{ width: 74, height: 74, borderRadius: 37, backgroundColor: '#e2e8f0' }}
+        style={{ width: 74, height: 74, borderRadius: 37, backgroundColor: theme.surfaceMuted }}
       />
     )
   }
@@ -44,12 +55,12 @@ function Avatar({ user }) {
         width: 74,
         height: 74,
         borderRadius: 37,
-        backgroundColor: '#dbeafe',
+        backgroundColor: theme.hero,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#1d4ed8', fontSize: 28, fontWeight: '900' }}>{initial}</Text>
+      <Text style={{ color: theme.heroText, fontSize: 28, fontWeight: '900' }}>{initial}</Text>
     </View>
   )
 }
@@ -71,23 +82,23 @@ function StatusChip({ label, color, background, border }) {
   )
 }
 
-function SectionCard({ title, subtitle, children, right }) {
+function SectionCard({ title, subtitle, children, right, theme }) {
   return (
     <View
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 16,
         marginBottom: 14,
       }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>{title}</Text>
+          <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>{title}</Text>
           {subtitle ? (
-            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>{subtitle}</Text>
+            <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>{subtitle}</Text>
           ) : null}
         </View>
         {right || null}
@@ -97,7 +108,7 @@ function SectionCard({ title, subtitle, children, right }) {
   )
 }
 
-function TableRow({ label, value, multiline }) {
+function TableRow({ label, value, multiline, theme }) {
   return (
     <View
       style={{
@@ -106,15 +117,15 @@ function TableRow({ label, value, multiline }) {
         justifyContent: 'space-between',
         paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#eef2f7',
+        borderBottomColor: theme.border,
         gap: 16,
       }}
     >
-      <Text style={{ color: '#475569', fontSize: 12, fontWeight: '800', width: 120 }}>
+      <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800', width: 120 }}>
         {label}
       </Text>
       <Text
-        style={{ flex: 1, color: '#0f172a', fontSize: 13, fontWeight: '700', textAlign: 'right' }}
+        style={{ flex: 1, color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'right' }}
         selectable
       >
         {value || 'Not available'}
@@ -123,23 +134,23 @@ function TableRow({ label, value, multiline }) {
   )
 }
 
-function CountTile({ icon, label, value, tint, onPress }) {
+function CountTile({ icon, label, value, tint, onPress, theme }) {
   const content = (
     <View
       style={{
         flex: 1,
-        backgroundColor: '#f8fafc',
+        backgroundColor: theme.surfaceMuted,
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 12,
       }}
     >
       <Ionicons name={icon} size={16} color={tint} />
-      <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900', marginTop: 8 }}>
+      <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 8 }}>
         {value}
       </Text>
-      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800', marginTop: 4 }}>
+      <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginTop: 4 }}>
         {label}
       </Text>
     </View>
@@ -157,6 +168,7 @@ function CountTile({ icon, label, value, tint, onPress }) {
 }
 
 export default function AdminUserDetailScreen({ navigation, route }) {
+  const { theme } = useAppSettings()
   const targetUserId = route?.params?.userId || null
   const fallbackUser = route?.params?.fallbackUser || null
 
@@ -317,18 +329,18 @@ export default function AdminUserDetailScreen({ navigation, route }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   if (!authorized) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
-          <SectionCard title="Admin only">
-            <Text style={{ color: '#64748b', lineHeight: 20 }}>
+          <SectionCard title="Admin only" theme={theme}>
+            <Text style={{ color: theme.mutedText, lineHeight: 20 }}>
               This user detail page is only available for your first-level admin account.
             </Text>
           </SectionCard>
@@ -338,7 +350,7 @@ export default function AdminUserDetailScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28 }}
@@ -348,28 +360,46 @@ export default function AdminUserDetailScreen({ navigation, route }) {
         <SectionCard
           title={userDetail?.display_name || userDetail?.email || 'User detail'}
           subtitle={userDetail?.email || 'No email'}
-          right={<StatusChip label={verificationMeta.label} color={verificationMeta.textColor} background={verificationMeta.backgroundColor} border={verificationMeta.borderColor} />}
+          right={
+            <StatusChip
+              label={verificationMeta.label}
+              color={verificationMeta.textColor}
+              background={withAlpha(verificationMeta.textColor, '20')}
+              border={withAlpha(verificationMeta.textColor, '44')}
+            />
+          }
+          theme={theme}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Avatar user={userDetail} />
+            <Avatar user={userDetail} theme={theme} />
             <View style={{ flex: 1, marginLeft: 14 }}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 <StatusChip
                   label={userDetail?.user_type === 'property_owner' ? 'Property owner' : 'Finding property'}
-                  color="#475569"
-                  background="#f8fafc"
-                  border="#e2e8f0"
+                  color={theme.mutedText}
+                  background={theme.surfaceMuted}
+                  border={theme.border}
                 />
                 {userDetail?.admin_is_banned ? (
-                  <StatusChip label="Banned" color="#dc2626" background="#fef2f2" border="#fecaca" />
+                  <StatusChip
+                    label="Banned"
+                    color="#dc2626"
+                    background={withAlpha('#dc2626', '20')}
+                    border={withAlpha('#dc2626', '44')}
+                  />
                 ) : null}
                 {presence?.is_online ? (
-                  <StatusChip label="Online" color="#16a34a" background="#ecfdf5" border="#bbf7d0" />
+                  <StatusChip
+                    label="Online"
+                    color="#16a34a"
+                    background={withAlpha('#16a34a', '20')}
+                    border={withAlpha('#16a34a', '44')}
+                  />
                 ) : null}
               </View>
 
               {userDetail?.location ? (
-                <Text style={{ color: '#64748b', fontSize: 13, marginTop: 10 }}>
+                <Text style={{ color: theme.mutedText, fontSize: 13, marginTop: 10 }}>
                   {userDetail.location}
                 </Text>
               ) : null}
@@ -383,6 +413,7 @@ export default function AdminUserDetailScreen({ navigation, route }) {
             label="Posts"
             value={socialCounts.posts}
             tint="#2563eb"
+            theme={theme}
             onPress={() =>
               navigation.navigate('AdminUserPosts', {
                 userId: targetUserId,
@@ -395,6 +426,7 @@ export default function AdminUserDetailScreen({ navigation, route }) {
             label="Followers"
             value={socialCounts.followers}
             tint="#16a34a"
+            theme={theme}
             onPress={() =>
               navigation.navigate('Connections', {
                 userId: targetUserId,
@@ -411,6 +443,7 @@ export default function AdminUserDetailScreen({ navigation, route }) {
             label="Following"
             value={socialCounts.following}
             tint="#ea580c"
+            theme={theme}
             onPress={() =>
               navigation.navigate('Connections', {
                 userId: targetUserId,
@@ -427,6 +460,7 @@ export default function AdminUserDetailScreen({ navigation, route }) {
             label="Blocked"
             value={socialCounts.blocked}
             tint="#dc2626"
+            theme={theme}
             onPress={() =>
               navigation.navigate('BlockList', {
                 userId: targetUserId,
@@ -438,53 +472,53 @@ export default function AdminUserDetailScreen({ navigation, route }) {
           />
         </View>
 
-        <SectionCard title="Account details" subtitle="Core account information in one place.">
-          <TableRow label="User ID" value={userDetail?.user_id} />
-          <TableRow label="Display name" value={userDetail?.display_name} />
-          <TableRow label="Email" value={userDetail?.email} />
-          <TableRow label="Phone" value={userDetail?.phone} />
-          <TableRow label="User type" value={userDetail?.user_type === 'property_owner' ? 'Property owner' : 'Finding property'} />
-          <TableRow label="Profile location" value={userDetail?.location} />
-          <TableRow label="Bio" value={userDetail?.bio} multiline />
+        <SectionCard title="Account details" subtitle="Core account information in one place." theme={theme}>
+          <TableRow label="User ID" value={userDetail?.user_id} theme={theme} />
+          <TableRow label="Display name" value={userDetail?.display_name} theme={theme} />
+          <TableRow label="Email" value={userDetail?.email} theme={theme} />
+          <TableRow label="Phone" value={userDetail?.phone} theme={theme} />
+          <TableRow label="User type" value={userDetail?.user_type === 'property_owner' ? 'Property owner' : 'Finding property'} theme={theme} />
+          <TableRow label="Profile location" value={userDetail?.location} theme={theme} />
+          <TableRow label="Bio" value={userDetail?.bio} multiline theme={theme} />
         </SectionCard>
 
-        <SectionCard title="Verification & security" subtitle="Security-relevant details available in the current app build.">
-          <TableRow label="Owner verify" value={verificationMeta.label} />
-          <TableRow label="Requested at" value={formatDate(userDetail?.owner_verification_requested_at)} />
-          <TableRow label="Reviewed at" value={formatDate(userDetail?.owner_verification_reviewed_at)} />
-          <TableRow label="Rejected note" value={userDetail?.owner_verification_rejection_reason} />
-          <TableRow label="Last location" value={userDetail?.location} />
-          <TableRow label="Last offline" value={presence?.last_seen_at ? formatDate(presence.last_seen_at) : presence?.is_online ? 'Currently online' : 'Not available'} />
-          <TableRow label="Device platform" value={platformsLabel} />
-          <TableRow label="Last device seen" value={lastDeviceSeen} />
-          <TableRow label="IP address" value="Not captured by current app build" />
+        <SectionCard title="Verification & security" subtitle="Security-relevant details available in the current app build." theme={theme}>
+          <TableRow label="Owner verify" value={verificationMeta.label} theme={theme} />
+          <TableRow label="Requested at" value={formatDate(userDetail?.owner_verification_requested_at)} theme={theme} />
+          <TableRow label="Reviewed at" value={formatDate(userDetail?.owner_verification_reviewed_at)} theme={theme} />
+          <TableRow label="Rejected note" value={userDetail?.owner_verification_rejection_reason} theme={theme} />
+          <TableRow label="Last location" value={userDetail?.location} theme={theme} />
+          <TableRow label="Last offline" value={presence?.last_seen_at ? formatDate(presence.last_seen_at) : presence?.is_online ? 'Currently online' : 'Not available'} theme={theme} />
+          <TableRow label="Device platform" value={platformsLabel} theme={theme} />
+          <TableRow label="Last device seen" value={lastDeviceSeen} theme={theme} />
+          <TableRow label="IP address" value="Not captured by current app build" theme={theme} />
         </SectionCard>
 
-        <SectionCard title="Admin controls" subtitle="Ban or unban this user and keep a simple record.">
+        <SectionCard title="Admin controls" subtitle="Ban or unban this user and keep a simple record." theme={theme}>
           <TextInput
             value={banReason}
             onChangeText={setBanReason}
             placeholder="Ban reason"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={theme.mutedText}
             multiline
             style={{
-              backgroundColor: '#f8fafc',
+              backgroundColor: theme.surfaceMuted,
               borderRadius: 14,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: theme.border,
               paddingHorizontal: 12,
               paddingVertical: 12,
               minHeight: 78,
               textAlignVertical: 'top',
-              color: '#0f172a',
+              color: theme.text,
               marginBottom: 12,
             }}
           />
 
-          <TableRow label="Ban status" value={userDetail?.admin_is_banned ? 'Banned' : 'Active'} />
-          <TableRow label="Banned at" value={formatDate(userDetail?.admin_banned_at)} />
-          <TableRow label="Banned by" value={userDetail?.admin_banned_by_email} />
-          <TableRow label="Ban reason" value={userDetail?.admin_ban_reason} />
+          <TableRow label="Ban status" value={userDetail?.admin_is_banned ? 'Banned' : 'Active'} theme={theme} />
+          <TableRow label="Banned at" value={formatDate(userDetail?.admin_banned_at)} theme={theme} />
+          <TableRow label="Banned by" value={userDetail?.admin_banned_by_email} theme={theme} />
+          <TableRow label="Ban reason" value={userDetail?.admin_ban_reason} theme={theme} />
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
             <TouchableOpacity
@@ -520,7 +554,7 @@ export default function AdminUserDetailScreen({ navigation, route }) {
               style={{
                 flex: 1,
                 borderRadius: 14,
-                backgroundColor: '#1877F2',
+                backgroundColor: theme.accent,
                 paddingVertical: 13,
                 alignItems: 'center',
               }}

@@ -19,6 +19,7 @@ import {
   getLocationSelectionFromCoords,
   searchLocationSelection,
 } from '../lib/location'
+import { useAppSettings } from '../lib/appSettings'
 
 const DEFAULT_REGION = {
   latitude: 23.8103,
@@ -31,7 +32,23 @@ const HAS_ANDROID_GOOGLE_MAPS_KEY =
   Platform.OS !== 'android'
   || Boolean(Constants?.expoConfig?.extra?.googleMapsEnabled)
 
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#172033' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#dbeafe' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0b1526' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#334155' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#101b2d' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'poi.park', elementType: 'geometry.fill', stylers: [{ color: '#123524' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a3954' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#111827' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3b4a64' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#22304a' }] },
+  { featureType: 'water', elementType: 'geometry.fill', stylers: [{ color: '#0f2545' }] },
+]
+
 export default function LocationScreen({ navigation, route }) {
+  const { theme, appearanceMode } = useAppSettings()
   const mapRef = useRef(null)
   const hasManualSelectionRef = useRef(false)
   const isMountedRef = useRef(true)
@@ -340,15 +357,15 @@ export default function LocationScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <View
         style={{
           paddingHorizontal: 16,
           paddingTop: 8,
           paddingBottom: 14,
-          backgroundColor: '#fff',
+          backgroundColor: theme.surface,
           borderBottomWidth: 1,
-          borderBottomColor: '#e2e8f0',
+          borderBottomColor: theme.border,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -358,20 +375,20 @@ export default function LocationScreen({ navigation, route }) {
               width: 40,
               height: 40,
               borderRadius: 20,
-              backgroundColor: '#f1f5f9',
+              backgroundColor: theme.surfaceMuted,
               alignItems: 'center',
               justifyContent: 'center',
               marginRight: 12,
             }}
           >
-            <Ionicons name="arrow-back" size={20} color="#0f172a" />
+            <Ionicons name="arrow-back" size={20} color={theme.text} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 19, fontWeight: '900', color: '#0f172a' }}>
+            <Text style={{ fontSize: 19, fontWeight: '900', color: theme.text }}>
               Select Location
             </Text>
-            <Text style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
+            <Text style={{ marginTop: 2, color: theme.mutedText, fontSize: 12 }}>
               Search a place or pin it on the map.
             </Text>
           </View>
@@ -390,22 +407,22 @@ export default function LocationScreen({ navigation, route }) {
               flex: 1,
               flexDirection: 'row',
               alignItems: 'center',
-              backgroundColor: '#f8fafc',
+              backgroundColor: theme.surfaceMuted,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#dbe4ee',
+              borderColor: theme.border,
               paddingHorizontal: 12,
               height: 48,
             }}
           >
-            <Ionicons name="search" size={18} color="#64748b" />
+            <Ionicons name="search" size={18} color={theme.mutedText} />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
               onSubmitEditing={handleSearch}
               placeholder="Search area or address"
-              placeholderTextColor="#94a3b8"
-              style={{ flex: 1, marginLeft: 8, color: '#0f172a', fontSize: 15 }}
+              placeholderTextColor={theme.mutedText}
+              style={{ flex: 1, marginLeft: 8, color: theme.text, fontSize: 15 }}
               returnKeyType="search"
             />
           </View>
@@ -417,9 +434,10 @@ export default function LocationScreen({ navigation, route }) {
               height: 48,
               paddingHorizontal: 16,
               borderRadius: 16,
-              backgroundColor: searching ? '#93c5fd' : '#2563eb',
+              backgroundColor: theme.accent,
               alignItems: 'center',
               justifyContent: 'center',
+              opacity: searching ? 0.65 : 1,
             }}
           >
             {searching ? (
@@ -436,8 +454,8 @@ export default function LocationScreen({ navigation, route }) {
       <View style={{ flex: 1 }}>
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator size="large" color="#2563eb" />
-            <Text style={{ marginTop: 10, color: '#64748b' }}>Loading map...</Text>
+            <ActivityIndicator size="large" color={theme.accent} />
+            <Text style={{ marginTop: 10, color: theme.mutedText }}>Loading map...</Text>
           </View>
         ) : (
           <>
@@ -447,6 +465,7 @@ export default function LocationScreen({ navigation, route }) {
                 style={{ flex: 1 }}
                 provider={Platform.OS === 'android' ? 'google' : undefined}
                 initialRegion={initialRegion}
+                customMapStyle={appearanceMode === 'dark' ? DARK_MAP_STYLE : []}
                 onMapReady={() => setMapReady(true)}
                 onPress={handleMapPick}
                 showsUserLocation
@@ -465,17 +484,17 @@ export default function LocationScreen({ navigation, route }) {
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.background,
                   paddingHorizontal: 18,
                   justifyContent: 'center',
                 }}
               >
                 <View
                   style={{
-                    backgroundColor: '#fff',
+                    backgroundColor: theme.surface,
                     borderRadius: 18,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     padding: 18,
                   }}
                 >
@@ -484,22 +503,22 @@ export default function LocationScreen({ navigation, route }) {
                       width: 44,
                       height: 44,
                       borderRadius: 22,
-                      backgroundColor: '#eff6ff',
+                      backgroundColor: theme.accentSoft,
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginBottom: 12,
                     }}
                   >
-                    <Ionicons name="map-outline" size={22} color="#2563eb" />
+                    <Ionicons name="map-outline" size={22} color={theme.accent} />
                   </View>
 
-                  <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '900' }}>
+                  <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>
                     Map setup needed for installed Android app
                   </Text>
-                  <Text style={{ color: '#64748b', lineHeight: 20, marginTop: 8 }}>
+                  <Text style={{ color: theme.mutedText, lineHeight: 20, marginTop: 8 }}>
                     This APK does not have a Google Maps API key yet. Search and current-location still work here, and the app should stop closing on open.
                   </Text>
-                  <Text style={{ color: '#64748b', lineHeight: 20, marginTop: 8 }}>
+                  <Text style={{ color: theme.mutedText, lineHeight: 20, marginTop: 8 }}>
                     Add `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`, rebuild the app, and the full map will show in installed builds too.
                   </Text>
 
@@ -507,18 +526,20 @@ export default function LocationScreen({ navigation, route }) {
                     <View
                       style={{
                         marginTop: 14,
-                        backgroundColor: '#f8fafc',
+                        backgroundColor: theme.surfaceMuted,
                         borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: theme.border,
                         padding: 12,
                       }}
                     >
-                      <Text style={{ color: '#0f172a', fontWeight: '800' }}>
+                      <Text style={{ color: theme.text, fontWeight: '800' }}>
                         Current selection
                       </Text>
-                      <Text style={{ color: '#475569', marginTop: 5 }}>
+                      <Text style={{ color: theme.text, marginTop: 5 }}>
                         {selectedLabel}
                       </Text>
-                      <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                      <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12 }}>
                         {selectedCoords.latitude.toFixed(5)}, {selectedCoords.longitude.toFixed(5)}
                       </Text>
                     </View>
@@ -537,7 +558,9 @@ export default function LocationScreen({ navigation, route }) {
                 width: 46,
                 height: 46,
                 borderRadius: 23,
-                backgroundColor: '#fff',
+                backgroundColor: theme.surface,
+                borderWidth: 1,
+                borderColor: theme.border,
                 alignItems: 'center',
                 justifyContent: 'center',
                 shadowColor: '#000',
@@ -549,9 +572,9 @@ export default function LocationScreen({ navigation, route }) {
               }}
             >
               {locating ? (
-                <ActivityIndicator size="small" color="#2563eb" />
+                <ActivityIndicator size="small" color={theme.accent} />
               ) : (
-                <Ionicons name="locate" size={21} color="#2563eb" />
+                <Ionicons name="locate" size={21} color={theme.accent} />
               )}
             </TouchableOpacity>
 
@@ -561,8 +584,10 @@ export default function LocationScreen({ navigation, route }) {
                 left: 16,
                 right: 16,
                 bottom: 20,
-                backgroundColor: '#fff',
+                backgroundColor: theme.surface,
                 borderRadius: 22,
+                borderWidth: 1,
+                borderColor: theme.border,
                 padding: 16,
                 shadowColor: '#000',
                 shadowOpacity: 0.12,
@@ -577,26 +602,26 @@ export default function LocationScreen({ navigation, route }) {
                     width: 40,
                     height: 40,
                     borderRadius: 20,
-                    backgroundColor: '#eff6ff',
+                    backgroundColor: theme.accentSoft,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 12,
                   }}
                 >
-                  <Ionicons name="location" size={19} color="#2563eb" />
+                  <Ionicons name="location" size={19} color={theme.accent} />
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '900' }}>
+                  <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
                     {selectedLabel}
                   </Text>
                   {selectedDetails ? (
-                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
                       {selectedDetails}
                     </Text>
                   ) : null}
                   {selectedCoords ? (
-                    <Text style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                    <Text style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
                       {selectedCoords.latitude.toFixed(5)}, {selectedCoords.longitude.toFixed(5)}
                     </Text>
                   ) : null}
@@ -607,7 +632,7 @@ export default function LocationScreen({ navigation, route }) {
                 onPress={handleConfirmLocation}
                 style={{
                   marginTop: 16,
-                  backgroundColor: '#2563eb',
+                  backgroundColor: theme.accent,
                   borderRadius: 16,
                   height: 50,
                   alignItems: 'center',

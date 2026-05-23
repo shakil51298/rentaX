@@ -22,6 +22,17 @@ import { isPrimaryAdmin } from '../lib/admin'
 import { createNotification } from '../lib/notifications'
 import { getPropertyVerificationStatus, getVerificationMeta } from '../lib/verification'
 import { createSignedMediaUrl, VERIFICATION_MEDIA_BUCKET } from '../lib/media'
+import { useAppSettings } from '../lib/appSettings'
+
+function withAlpha(hexColor, alphaHex) {
+  const cleanHex = String(hexColor || '').replace('#', '')
+
+  if (cleanHex.length !== 6) {
+    return `#000000${alphaHex}`
+  }
+
+  return `#${cleanHex}${alphaHex}`
+}
 
 function formatDate(date) {
   if (!date) return 'Unknown time'
@@ -33,21 +44,21 @@ function formatDate(date) {
   }
 }
 
-function FilterPill({ title, active, onPress, count }) {
+function FilterPill({ title, active, onPress, count, theme }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       style={{
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: active ? '#1877F2' : '#dbe4ee',
-        backgroundColor: active ? '#eff6ff' : '#fff',
+        borderColor: active ? theme.accent : theme.border,
+        backgroundColor: active ? theme.accentSoft : theme.surface,
         paddingHorizontal: 12,
         paddingVertical: 9,
         marginRight: 8,
       }}
     >
-      <Text style={{ color: active ? '#1877F2' : '#475569', fontWeight: '800', fontSize: 12 }}>
+      <Text style={{ color: active ? theme.accent : theme.mutedText, fontWeight: '800', fontSize: 12 }}>
         {title} ({count})
       </Text>
     </TouchableOpacity>
@@ -77,14 +88,14 @@ function StatusChip({ meta }) {
   )
 }
 
-function SectionCard({ children }) {
+function SectionCard({ children, theme }) {
   return (
     <View
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 16,
         marginBottom: 14,
       }}
@@ -94,12 +105,12 @@ function SectionCard({ children }) {
   )
 }
 
-function InfoLine({ label, value }) {
+function InfoLine({ label, value, theme }) {
   if (!value) return null
 
   return (
-    <Text style={{ color: '#475569', marginTop: 5, lineHeight: 19 }}>
-      <Text style={{ fontWeight: '800', color: '#334155' }}>{label}: </Text>
+    <Text style={{ color: theme.mutedText, marginTop: 5, lineHeight: 19 }}>
+      <Text style={{ fontWeight: '800', color: theme.text }}>{label}: </Text>
       {value}
     </Text>
   )
@@ -143,7 +154,7 @@ function ReviewButtons({ approving, rejecting, onApprove, onReject }) {
   )
 }
 
-function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen }) {
+function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen, theme }) {
   const previews = [
     { key: 'front', title: 'Front', uri: frontUrl },
     { key: 'back', title: 'Back', uri: backUrl },
@@ -154,7 +165,7 @@ function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen }) {
 
   return (
     <View style={{ marginTop: 14 }}>
-      <Text style={{ color: '#334155', fontWeight: '800', fontSize: 13, marginBottom: 10 }}>
+      <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, marginBottom: 10 }}>
         Uploaded proofs
       </Text>
 
@@ -175,11 +186,11 @@ function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen }) {
                 width: 114,
                 height: 114,
                 borderRadius: 14,
-                backgroundColor: '#e2e8f0',
+                backgroundColor: theme.surfaceMuted,
               }}
               resizeMode="cover"
             />
-            <Text style={{ color: '#475569', fontSize: 12, fontWeight: '800', marginTop: 6 }}>
+            <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800', marginTop: 6 }}>
               {item.title}
             </Text>
           </TouchableOpacity>
@@ -189,15 +200,15 @@ function DocumentPreviewStrip({ frontUrl, backUrl, selfieUrl, onOpen }) {
   )
 }
 
-function SummaryTile({ title, count, icon, tint }) {
+function SummaryTile({ title, count, icon, tint, theme }) {
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 14,
       }}
     >
@@ -206,27 +217,27 @@ function SummaryTile({ title, count, icon, tint }) {
           width: 36,
           height: 36,
           borderRadius: 18,
-          backgroundColor: tint,
+          backgroundColor: withAlpha(tint, '26'),
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Ionicons name={icon} size={18} color="#fff" />
+        <Ionicons name={icon} size={18} color={tint} />
       </View>
 
-      <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '900', marginTop: 12 }}>
+      <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900', marginTop: 12 }}>
         {count}
       </Text>
-      <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12, fontWeight: '800' }}>
+      <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, fontWeight: '800' }}>
         {title}
       </Text>
     </View>
   )
 }
 
-function CollapsibleSection({ title, subtitle, expanded, onToggle, children, count }) {
+function CollapsibleSection({ title, subtitle, expanded, onToggle, children, count, theme }) {
   return (
-    <SectionCard>
+    <SectionCard theme={theme}>
       <TouchableOpacity
         onPress={onToggle}
         activeOpacity={0.86}
@@ -234,7 +245,7 @@ function CollapsibleSection({ title, subtitle, expanded, onToggle, children, cou
       >
         <View style={{ flex: 1, paddingRight: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>{title}</Text>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>{title}</Text>
             <View
               style={{
                 marginLeft: 8,
@@ -242,26 +253,26 @@ function CollapsibleSection({ title, subtitle, expanded, onToggle, children, cou
                 height: 22,
                 borderRadius: 11,
                 paddingHorizontal: 6,
-                backgroundColor: '#eff6ff',
+                backgroundColor: theme.accentSoft,
                 borderWidth: 1,
-                borderColor: '#bfdbfe',
+                borderColor: theme.border,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '900' }}>
+              <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>
                 {count}
               </Text>
             </View>
           </View>
           {subtitle ? (
-            <Text style={{ color: '#64748b', marginTop: 4, lineHeight: 19 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>
               {subtitle}
             </Text>
           ) : null}
         </View>
 
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color="#475569" />
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={theme.mutedText} />
       </TouchableOpacity>
 
       {expanded ? <View style={{ marginTop: 14 }}>{children}</View> : null}
@@ -269,7 +280,7 @@ function CollapsibleSection({ title, subtitle, expanded, onToggle, children, cou
   )
 }
 
-function HistoryEntryRow({ entry, kind }) {
+function HistoryEntryRow({ entry, kind, theme }) {
   const isRejected = entry.action_type === 'rejected'
   const isApproved = entry.action_type === 'approved'
   const isSubmitted = entry.action_type === 'submitted' || entry.action_type === 'resubmitted'
@@ -287,8 +298,8 @@ function HistoryEntryRow({ entry, kind }) {
       style={{
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
-        backgroundColor: '#f8fafc',
+        borderColor: theme.border,
+        backgroundColor: theme.surfaceMuted,
         padding: 12,
         marginBottom: 10,
       }}
@@ -300,33 +311,35 @@ function HistoryEntryRow({ entry, kind }) {
             {labelMap[entry.action_type] || entry.action_type}
           </Text>
         </View>
-        <Text style={{ color: '#64748b', fontSize: 12 }}>{formatDate(entry.created_at)}</Text>
+        <Text style={{ color: theme.mutedText, fontSize: 12 }}>{formatDate(entry.created_at)}</Text>
       </View>
 
       {kind === 'owner' ? (
         <>
-          <InfoLine label="Phone" value={entry.phone} />
+          <InfoLine label="Phone" value={entry.phone} theme={theme} />
           <InfoLine
             label="ID"
             value={entry.id_type && entry.id_last4 ? `${entry.id_type} •••• ${entry.id_last4}` : ''}
+            theme={theme}
           />
-          <InfoLine label="Note" value={entry.note} />
+          <InfoLine label="Note" value={entry.note} theme={theme} />
         </>
       ) : (
         <>
-          <InfoLine label="Property" value={entry.title} />
-          <InfoLine label="Location" value={entry.location} />
-          <InfoLine label="Rent" value={entry.price ? `৳ ${entry.price}` : ''} />
+          <InfoLine label="Property" value={entry.title} theme={theme} />
+          <InfoLine label="Location" value={entry.location} theme={theme} />
+          <InfoLine label="Rent" value={entry.price ? `৳ ${entry.price}` : ''} theme={theme} />
         </>
       )}
 
-      <InfoLine label="Reviewed by" value={entry.reviewed_by_email} />
-      <InfoLine label="Reason" value={entry.rejection_reason} />
+      <InfoLine label="Reviewed by" value={entry.reviewed_by_email} theme={theme} />
+      <InfoLine label="Reason" value={entry.rejection_reason} theme={theme} />
     </View>
   )
 }
 
 export default function ReviewVerifyScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
   const [owners, setOwners] = useState([])
@@ -786,21 +799,21 @@ export default function ReviewVerifyScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   if (!authorized) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View style={{ flex: 1, padding: 20, justifyContent: 'center' }}>
-          <SectionCard>
-            <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '900' }}>
+          <SectionCard theme={theme}>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>
               Admin only
             </Text>
-            <Text style={{ color: '#64748b', marginTop: 8, lineHeight: 20 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 8, lineHeight: 20 }}>
               This panel is only available for your first-level admin account.
             </Text>
             <TouchableOpacity
@@ -808,7 +821,7 @@ export default function ReviewVerifyScreen({ navigation }) {
               style={{
                 marginTop: 16,
                 borderRadius: 14,
-                backgroundColor: '#1877F2',
+                backgroundColor: theme.accent,
                 paddingVertical: 13,
                 alignItems: 'center',
               }}
@@ -822,7 +835,7 @@ export default function ReviewVerifyScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -838,7 +851,7 @@ export default function ReviewVerifyScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ marginBottom: 14 }}>
-          <Text style={{ color: '#64748b', lineHeight: 20 }}>
+          <Text style={{ color: theme.mutedText, lineHeight: 20 }}>
             Review verification requests from one place and keep trust badges clean.
           </Text>
 
@@ -848,12 +861,14 @@ export default function ReviewVerifyScreen({ navigation }) {
               count={ownerCount}
               active={activeTab === 'owners'}
               onPress={() => setActiveTab('owners')}
+              theme={theme}
             />
             <FilterPill
               title="Property review"
               count={propertyCount}
               active={activeTab === 'properties'}
               onPress={() => setActiveTab('properties')}
+              theme={theme}
             />
           </View>
         </View>
@@ -864,12 +879,14 @@ export default function ReviewVerifyScreen({ navigation }) {
             count={verifiedOwnerCount}
             icon="shield-checkmark"
             tint="#2563eb"
+            theme={theme}
           />
           <SummaryTile
             title="Verified properties"
             count={verifiedPropertyCount}
             icon="home"
             tint="#16a34a"
+            theme={theme}
           />
         </View>
 
@@ -879,6 +896,7 @@ export default function ReviewVerifyScreen({ navigation }) {
           count={verifiedOwnerCount}
           expanded={verifiedOwnersExpanded}
           onToggle={() => setVerifiedOwnersExpanded((current) => !current)}
+          theme={theme}
         >
           {verifiedOwners.length ? (
             verifiedOwners.map((item) => (
@@ -887,29 +905,29 @@ export default function ReviewVerifyScreen({ navigation }) {
                 style={{
                   borderRadius: 14,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
-                  backgroundColor: '#f8fafc',
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
                   padding: 12,
                   marginBottom: 10,
                 }}
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15 }}>
                       {item.display_name || item.email || 'Property owner'}
                     </Text>
-                    <Text style={{ color: '#64748b', marginTop: 4 }}>
+                    <Text style={{ color: theme.mutedText, marginTop: 4 }}>
                       {item.email || 'No email'}
                     </Text>
                   </View>
                   <StatusChip meta={getVerificationMeta('verified', { verifiedLabel: 'Verified owner' })} />
                 </View>
-                <InfoLine label="Location" value={item.location} />
-                <InfoLine label="Approved" value={formatDate(item.owner_verification_reviewed_at)} />
+                <InfoLine label="Location" value={item.location} theme={theme} />
+                <InfoLine label="Approved" value={formatDate(item.owner_verification_reviewed_at)} theme={theme} />
               </View>
             ))
           ) : (
-            <Text style={{ color: '#64748b' }}>No verified accounts yet.</Text>
+            <Text style={{ color: theme.mutedText }}>No verified accounts yet.</Text>
           )}
         </CollapsibleSection>
 
@@ -919,6 +937,7 @@ export default function ReviewVerifyScreen({ navigation }) {
           count={verifiedPropertyCount}
           expanded={verifiedPropertiesExpanded}
           onToggle={() => setVerifiedPropertiesExpanded((current) => !current)}
+          theme={theme}
         >
           {verifiedProperties.length ? (
             verifiedProperties.map((item) => {
@@ -930,31 +949,31 @@ export default function ReviewVerifyScreen({ navigation }) {
                   style={{
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    backgroundColor: '#f8fafc',
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
                     padding: 12,
                     marginBottom: 10,
                   }}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+                      <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15 }}>
                         {item.title || 'Untitled property'}
                       </Text>
-                      <Text style={{ color: '#64748b', marginTop: 4 }}>
+                      <Text style={{ color: theme.mutedText, marginTop: 4 }}>
                         {ownerProfile?.display_name || ownerProfile?.email || 'Unknown owner'}
                       </Text>
                     </View>
                     <StatusChip meta={getVerificationMeta('verified', { verifiedLabel: 'Verified property' })} />
                   </View>
-                  <InfoLine label="Location" value={item.location} />
-                  <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} />
-                  <InfoLine label="Approved" value={formatDate(item.verification_reviewed_at)} />
+                  <InfoLine label="Location" value={item.location} theme={theme} />
+                  <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} theme={theme} />
+                  <InfoLine label="Approved" value={formatDate(item.verification_reviewed_at)} theme={theme} />
                 </View>
               )
             })
           ) : (
-            <Text style={{ color: '#64748b' }}>No verified properties yet.</Text>
+            <Text style={{ color: theme.mutedText }}>No verified properties yet.</Text>
           )}
         </CollapsibleSection>
 
@@ -969,13 +988,13 @@ export default function ReviewVerifyScreen({ navigation }) {
               })
 
               return (
-                <SectionCard key={item.user_id}>
+                <SectionCard key={item.user_id} theme={theme}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+                      <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
                         {item.display_name || item.email || 'Rental X user'}
                       </Text>
-                      <Text style={{ color: '#64748b', marginTop: 4 }}>
+                      <Text style={{ color: theme.mutedText, marginTop: 4 }}>
                         {item.email || 'No email'}
                       </Text>
                     </View>
@@ -983,9 +1002,9 @@ export default function ReviewVerifyScreen({ navigation }) {
                     <StatusChip meta={statusMeta} />
                   </View>
 
-                  <InfoLine label="Requested" value={formatDate(item.owner_verification_requested_at)} />
-                  <InfoLine label="Phone" value={item.owner_verification_phone || item.phone} />
-                  <InfoLine label="Location" value={item.location} />
+                  <InfoLine label="Requested" value={formatDate(item.owner_verification_requested_at)} theme={theme} />
+                  <InfoLine label="Phone" value={item.owner_verification_phone || item.phone} theme={theme} />
+                  <InfoLine label="Location" value={item.location} theme={theme} />
                   <InfoLine
                     label="ID"
                     value={
@@ -993,13 +1012,15 @@ export default function ReviewVerifyScreen({ navigation }) {
                         ? `${item.owner_verification_id_type} •••• ${item.owner_verification_id_last4}`
                         : ''
                     }
+                    theme={theme}
                   />
-                  <InfoLine label="Note" value={item.owner_verification_note} />
+                  <InfoLine label="Note" value={item.owner_verification_note} theme={theme} />
                   <DocumentPreviewStrip
                     frontUrl={item.owner_verification_document_front_url}
                     backUrl={item.owner_verification_document_back_url}
                     selfieUrl={item.owner_verification_selfie_url}
                     onOpen={setPreviewAsset}
+                    theme={theme}
                   />
 
                   <TouchableOpacity
@@ -1017,23 +1038,23 @@ export default function ReviewVerifyScreen({ navigation }) {
                       justifyContent: 'space-between',
                       borderRadius: 14,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
-                      backgroundColor: '#f8fafc',
+                      borderColor: theme.border,
+                      backgroundColor: theme.surfaceMuted,
                       paddingHorizontal: 12,
                       paddingVertical: 12,
                     }}
                   >
-                    <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                    <Text style={{ color: theme.text, fontWeight: '900' }}>
                       Verification history
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '800', marginRight: 8 }}>
+                      <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800', marginRight: 8 }}>
                         {(ownerHistoriesByUserId[String(item.user_id)] || []).length}
                       </Text>
                       <Ionicons
                         name={expandedOwnerHistory[item.user_id] ? 'chevron-up' : 'chevron-down'}
                         size={18}
-                        color="#475569"
+                        color={theme.mutedText}
                       />
                     </View>
                   </TouchableOpacity>
@@ -1046,10 +1067,11 @@ export default function ReviewVerifyScreen({ navigation }) {
                             key={`owner-history-${entry.id}`}
                             entry={entry}
                             kind="owner"
+                            theme={theme}
                           />
                         ))
                       ) : (
-                        <Text style={{ color: '#64748b' }}>No history recorded yet.</Text>
+                        <Text style={{ color: theme.mutedText }}>No history recorded yet.</Text>
                       )}
                     </View>
                   ) : null}
@@ -1068,19 +1090,19 @@ export default function ReviewVerifyScreen({ navigation }) {
                     }
                     onFocus={() => scrollRejectInputIntoView('owner', item.user_id)}
                     placeholder="Reject note for the user"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={theme.mutedText}
                     multiline
                     style={{
                       marginTop: 14,
-                      backgroundColor: '#f8fafc',
+                      backgroundColor: theme.surfaceMuted,
                       borderRadius: 14,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
+                      borderColor: theme.border,
                       paddingHorizontal: 12,
                       paddingVertical: 12,
                       minHeight: 78,
                       textAlignVertical: 'top',
-                      color: '#0f172a',
+                      color: theme.text,
                     }}
                   />
 
@@ -1094,11 +1116,11 @@ export default function ReviewVerifyScreen({ navigation }) {
               )
             })
           ) : (
-            <SectionCard>
-              <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+            <SectionCard theme={theme}>
+              <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
                 No pending owner requests
               </Text>
-              <Text style={{ color: '#64748b', marginTop: 6 }}>
+              <Text style={{ color: theme.mutedText, marginTop: 6 }}>
                 You’re clear for now.
               </Text>
             </SectionCard>
@@ -1114,13 +1136,13 @@ export default function ReviewVerifyScreen({ navigation }) {
             })
 
             return (
-              <SectionCard key={item.id}>
+              <SectionCard key={item.id} theme={theme}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
                       {item.title || 'Untitled property'}
                     </Text>
-                    <Text style={{ color: '#64748b', marginTop: 4 }}>
+                    <Text style={{ color: theme.mutedText, marginTop: 4 }}>
                       {ownerProfile?.display_name || ownerProfile?.email || 'Unknown owner'}
                     </Text>
                   </View>
@@ -1128,11 +1150,11 @@ export default function ReviewVerifyScreen({ navigation }) {
                   <StatusChip meta={statusMeta} />
                 </View>
 
-                <InfoLine label="Requested" value={formatDate(item.verification_requested_at)} />
-                <InfoLine label="Location" value={item.location} />
-                <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} />
-                <InfoLine label="Contact" value={item.verification_contact_phone || ownerProfile?.phone} />
-                <InfoLine label="Owner email" value={ownerProfile?.email} />
+                <InfoLine label="Requested" value={formatDate(item.verification_requested_at)} theme={theme} />
+                <InfoLine label="Location" value={item.location} theme={theme} />
+                <InfoLine label="Rent" value={item.price ? `৳ ${item.price}` : ''} theme={theme} />
+                <InfoLine label="Contact" value={item.verification_contact_phone || ownerProfile?.phone} theme={theme} />
+                <InfoLine label="Owner email" value={ownerProfile?.email} theme={theme} />
 
                 <TouchableOpacity
                   onPress={() =>
@@ -1149,23 +1171,23 @@ export default function ReviewVerifyScreen({ navigation }) {
                     justifyContent: 'space-between',
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    backgroundColor: '#f8fafc',
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
                     paddingHorizontal: 12,
                     paddingVertical: 12,
                   }}
                 >
-                  <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                  <Text style={{ color: theme.text, fontWeight: '900' }}>
                     Verification history
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '800', marginRight: 8 }}>
+                    <Text style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800', marginRight: 8 }}>
                       {(propertyHistoriesById[String(item.id)] || []).length}
                     </Text>
                     <Ionicons
                       name={expandedPropertyHistory[item.id] ? 'chevron-up' : 'chevron-down'}
                       size={18}
-                      color="#475569"
+                      color={theme.mutedText}
                     />
                   </View>
                 </TouchableOpacity>
@@ -1178,10 +1200,11 @@ export default function ReviewVerifyScreen({ navigation }) {
                           key={`property-history-${entry.id}`}
                           entry={entry}
                           kind="property"
+                          theme={theme}
                         />
                       ))
                     ) : (
-                      <Text style={{ color: '#64748b' }}>No history recorded yet.</Text>
+                      <Text style={{ color: theme.mutedText }}>No history recorded yet.</Text>
                     )}
                   </View>
                 ) : null}
@@ -1200,19 +1223,19 @@ export default function ReviewVerifyScreen({ navigation }) {
                     }
                     onFocus={() => scrollRejectInputIntoView('property', item.id)}
                     placeholder="Reject note for this property"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={theme.mutedText}
                     multiline
                   style={{
                     marginTop: 14,
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     paddingHorizontal: 12,
                     paddingVertical: 12,
                     minHeight: 78,
                     textAlignVertical: 'top',
-                    color: '#0f172a',
+                    color: theme.text,
                   }}
                 />
 
@@ -1226,11 +1249,11 @@ export default function ReviewVerifyScreen({ navigation }) {
             )
           })
         ) : (
-          <SectionCard>
-            <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 16 }}>
+          <SectionCard theme={theme}>
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
               No pending property requests
             </Text>
-            <Text style={{ color: '#64748b', marginTop: 6 }}>
+            <Text style={{ color: theme.mutedText, marginTop: 6 }}>
               Nothing needs review right now.
             </Text>
           </SectionCard>

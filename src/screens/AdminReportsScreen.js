@@ -21,6 +21,17 @@ import {
   updateUserCase,
 } from '../lib/reporting'
 import { createNotification } from '../lib/notifications'
+import { useAppSettings } from '../lib/appSettings'
+
+function withAlpha(hexColor, alphaHex) {
+  const cleanHex = String(hexColor || '').replace('#', '')
+
+  if (cleanHex.length !== 6) {
+    return `#000000${alphaHex}`
+  }
+
+  return `#${cleanHex}${alphaHex}`
+}
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -32,10 +43,10 @@ function timeAgo(date) {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
-function SectionTitle({ title, count }) {
+function SectionTitle({ title, count, theme }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 18 }}>
+      <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18 }}>
         {title}
       </Text>
       <View
@@ -45,7 +56,7 @@ function SectionTitle({ title, count }) {
           height: 22,
           borderRadius: 11,
           paddingHorizontal: 6,
-          backgroundColor: '#2563eb',
+          backgroundColor: theme.accent,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -58,7 +69,9 @@ function SectionTitle({ title, count }) {
   )
 }
 
-function ActionPill({ title, icon, tint = '#2563eb', onPress }) {
+function ActionPill({ title, icon, tint, onPress, theme }) {
+  const pillTint = tint || theme.accent
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -66,7 +79,7 @@ function ActionPill({ title, icon, tint = '#2563eb', onPress }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#eff6ff',
+        backgroundColor: withAlpha(pillTint, '20'),
         borderRadius: 999,
         paddingHorizontal: 10,
         paddingVertical: 8,
@@ -74,8 +87,8 @@ function ActionPill({ title, icon, tint = '#2563eb', onPress }) {
         marginTop: 8,
       }}
     >
-      <Ionicons name={icon} size={14} color={tint} />
-      <Text style={{ color: tint, fontSize: 12, fontWeight: '800', marginLeft: 6 }}>
+      <Ionicons name={icon} size={14} color={pillTint} />
+      <Text style={{ color: pillTint, fontSize: 12, fontWeight: '800', marginLeft: 6 }}>
         {title}
       </Text>
     </TouchableOpacity>
@@ -94,21 +107,22 @@ function ReportCard({
   onDismissPress,
   primaryTitle,
   secondaryActions,
+  theme,
 }) {
   const caseMeta = getCaseStatusMeta(report?.case_status)
 
   return (
     <View
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 15,
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 15 }}>
+      <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15 }}>
         {title}
       </Text>
       <View
@@ -130,15 +144,15 @@ function ReportCard({
           {caseMeta.label}
         </Text>
       </View>
-      <Text style={{ color: '#475569', marginTop: 5, lineHeight: 19 }}>
+      <Text style={{ color: theme.text, marginTop: 5, lineHeight: 19 }}>
         {subtitle}
       </Text>
       {detail ? (
-        <Text style={{ color: '#64748b', marginTop: 8, lineHeight: 19 }}>
+        <Text style={{ color: theme.mutedText, marginTop: 8, lineHeight: 19 }}>
           {detail}
         </Text>
       ) : null}
-      <Text style={{ color: '#94a3b8', marginTop: 8, fontSize: 12, fontWeight: '700' }}>
+      <Text style={{ color: theme.mutedText, marginTop: 8, fontSize: 12, fontWeight: '700' }}>
         {timeLabel}
       </Text>
 
@@ -148,13 +162,13 @@ function ReportCard({
             marginTop: 10,
             borderRadius: 14,
             borderWidth: 1,
-            borderColor: '#ddd6fe',
-            backgroundColor: '#f5f3ff',
+            borderColor: theme.border,
+            backgroundColor: theme.accentSoft,
             padding: 11,
           }}
         >
-          <Text style={{ color: '#6d28d9', fontSize: 11, fontWeight: '900' }}>Appeal submitted</Text>
-          <Text style={{ color: '#5b21b6', lineHeight: 19, marginTop: 5 }}>
+          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>Appeal submitted</Text>
+          <Text style={{ color: theme.text, lineHeight: 19, marginTop: 5 }}>
             {report.appeal_message}
           </Text>
         </View>
@@ -166,13 +180,13 @@ function ReportCard({
             marginTop: 10,
             borderRadius: 14,
             borderWidth: 1,
-            borderColor: '#dbeafe',
-            backgroundColor: '#eff6ff',
+            borderColor: theme.border,
+            backgroundColor: theme.accentSoft,
             padding: 11,
           }}
         >
-          <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '900' }}>Admin reply</Text>
-          <Text style={{ color: '#1e3a8a', lineHeight: 19, marginTop: 5 }}>
+          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>Admin reply</Text>
+          <Text style={{ color: theme.text, lineHeight: 19, marginTop: 5 }}>
             {report.admin_reply}
           </Text>
         </View>
@@ -182,6 +196,7 @@ function ReportCard({
         value={adminReplyDraft}
         onChangeText={onChangeReply}
         placeholder="Write an admin reply or resolution note..."
+        placeholderTextColor={theme.mutedText}
         multiline
         textAlignVertical="top"
         style={{
@@ -189,17 +204,17 @@ function ReportCard({
           minHeight: 84,
           borderRadius: 14,
           borderWidth: 1,
-          borderColor: '#dbe4ee',
-          backgroundColor: '#f8fafc',
+          borderColor: theme.border,
+          backgroundColor: theme.surfaceMuted,
           paddingHorizontal: 12,
           paddingVertical: 11,
-          color: '#0f172a',
+          color: theme.text,
           fontSize: 13,
         }}
       />
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
-        <ActionPill title={primaryTitle} icon="open-outline" onPress={onPrimaryPress} />
+        <ActionPill title={primaryTitle} icon="open-outline" onPress={onPrimaryPress} theme={theme} />
         {secondaryActions?.map((action) => (
           <ActionPill
             key={action.title}
@@ -207,13 +222,15 @@ function ReportCard({
             icon={action.icon}
             tint={action.tint}
             onPress={action.onPress}
+            theme={theme}
           />
         ))}
         <ActionPill
           title="Dismiss"
           icon="checkmark-done-outline"
-          tint="#64748b"
+          tint={theme.mutedText}
           onPress={onDismissPress}
+          theme={theme}
         />
       </View>
     </View>
@@ -221,6 +238,7 @@ function ReportCard({
 }
 
 export default function AdminReportsScreen({ navigation }) {
+  const { theme } = useAppSettings()
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
   const [adminUser, setAdminUser] = useState(null)
@@ -423,19 +441,19 @@ export default function AdminReportsScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#f7f7f7' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   if (!authorized) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 18, borderWidth: 1, borderColor: '#e2e8f0', padding: 16 }}>
-            <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '900' }}>Admin only</Text>
-            <Text style={{ color: '#64748b', marginTop: 8, lineHeight: 20 }}>
+          <View style={{ backgroundColor: theme.surface, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 16 }}>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>Admin only</Text>
+            <Text style={{ color: theme.mutedText, marginTop: 8, lineHeight: 20 }}>
               This report queue is only available for your first-level admin account.
             </Text>
           </View>
@@ -445,16 +463,16 @@ export default function AdminReportsScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f7f7f7' }} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28 }}
       >
-        <Text style={{ color: '#64748b', marginBottom: 14, lineHeight: 20 }}>
+        <Text style={{ color: theme.mutedText, marginBottom: 14, lineHeight: 20 }}>
           Review safety cases, respond to appeals, and keep a small history of what has been resolved already.
         </Text>
 
-        <SectionTitle title="Post reports" count={queue.propertyReports.length} />
+        <SectionTitle title="Post reports" count={queue.propertyReports.length} theme={theme} />
         {queue.propertyReports.length ? (
           queue.propertyReports.map((report) => (
             <ReportCard
@@ -467,6 +485,7 @@ export default function AdminReportsScreen({ navigation }) {
               detail={report.details || report.property?.location || ''}
               timeLabel={timeAgo(report.created_at)}
               primaryTitle="Open post"
+              theme={theme}
               onPrimaryPress={() => navigation.navigate('Property', { property: report.property })}
               onDismissPress={() => resolveProperty(report)}
               secondaryActions={[
@@ -494,12 +513,12 @@ export default function AdminReportsScreen({ navigation }) {
             />
           ))
         ) : (
-          <View style={{ backgroundColor: '#fff', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 18 }}>
-            <Text style={{ color: '#64748b' }}>No pending post reports right now.</Text>
+          <View style={{ backgroundColor: theme.surface, borderRadius: 18, padding: 16, borderWidth: 1, borderColor: theme.border, marginBottom: 18 }}>
+            <Text style={{ color: theme.mutedText }}>No pending post reports right now.</Text>
           </View>
         )}
 
-        <SectionTitle title="User reports" count={queue.userReports.length} />
+        <SectionTitle title="User reports" count={queue.userReports.length} theme={theme} />
         {queue.userReports.length ? (
           queue.userReports.map((report) => (
             <ReportCard
@@ -512,6 +531,7 @@ export default function AdminReportsScreen({ navigation }) {
               detail={report.details || ''}
               timeLabel={timeAgo(report.created_at)}
               primaryTitle="Open user"
+              theme={theme}
               onPrimaryPress={() => navigation.navigate('AdminUserDetail', {
                 userId: report.target_user_id,
               })}
@@ -519,14 +539,15 @@ export default function AdminReportsScreen({ navigation }) {
             />
           ))
         ) : (
-          <View style={{ backgroundColor: '#fff', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' }}>
-            <Text style={{ color: '#64748b' }}>No pending user reports right now.</Text>
+          <View style={{ backgroundColor: theme.surface, borderRadius: 18, padding: 16, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ color: theme.mutedText }}>No pending user reports right now.</Text>
           </View>
         )}
 
         <SectionTitle
           title="Resolved recently"
           count={queue.resolvedPropertyReports.length + queue.resolvedUserReports.length}
+          theme={theme}
         />
         {[...queue.resolvedPropertyReports, ...queue.resolvedUserReports]
           .sort((left, right) => new Date(right.resolved_at || right.created_at).getTime() - new Date(left.resolved_at || left.created_at).getTime())
@@ -535,21 +556,21 @@ export default function AdminReportsScreen({ navigation }) {
             <View
               key={`resolved-${report.id}`}
               style={{
-                backgroundColor: '#fff',
+                backgroundColor: theme.surface,
                 borderRadius: 18,
                 borderWidth: 1,
-                borderColor: '#e2e8f0',
+                borderColor: theme.border,
                 padding: 14,
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 14 }}>
+              <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }}>
                 {report.property?.title || report.target_profile?.display_name || report.target_profile?.email || 'Resolved case'}
               </Text>
-              <Text style={{ color: '#64748b', marginTop: 5, lineHeight: 19 }}>
+              <Text style={{ color: theme.mutedText, marginTop: 5, lineHeight: 19 }}>
                 {report.admin_reply || 'Case resolved by admin.'}
               </Text>
-              <Text style={{ color: '#94a3b8', marginTop: 8, fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: theme.mutedText, marginTop: 8, fontSize: 12, fontWeight: '700' }}>
                 {timeAgo(report.resolved_at || report.created_at)}
               </Text>
             </View>

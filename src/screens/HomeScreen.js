@@ -316,6 +316,8 @@ function countActiveFilters(filters, maxPrice) {
 }
 
 function FilterChip({ label, active, onPress, icon }) {
+  const { theme } = useAppSettings()
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -327,15 +329,15 @@ function FilterChip({ label, active, onPress, icon }) {
         paddingVertical: 8,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: active ? '#bfdbfe' : '#dbe4ee',
-        backgroundColor: active ? '#eff6ff' : '#fff',
+        borderColor: active ? theme.accent : theme.border,
+        backgroundColor: active ? theme.accentSoft : theme.surface,
       }}
     >
       {icon ? (
         <Ionicons
           name={icon}
           size={13}
-          color={active ? '#2563eb' : '#64748b'}
+          color={active ? theme.accent : theme.mutedText}
           style={{ marginRight: 5 }}
         />
       ) : null}
@@ -343,7 +345,7 @@ function FilterChip({ label, active, onPress, icon }) {
         style={{
           fontSize: 11,
           fontWeight: '800',
-          color: active ? '#1d4ed8' : '#475569',
+          color: active ? theme.accent : theme.text,
         }}
       >
         {label}
@@ -353,12 +355,14 @@ function FilterChip({ label, active, onPress, icon }) {
 }
 
 function FilterSection({ title, subtitle, children }) {
+  const { theme } = useAppSettings()
+
   return (
     <View style={{ gap: 10 }}>
       <View>
-        <Text style={{ fontSize: 13, fontWeight: '900', color: '#0f172a' }}>{title}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '900', color: theme.text }}>{title}</Text>
         {subtitle ? (
-          <Text style={{ marginTop: 3, fontSize: 11, color: '#64748b' }}>{subtitle}</Text>
+          <Text style={{ marginTop: 3, fontSize: 11, color: theme.mutedText }}>{subtitle}</Text>
         ) : null}
       </View>
       {children}
@@ -448,6 +452,7 @@ function getSearchTermsForPost(post) {
 }
 
 function SearchResultRow({ item, onPress }) {
+  const { theme } = useAppSettings()
   const ownerProfile = item.owner_profile || {}
   const ownerName = getProfileName(
     {
@@ -466,10 +471,10 @@ function SearchResultRow({ item, onPress }) {
       onPress={() => onPress(item)}
       activeOpacity={0.9}
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: theme.surface,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: theme.border,
         padding: 12,
         flexDirection: 'row',
         alignItems: 'center',
@@ -481,7 +486,7 @@ function SearchResultRow({ item, onPress }) {
           height: 62,
           borderRadius: 14,
           overflow: 'hidden',
-          backgroundColor: '#e2e8f0',
+          backgroundColor: theme.surfaceMuted,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -494,18 +499,18 @@ function SearchResultRow({ item, onPress }) {
           />
         ) : previewMedia?.type === 'video' ? (
           <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="play-circle" size={28} color="#0f172a" />
+            <Ionicons name="play-circle" size={28} color={theme.text} />
           </View>
         ) : (
-          <Ionicons name="home-outline" size={24} color="#64748b" />
+          <Ionicons name="home-outline" size={24} color={theme.mutedText} />
         )}
       </View>
 
       <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text numberOfLines={1} style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>
+        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
           {item.title || 'Property post'}
         </Text>
-        <Text numberOfLines={1} style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+        <Text numberOfLines={1} style={{ marginTop: 4, color: theme.mutedText, fontSize: 12 }}>
           {ownerName}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
@@ -514,34 +519,34 @@ function SearchResultRow({ item, onPress }) {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: '#f8fafc',
+                backgroundColor: theme.surfaceMuted,
                 borderRadius: 999,
                 paddingHorizontal: 7,
                 paddingVertical: 3,
                 marginRight: 6,
               }}
             >
-              <Ionicons name="location-outline" size={10} color="#64748b" style={{ marginRight: 3 }} />
-              <Text style={{ color: '#475569', fontSize: 10, fontWeight: '800' }}>{locationLabel}</Text>
+              <Ionicons name="location-outline" size={10} color={theme.mutedText} style={{ marginRight: 3 }} />
+              <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '800' }}>{locationLabel}</Text>
             </View>
           ) : null}
 
           <View
             style={{
-              backgroundColor: '#fff7ed',
+              backgroundColor: theme.accentSoft,
               borderRadius: 999,
               paddingHorizontal: 7,
               paddingVertical: 3,
             }}
           >
-            <Text style={{ color: '#ea580c', fontSize: 10, fontWeight: '900' }}>
+            <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '900' }}>
               {formatCurrency(item.price)}
             </Text>
           </View>
         </View>
       </View>
 
-      <Ionicons name="arrow-forward" size={18} color="#94a3b8" />
+      <Ionicons name="arrow-forward" size={18} color={theme.mutedText} />
     </TouchableOpacity>
   )
 }
@@ -3137,54 +3142,54 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           <Pressable
             onPress={() => {}}
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 22,
               borderWidth: 1,
-              borderColor: '#dbe4ee',
+              borderColor: theme.border,
               maxHeight: '80%',
               overflow: 'hidden',
             }}
           >
-            <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: '#eef2f7' }}>
+            <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: '#dbe4ee',
+                  borderColor: theme.border,
                   paddingHorizontal: 12,
                   height: 48,
                 }}
               >
-                <Ionicons name="search" size={18} color="#64748b" />
+                <Ionicons name="search" size={18} color={theme.mutedText} />
                 <TextInput
                   value={draftSearchQuery}
                   onChangeText={setDraftSearchQuery}
                   onSubmitEditing={() => applySearch()}
                   autoFocus
                   placeholder="Search by area, owner, title, or rent"
-                  placeholderTextColor="#94a3b8"
-                  style={{ flex: 1, marginLeft: 8, color: '#0f172a', fontSize: 14 }}
+                  placeholderTextColor={theme.mutedText}
+                  style={{ flex: 1, marginLeft: 8, color: theme.text, fontSize: 14 }}
                   returnKeyType="search"
                 />
                 {draftSearchQuery ? (
                   <TouchableOpacity onPress={() => setDraftSearchQuery('')}>
-                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                    <Ionicons name="close-circle" size={18} color={theme.mutedText} />
                   </TouchableOpacity>
                 ) : null}
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '800' }}>
+                <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800' }}>
                   {draftSearchQuery
                     ? `${searchResults.length} results ready`
                     : 'Search rentals fast'}
                 </Text>
 
                 <TouchableOpacity onPress={closeSearch}>
-                  <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>Cancel</Text>
+                  <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '900' }}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3261,7 +3266,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     style={{
                       height: 46,
                       borderRadius: 16,
-                      backgroundColor: '#2563eb',
+                      backgroundColor: theme.accent,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
@@ -3273,10 +3278,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 </>
               ) : (
                 <View style={{ paddingVertical: 10 }}>
-                  <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '900' }}>
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
                     No results for "{draftSearchQuery}"
                   </Text>
-                  <Text style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
+                  <Text style={{ marginTop: 6, color: theme.mutedText, fontSize: 12 }}>
                     Try another area, owner name, post title, or a lower rent number.
                   </Text>
                 </View>
@@ -3303,7 +3308,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           <Pressable
             onPress={() => {}}
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               paddingTop: 12,
@@ -3317,7 +3322,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 width: 42,
                 height: 5,
                 borderRadius: 999,
-                backgroundColor: '#dbe4ee',
+                backgroundColor: theme.border,
                 alignSelf: 'center',
                 marginBottom: 12,
               }}
@@ -3332,10 +3337,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               }}
             >
               <View>
-                <Text style={{ fontSize: 17, fontWeight: '900', color: '#0f172a' }}>
+                <Text style={{ fontSize: 17, fontWeight: '900', color: theme.text }}>
                   Advanced Filters
                 </Text>
-                <Text style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>
+                <Text style={{ marginTop: 2, fontSize: 11, color: theme.mutedText }}>
                   Narrow rentals by budget, layout, pets, and trusted owners.
                 </Text>
               </View>
@@ -3346,12 +3351,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   width: 34,
                   height: 34,
                   borderRadius: 17,
-                  backgroundColor: '#f8fafc',
+                  backgroundColor: theme.surfaceMuted,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="close" size={18} color="#0f172a" />
+                <Ionicons name="close" size={18} color={theme.text} />
               </TouchableOpacity>
             </View>
 
@@ -3376,15 +3381,15 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   value={draftFilters.location}
                   onChangeText={(value) => updateDraftFilter('location', value)}
                   placeholder="Type area, city, or neighborhood"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={theme.mutedText}
                   style={{
                     height: 44,
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: '#dbe4ee',
-                    backgroundColor: '#f8fafc',
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
                     paddingHorizontal: 12,
-                    color: '#0f172a',
+                    color: theme.text,
                     fontSize: 13,
                   }}
                 />
@@ -3396,20 +3401,20 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
               >
                 <View
                   style={{
-                    backgroundColor: '#f8fafc',
+                    backgroundColor: theme.surfaceMuted,
                     borderRadius: 16,
                     borderWidth: 1,
-                    borderColor: '#e2e8f0',
+                    borderColor: theme.border,
                     paddingHorizontal: 12,
                     paddingVertical: 12,
                     gap: 10,
                   }}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '800' }}>
+                    <Text style={{ fontSize: 11, color: theme.mutedText, fontWeight: '800' }}>
                       Min
                     </Text>
-                    <Text style={{ fontSize: 11, color: '#0f172a', fontWeight: '900' }}>
+                    <Text style={{ fontSize: 11, color: theme.text, fontWeight: '900' }}>
                       {formatCurrency(draftFilters.minPrice)}
                     </Text>
                   </View>
@@ -3418,17 +3423,17 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     maximumValue={filterBudgetCap}
                     step={Math.max(500, Math.round(filterBudgetCap / 40))}
                     value={draftFilters.minPrice}
-                    minimumTrackTintColor="#2563eb"
-                    maximumTrackTintColor="#cbd5e1"
-                    thumbTintColor="#2563eb"
+                    minimumTrackTintColor={theme.accent}
+                    maximumTrackTintColor={theme.border}
+                    thumbTintColor={theme.accent}
                     onValueChange={(value) => updateDraftFilter('minPrice', value)}
                   />
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '800' }}>
+                    <Text style={{ fontSize: 11, color: theme.mutedText, fontWeight: '800' }}>
                       Max
                     </Text>
-                    <Text style={{ fontSize: 11, color: '#0f172a', fontWeight: '900' }}>
+                    <Text style={{ fontSize: 11, color: theme.text, fontWeight: '900' }}>
                       {formatCurrency(draftFilters.maxPrice)}
                     </Text>
                   </View>
@@ -3437,9 +3442,9 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     maximumValue={filterBudgetCap}
                     step={Math.max(500, Math.round(filterBudgetCap / 40))}
                     value={draftFilters.maxPrice}
-                    minimumTrackTintColor="#2563eb"
-                    maximumTrackTintColor="#cbd5e1"
-                    thumbTintColor="#2563eb"
+                    minimumTrackTintColor={theme.accent}
+                    maximumTrackTintColor={theme.border}
+                    thumbTintColor={theme.accent}
                     onValueChange={(value) => updateDraftFilter('maxPrice', value)}
                   />
                 </View>
@@ -3610,15 +3615,15 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   flex: 1.15,
                   height: 46,
                   borderRadius: 15,
-                  backgroundColor: '#eff6ff',
+                  backgroundColor: theme.accentSoft,
                   borderWidth: 1,
-                  borderColor: '#bfdbfe',
+                  borderColor: theme.accent,
                   alignItems: 'center',
                   justifyContent: 'center',
                   opacity: savingSearch ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '900' }}>
+                <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '900' }}>
                   {savingSearch ? 'Saving...' : 'Save Alert'}
                 </Text>
               </TouchableOpacity>
@@ -3629,7 +3634,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   flex: 1,
                   height: 46,
                   borderRadius: 15,
-                  backgroundColor: '#2563eb',
+                  backgroundColor: theme.accent,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -3788,17 +3793,17 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
           <Pressable
             onPress={() => {}}
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: theme.surface,
               borderRadius: 22,
               overflow: 'hidden',
               borderWidth: 1,
-              borderColor: '#dbe4ee',
+              borderColor: theme.border,
             }}
           >
             {selectedBanner?.image_url ? (
               <Image
                 source={{ uri: selectedBanner.image_url }}
-                style={{ width: '100%', height: 220, backgroundColor: '#dbe4ee' }}
+                style={{ width: '100%', height: 220, backgroundColor: theme.surfaceMuted }}
                 resizeMode="cover"
               />
             ) : null}
@@ -3810,13 +3815,16 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                   paddingHorizontal: 8,
                   paddingVertical: 4,
                   borderRadius: 999,
-                  backgroundColor: selectedBanner?.kind === 'offer' ? '#fff7ed' : '#eff6ff',
+                  backgroundColor:
+                    selectedBanner?.kind === 'offer'
+                      ? 'rgba(234, 88, 12, 0.14)'
+                      : theme.accentSoft,
                   marginBottom: 10,
                 }}
               >
                 <Text
                   style={{
-                    color: selectedBanner?.kind === 'offer' ? '#c2410c' : '#1d4ed8',
+                    color: selectedBanner?.kind === 'offer' ? '#ea580c' : theme.accent,
                     fontSize: 10,
                     fontWeight: '900',
                     textTransform: 'uppercase',
@@ -3826,12 +3834,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                 </Text>
               </View>
 
-              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900', lineHeight: 24 }}>
+              <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', lineHeight: 24 }}>
                 {selectedBanner?.title || 'Featured banner'}
               </Text>
 
               {selectedBanner?.subtitle ? (
-                <Text style={{ color: '#64748b', fontSize: 13, lineHeight: 20, marginTop: 8 }}>
+                <Text style={{ color: theme.mutedText, fontSize: 13, lineHeight: 20, marginTop: 8 }}>
                   {selectedBanner.subtitle}
                 </Text>
               ) : null}
@@ -3843,12 +3851,14 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                     flex: 1,
                     minHeight: 44,
                     borderRadius: 14,
-                    backgroundColor: '#e2e8f0',
+                    backgroundColor: theme.surfaceMuted,
+                    borderWidth: 1,
+                    borderColor: theme.border,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#334155', fontSize: 13, fontWeight: '900' }}>
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                     Close
                   </Text>
                 </TouchableOpacity>
@@ -3873,7 +3883,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
                       flex: 1.2,
                       minHeight: 44,
                       borderRadius: 14,
-                      backgroundColor: '#2563eb',
+                      backgroundColor: theme.accent,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
