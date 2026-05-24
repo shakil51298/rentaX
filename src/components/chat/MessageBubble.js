@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Image,
@@ -14,11 +15,14 @@ import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 import {
+  formatCurrencyAmount,
   formatClock,
   formatDayLabel,
   formatDuration,
   formatDurationSeconds,
   getCallPresentation,
+  isLocationMessage,
+  isRedPacketMessage,
   isSameDay,
 } from '../../lib/chatUtils'
 
@@ -52,6 +56,8 @@ function ChatVideo({ uri }) {
 
 function isDocumentMessage(message) {
   if (!message?.media_url) return false
+  if (isLocationMessage(message)) return false
+  if (isRedPacketMessage(message)) return false
 
   const type = String(message.message_type || '')
 
@@ -230,6 +236,8 @@ function VoiceMessage({ message, isMine }) {
 function getReplySnippet(message) {
   if (!message) return ''
   if (message.deleted_for_everyone_at) return 'This message was deleted'
+  if (isLocationMessage(message)) return 'Shared location'
+  if (isRedPacketMessage(message)) return 'Red packet'
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
@@ -331,6 +339,52 @@ function ReplyPreviewMedia({ message, isMine }) {
     )
   }
 
+  if (isLocationMessage(message)) {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          flexShrink: 0,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dcfce7',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="location"
+          size={18}
+          color={isMine ? '#fff' : '#16a34a'}
+        />
+      </View>
+    )
+  }
+
+  if (isRedPacketMessage(message)) {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          flexShrink: 0,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#fee2e2',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="gift"
+          size={18}
+          color={isMine ? '#fff' : '#dc2626'}
+        />
+      </View>
+    )
+  }
+
   if (isDocumentMessage(message)) {
     return (
       <View
@@ -413,6 +467,240 @@ function CallMessage({ message, isMine }) {
   )
 }
 
+function LocationMessage({ message, isMine }) {
+  const label = message.media_name || 'Shared location'
+  const url = message.media_url
+
+  async function openLocation() {
+    if (!url) return
+
+    try {
+      await Linking.openURL(url)
+    } catch {
+      Alert.alert('Location unavailable', 'This location could not be opened right now.')
+    }
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={openLocation}
+      activeOpacity={0.86}
+      style={{
+        width: 238,
+        paddingHorizontal: 5,
+        paddingVertical: 4,
+      }}
+    >
+      <View
+        style={{
+          height: 92,
+          borderRadius: 14,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#dcfce7',
+          overflow: 'hidden',
+          marginBottom: 8,
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            left: -20,
+            top: 18,
+            width: 280,
+            height: 1,
+            backgroundColor: isMine ? 'rgba(255,255,255,0.2)' : 'rgba(22, 163, 74, 0.2)',
+            transform: [{ rotate: '-12deg' }],
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            left: -18,
+            bottom: 22,
+            width: 280,
+            height: 1,
+            backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : 'rgba(22, 163, 74, 0.18)',
+            transform: [{ rotate: '14deg' }],
+          }}
+        />
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <View
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 23,
+              backgroundColor: isMine ? 'rgba(255,255,255,0.26)' : '#fff',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="location" size={24} color={isMine ? '#fff' : '#16a34a'} />
+          </View>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              color: isMine ? '#fff' : '#0f172a',
+              fontSize: 14,
+              fontWeight: '900',
+            }}
+            numberOfLines={1}
+          >
+            Shared location
+          </Text>
+          <Text
+            style={{
+              color: isMine ? 'rgba(255,255,255,0.82)' : '#64748b',
+              fontSize: 12,
+              marginTop: 2,
+            }}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </View>
+        <Ionicons
+          name="open-outline"
+          size={18}
+          color={isMine ? 'rgba(255,255,255,0.85)' : '#16a34a'}
+        />
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+function RedPacketMessage({
+  message,
+  isMine,
+  redPacket,
+  onOpenRedPacket,
+  opening,
+}) {
+  const hasPacket = Boolean(redPacket?.id)
+  const opened = Boolean(redPacket?.opened)
+  const canOpen = hasPacket && !isMine && !opened
+  const wish = redPacket?.wish || message.body || 'Best wishes'
+  const photoUrl = redPacket?.photo_url || message.media_url
+
+  return (
+    <View
+      style={{
+        width: 238,
+        borderRadius: 18,
+        overflow: 'hidden',
+        backgroundColor: '#b91c1c',
+      }}
+    >
+      <View
+        style={{
+          paddingHorizontal: 14,
+          paddingTop: 14,
+          paddingBottom: 12,
+          backgroundColor: '#dc2626',
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: '#facc15',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 10,
+            }}
+          >
+            <Ionicons name="gift" size={21} color="#7f1d1d" />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: '#fff7ed', fontSize: 15, fontWeight: '900' }}>
+              Red packet
+            </Text>
+            <Text
+              style={{ color: 'rgba(255,255,255,0.82)', fontSize: 12, marginTop: 2 }}
+              numberOfLines={1}
+            >
+              {wish}
+            </Text>
+          </View>
+        </View>
+
+        {photoUrl ? (
+          <Image
+            source={{ uri: photoUrl }}
+            style={{
+              width: '100%',
+              height: 86,
+              borderRadius: 14,
+              marginTop: 12,
+              backgroundColor: 'rgba(255,255,255,0.18)',
+            }}
+            resizeMode="cover"
+          />
+        ) : null}
+      </View>
+
+      <View
+        style={{
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          backgroundColor: '#991b1b',
+          alignItems: 'center',
+        }}
+      >
+        {opened || isMine ? (
+          <>
+            <Text style={{ color: '#fde68a', fontSize: 19, fontWeight: '900' }}>
+              {hasPacket ? formatCurrencyAmount(redPacket.amount, redPacket.currency) : 'Gift'}
+            </Text>
+            <Text style={{ color: 'rgba(255,255,255,0.76)', fontSize: 11, marginTop: 3 }}>
+              {opened ? 'Opened and added to account' : 'Waiting to be opened'}
+            </Text>
+          </>
+        ) : (
+          <TouchableOpacity
+            onPress={() => onOpenRedPacket?.(redPacket)}
+            disabled={!canOpen || opening}
+            activeOpacity={0.86}
+            style={{
+              width: 86,
+              height: 86,
+              borderRadius: 43,
+              backgroundColor: '#facc15',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: canOpen && !opening ? 1 : 0.65,
+            }}
+          >
+            {opening ? (
+              <ActivityIndicator color="#7f1d1d" />
+            ) : (
+              <Text style={{ color: '#7f1d1d', fontSize: 16, fontWeight: '900' }}>
+                Open
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {!hasPacket ? (
+          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+            Run the red packet SQL to enable opening.
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  )
+}
+
 function DocumentMessage({ message, isMine }) {
   async function openDocument() {
     if (!message?.media_url) return
@@ -486,7 +774,14 @@ function DocumentMessage({ message, isMine }) {
   )
 }
 
-function renderMessageContent(item, isMine, onOpenMedia) {
+function renderMessageContent(
+  item,
+  isMine,
+  onOpenMedia,
+  redPacket,
+  onOpenRedPacket,
+  openingRedPacketId
+) {
   if (item.deleted_for_everyone_at) {
     return (
       <Text
@@ -528,6 +823,22 @@ function renderMessageContent(item, isMine, onOpenMedia) {
     return <CallMessage message={item} isMine={isMine} />
   }
 
+  if (isLocationMessage(item)) {
+    return <LocationMessage message={item} isMine={isMine} />
+  }
+
+  if (isRedPacketMessage(item)) {
+    return (
+      <RedPacketMessage
+        message={item}
+        isMine={isMine}
+        redPacket={redPacket}
+        onOpenRedPacket={onOpenRedPacket}
+        opening={Boolean(redPacket?.id && openingRedPacketId === redPacket.id)}
+      />
+    )
+  }
+
   if (isDocumentMessage(item)) {
     return <DocumentMessage message={item} isMine={isMine} />
   }
@@ -558,6 +869,9 @@ export default function MessageBubble({
   onPressCallHistory,
   onToggleReaction,
   onLongPressMessage,
+  redPacket,
+  onOpenRedPacket,
+  openingRedPacketId,
   outgoingBubbleColor = '#1877F2',
   highlighted = false,
 }) {
@@ -740,7 +1054,14 @@ export default function MessageBubble({
               </Pressable>
             ) : null}
 
-            {renderMessageContent(item, isMine, onOpenMedia)}
+            {renderMessageContent(
+              item,
+              isMine,
+              onOpenMedia,
+              redPacket,
+              onOpenRedPacket,
+              openingRedPacketId
+            )}
 
             <View
               style={{

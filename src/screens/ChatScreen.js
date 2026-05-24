@@ -8,8 +8,10 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,6 +25,9 @@ import * as DocumentPicker from 'expo-document-picker'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
+import * as ExpoLocation from 'expo-location'
+import Constants from 'expo-constants'
+import MapView, { Marker } from 'react-native-maps'
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -51,12 +56,18 @@ import {
 } from '../lib/chatAppearance'
 import { useAppSettings } from '../lib/appSettings'
 import {
+  CHAT_LOCATION_MIME_TYPE,
+  CHAT_RED_PACKET_MIME_TYPE,
+  formatCurrencyAmount,
   formatDuration,
   getCallPresentation,
   getDirectTarget,
   getPropertyId,
+  isLocationMessage,
+  isRedPacketMessage,
   mediaLabel,
 } from '../lib/chatUtils'
+import { fetchWalletBalance } from '../lib/wallet'
 import {
   buildAgoraChannelName,
   canUseAgoraNativeModule,
@@ -64,8 +75,37 @@ import {
   sendAgoraCallInvite,
 } from '../lib/agoraCall'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
+import { getLocationSelectionFromCoords } from '../lib/location'
 
 const EMPTY_ROUTE_PARAMS = {}
+const DEFAULT_CHAT_LOCATION_REGION = {
+  latitude: 23.8103,
+  longitude: 90.4125,
+  latitudeDelta: 0.018,
+  longitudeDelta: 0.018,
+}
+const HAS_ANDROID_GOOGLE_MAPS_KEY =
+  Platform.OS !== 'android' ||
+  Boolean(Constants?.expoConfig?.extra?.googleMapsEnabled)
+const QUICK_EMOJIS = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
+  '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘',
+  '😎', '🤩', '🥳', '🥹', '😌', '🤔', '🫡', '🤗',
+  '😋', '😜', '🤪', '😝', '😏', '😬', '🙄', '😮‍💨',
+  '😢', '😭', '😤', '😡', '😴', '🤒', '😮', '😱',
+  '😳', '🥵', '🥶', '😵‍💫', '🤯', '🤭', '🫢', '🤫',
+  '👍', '👎', '👌', '✌️', '🤝', '🙏', '👏', '🫶',
+  '🙌', '👋', '🤙', '💪', '🫰', '👀', '🧠', '💅',
+  '❤️', '🧡', '💛', '💚', '💙', '💜', '🤍', '💔',
+  '💕', '💞', '💘', '💖', '💗', '💓', '💌', '💋',
+  '🔥', '✨', '💫', '💯', '⭐', '🌟', '🎉', '🎁',
+  '✅', '☑️', '❌', '❗', '❓', '💬', '📞', '📷',
+  '📎', '📄', '📩', '📌', '📝', '📤', '📥', '🔔',
+  '🏠', '🏡', '🏢', '🛏️', '🛁', '🚗', '🔑', '📍',
+  '🛋️', '🍽️', '🧹', '🧺', '🌆', '🌇', '🗺️', '🚪',
+  '💰', '💳', '🧾', '📅', '⏰', '🚀', '☕', '🌙',
+  '☀️', '🌧️', '🍕', '🍔', '🍜', '🎧', '🎵', '🎬',
+]
 
 function normalizeMeteringLevel(metering) {
   if (typeof metering !== 'number' || Number.isNaN(metering)) {
@@ -137,6 +177,26 @@ function sortConversationsByActivity(conversations = []) {
     (firstItem, secondItem) =>
       getConversationActivityTime(secondItem) - getConversationActivityTime(firstItem)
   )
+}
+
+function normalizeConversationSearch(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function getConversationSearchText(conversation) {
+  const profile = conversation?.other_profile || {}
+
+  return [
+    getProfileName(profile, ''),
+    profile.display_name,
+    profile.email,
+    conversation?.last_message,
+    conversation?.property_title,
+    conversation?.property_location,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
 }
 
 function getOtherParticipantId(conversation, currentUserId) {
@@ -215,6 +275,8 @@ function getMessageReactionField(message, userId) {
 function getReplySnippet(message) {
   if (!message) return ''
   if (message.deleted_for_everyone_at) return 'This message was deleted'
+  if (isLocationMessage(message)) return 'Shared location'
+  if (isRedPacketMessage(message)) return 'Red packet'
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
@@ -236,6 +298,24 @@ function getConversationSummaryFromMessage(message) {
     return {
       last_message: getCallPresentation(message).summaryLabel,
       last_message_type: 'call',
+      last_message_at: message.created_at,
+      last_sender_id: message.sender_id,
+    }
+  }
+
+  if (isLocationMessage(message)) {
+    return {
+      last_message: 'Shared location',
+      last_message_type: 'file',
+      last_message_at: message.created_at,
+      last_sender_id: message.sender_id,
+    }
+  }
+
+  if (isRedPacketMessage(message)) {
+    return {
+      last_message: 'Red packet',
+      last_message_type: 'file',
       last_message_at: message.created_at,
       last_sender_id: message.sender_id,
     }
@@ -296,11 +376,25 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [conversationProperty, setConversationProperty] = useState(directProperty)
   const [messages, setMessages] = useState([])
   const [conversationRows, setConversationRows] = useState([])
+  const [conversationSearchQuery, setConversationSearchQuery] = useState('')
+  const [quickChatMenuVisible, setQuickChatMenuVisible] = useState(false)
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
+  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false)
+  const [attachmentPickerVisible, setAttachmentPickerVisible] = useState(false)
+  const [attachmentPageIndex, setAttachmentPageIndex] = useState(0)
+  const [locationPreview, setLocationPreview] = useState(null)
+  const [locationPreviewLoading, setLocationPreviewLoading] = useState(false)
+  const [redPacketComposerVisible, setRedPacketComposerVisible] = useState(false)
+  const [redPacketAmount, setRedPacketAmount] = useState('')
+  const [redPacketWish, setRedPacketWish] = useState('Best wishes')
+  const [redPacketPhotoAsset, setRedPacketPhotoAsset] = useState(null)
+  const [sendingRedPacket, setSendingRedPacket] = useState(false)
+  const [redPacketsByMessageId, setRedPacketsByMessageId] = useState({})
+  const [openingRedPacketId, setOpeningRedPacketId] = useState(null)
   const [pendingVoiceNote, setPendingVoiceNote] = useState(null)
   const [recordingWaveform, setRecordingWaveform] = useState([])
   const [openedFromList, setOpenedFromList] = useState(false)
@@ -379,6 +473,59 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }, delayMs)
   }
 
+  async function loadRedPacketsForMessages(messageRows = [], currentUserId = null) {
+    const redPacketMessageIds = messageRows
+      .filter((message) => isRedPacketMessage(message))
+      .map((message) => message.id)
+      .filter(Boolean)
+
+    if (redPacketMessageIds.length === 0) {
+      setRedPacketsByMessageId({})
+      return
+    }
+
+    const { data: packets, error } = await supabase
+      .from('chat_red_packets')
+      .select('*')
+      .in('message_id', redPacketMessageIds)
+
+    if (error) {
+      setRedPacketsByMessageId({})
+      return
+    }
+
+    const packetIds = (packets || []).map((packet) => packet.id)
+    let entriesByPacketId = {}
+
+    if (packetIds.length > 0) {
+      const { data: entries } = await supabase
+        .from('wallet_entries')
+        .select('id, user_id, red_packet_id, amount, currency, source, created_at')
+        .in('red_packet_id', packetIds)
+
+      entriesByPacketId = (entries || []).reduce((itemsByPacketId, entry) => {
+        if (entry.source === 'red_packet_received' || entry.source === 'red_packet') {
+          itemsByPacketId[entry.red_packet_id] = entry
+        }
+        return itemsByPacketId
+      }, {})
+    }
+
+    const nextPackets = (packets || []).reduce((itemsByMessageId, packet) => {
+      const openedEntry = entriesByPacketId[packet.id] || null
+
+      itemsByMessageId[packet.message_id] = {
+        ...packet,
+        opened: Boolean(openedEntry),
+        openedEntry,
+        creditedToMe: Boolean(openedEntry && openedEntry.user_id === currentUserId),
+      }
+      return itemsByMessageId
+    }, {})
+
+    setRedPacketsByMessageId(nextPackets)
+  }
+
   const loadMessages = useCallback(async (
     conversationId,
     currentUserId,
@@ -415,6 +562,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     ).filter((item) => isMessageVisibleForUser(item, currentUserId))
 
     setMessages(visibleMessages)
+    loadRedPacketsForMessages(visibleMessages, currentUserId).catch(() => {
+      setRedPacketsByMessageId({})
+    })
 
     if (currentUserId) {
       await supabase
@@ -864,8 +1014,18 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     requestAnimationFrame(() => scrollToBottom(true))
     setSending(true)
 
+    const isSharedLocation =
+      mediaMimeType === CHAT_LOCATION_MIME_TYPE
+    const isRedPacket =
+      mediaMimeType === CHAT_RED_PACKET_MIME_TYPE
     const lastMessage =
-      messageType === 'text' ? cleanBody : mediaLabel(messageType)
+      isSharedLocation
+        ? 'Shared location'
+        : isRedPacket
+          ? 'Red packet'
+        : messageType === 'text'
+          ? cleanBody
+          : mediaLabel(messageType)
 
     let insertError = null
     let insertedMessage = null
@@ -895,7 +1055,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     insertedMessage = data
     insertError = error
 
-    if (insertError && messageType === 'file') {
+    if (insertError && messageType === 'file' && !isSharedLocation && !isRedPacket) {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('chat_messages')
         .insert({
@@ -914,7 +1074,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       setReplyTarget((current) => current || replySnapshot)
       Alert.alert('Message failed', insertError.message)
       setSending(false)
-      return
+      return null
     }
 
     if (insertedMessage) {
@@ -952,7 +1112,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       recipientId: otherUser.id,
       title: currentUserName,
       body:
-        messageType === 'text'
+        isSharedLocation
+          ? 'Shared a location'
+          : isRedPacket
+            ? 'Sent a red packet'
+          : messageType === 'text'
           ? cleanBody.slice(0, 120)
           : `Sent a ${mediaLabel(messageType).toLowerCase()}`,
       data: {
@@ -970,6 +1134,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
     await updateMyPresence({ online: true, typing: false })
     setSending(false)
+    return insertedMessage
   }
 
   async function sendTextMessage() {
@@ -1167,9 +1332,304 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }
 
+  async function openLocationPreview() {
+    if (!currentUser?.id || uploading || sending || !conversation?.id) return
+
+    try {
+      setLocationPreview(null)
+      setLocationPreviewLoading(true)
+
+      const permission = await ExpoLocation.requestForegroundPermissionsAsync()
+
+      if (permission.status !== 'granted') {
+        Alert.alert('Location needed', 'Please allow location access to share your current location.')
+        return
+      }
+
+      const position = await ExpoLocation.getCurrentPositionAsync({
+        accuracy: ExpoLocation.Accuracy.Balanced,
+      })
+      const coords = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      }
+      let locationLabel = 'Current location'
+
+      try {
+        const selectedLocation = await getLocationSelectionFromCoords(coords, 'Current location')
+        locationLabel =
+          selectedLocation?.areaLabel ||
+          selectedLocation?.label ||
+          selectedLocation?.fullLabel ||
+          locationLabel
+      } catch {
+        locationLabel = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+      }
+
+      const mapsUrl =
+        `https://www.google.com/maps/search/?api=1&query=${coords.latitude},${coords.longitude}`
+
+      setLocationPreview({
+        ...coords,
+        label: locationLabel,
+        mapsUrl,
+      })
+    } catch (error) {
+      Alert.alert('Location unavailable', error?.message || 'Could not share your location right now.')
+    } finally {
+      setLocationPreviewLoading(false)
+    }
+  }
+
+  async function sendLocationPreview() {
+    if (!locationPreview || uploading || sending) return
+
+    await sendMessage({
+      body: 'Shared location',
+      messageType: 'file',
+      mediaUrl: locationPreview.mapsUrl,
+      mediaMimeType: CHAT_LOCATION_MIME_TYPE,
+      mediaName: locationPreview.label || 'Current location',
+    })
+    setLocationPreview(null)
+  }
+
+  function resetRedPacketComposer() {
+    setRedPacketAmount('')
+    setRedPacketWish('Best wishes')
+    setRedPacketPhotoAsset(null)
+  }
+
+  function parseRedPacketAmountInput(value) {
+    return Number(String(value || '').replace(/[^\d.]/g, ''))
+  }
+
+  async function pickRedPacketPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.9,
+    })
+
+    if (result.canceled || !result.assets?.length) return
+
+    setRedPacketPhotoAsset(result.assets[0])
+  }
+
+  async function sendRedPacket() {
+    if (!currentUser?.id || !conversation?.id || !otherUser?.id || sending || sendingRedPacket) return
+
+    const amount = parseRedPacketAmountInput(redPacketAmount)
+    const wish = redPacketWish.trim() || 'Best wishes'
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('Amount needed', 'Add a valid gift amount before sending.')
+      return
+    }
+
+    if (amount > 500000) {
+      Alert.alert('Amount too high', 'Red packet amount can be up to 500,000 BDT.')
+      return
+    }
+
+    try {
+      setSendingRedPacket(true)
+
+      const { error: redPacketSetupError } = await supabase
+        .from('chat_red_packets')
+        .select('id')
+        .limit(1)
+
+      if (redPacketSetupError) {
+        throw redPacketSetupError
+      }
+
+      const walletBalance = await fetchWalletBalance(currentUser.id, 'BDT')
+
+      if (walletBalance < amount) {
+        Alert.alert(
+          'Not enough wallet balance',
+          `Your wallet has ${formatCurrencyAmount(walletBalance, 'BDT')}. Request e-money from your Wallet first.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Wallet', onPress: () => navigation.navigate('Wallet') },
+          ]
+        )
+        return
+      }
+
+      let photoUrl = null
+
+      if (redPacketPhotoAsset?.uri) {
+        const uploadResult = await uploadMediaAsset({
+          uri: redPacketPhotoAsset.uri,
+          type: 'image',
+          mimeType: redPacketPhotoAsset.mimeType,
+          userId: currentUser.id,
+          bucket: CHAT_MEDIA_BUCKET,
+        })
+        photoUrl = uploadResult.mediaUrl
+      }
+
+      const insertedMessage = await sendMessage({
+        body: wish,
+        messageType: 'file',
+        mediaUrl: photoUrl,
+        mediaMimeType: CHAT_RED_PACKET_MIME_TYPE,
+        mediaName: 'Red packet',
+      })
+
+      if (!insertedMessage?.id) {
+        throw new Error('Could not create the red packet message.')
+      }
+
+      const { data: packet, error } = await supabase
+        .from('chat_red_packets')
+        .insert({
+          message_id: insertedMessage.id,
+          conversation_id: conversation.id,
+          sender_id: currentUser.id,
+          receiver_id: otherUser.id,
+          amount,
+          currency: 'BDT',
+          wish,
+          photo_url: photoUrl,
+        })
+        .select('*')
+        .single()
+
+      if (error) {
+        throw error
+      }
+
+      const { error: debitError } = await supabase
+        .from('wallet_entries')
+        .insert({
+          user_id: currentUser.id,
+          red_packet_id: packet.id,
+          amount: -amount,
+          currency: 'BDT',
+          source: 'red_packet_sent',
+        })
+
+      if (debitError) {
+        throw debitError
+      }
+
+      setRedPacketsByMessageId((current) => ({
+        ...current,
+        [insertedMessage.id]: {
+          ...packet,
+          opened: false,
+          openedEntry: null,
+        },
+      }))
+      setRedPacketComposerVisible(false)
+      resetRedPacketComposer()
+    } catch (error) {
+      Alert.alert(
+        'Red packet failed',
+        error?.message || 'Could not send this red packet. Run supabase-red-packet-features.sql if this is the first setup.'
+      )
+    } finally {
+      setSendingRedPacket(false)
+    }
+  }
+
+  async function openRedPacket(redPacket) {
+    if (!redPacket?.id || !currentUser?.id || openingRedPacketId) return
+
+    if (redPacket.receiver_id !== currentUser.id) {
+      Alert.alert('Red packet', 'Only the receiver can open this red packet.')
+      return
+    }
+
+    try {
+      setOpeningRedPacketId(redPacket.id)
+
+      const { data: entry, error } = await supabase
+        .from('wallet_entries')
+        .insert({
+          user_id: currentUser.id,
+          red_packet_id: redPacket.id,
+          amount: redPacket.amount,
+          currency: redPacket.currency || 'BDT',
+          source: 'red_packet_received',
+        })
+        .select('id, user_id, red_packet_id, amount, currency, source, created_at')
+        .single()
+
+      if (error) {
+        if (String(error.message || '').toLowerCase().includes('duplicate')) {
+          const { data: existingEntry } = await supabase
+            .from('wallet_entries')
+            .select('id, user_id, red_packet_id, amount, currency, source, created_at')
+            .eq('red_packet_id', redPacket.id)
+            .eq('source', 'red_packet_received')
+            .maybeSingle()
+
+          if (existingEntry) {
+            setRedPacketsByMessageId((current) => {
+              const next = { ...current }
+
+              Object.keys(next).forEach((messageId) => {
+                if (next[messageId]?.id === redPacket.id) {
+                  next[messageId] = {
+                    ...next[messageId],
+                    opened: true,
+                    openedEntry: existingEntry,
+                    creditedToMe: existingEntry.user_id === currentUser.id,
+                  }
+                }
+              })
+
+              return next
+            })
+          }
+
+          Alert.alert('Already opened', 'This red packet was already added to your account.')
+          return
+        }
+
+        throw error
+      }
+
+      setRedPacketsByMessageId((current) => {
+        const next = { ...current }
+
+        Object.keys(next).forEach((messageId) => {
+          if (next[messageId]?.id === redPacket.id) {
+            next[messageId] = {
+              ...next[messageId],
+              opened: true,
+              openedEntry: entry,
+              creditedToMe: true,
+            }
+          }
+        })
+
+        return next
+      })
+
+      Alert.alert(
+        'Gift opened',
+        `${formatCurrencyAmount(redPacket.amount, redPacket.currency || 'BDT')} added to your account.`
+      )
+    } catch (error) {
+      Alert.alert(
+        'Open failed',
+        error?.message || 'Could not open this red packet. Run supabase-red-packet-features.sql first.'
+      )
+    } finally {
+      setOpeningRedPacketId(null)
+    }
+  }
+
   async function startRecording() {
     if (!currentUser?.id || recorderState?.isRecording) return false
 
+    setEmojiPickerVisible(false)
+    setAttachmentPickerVisible(false)
     const permission = await requestRecordingPermissionsAsync()
 
     if (!permission.granted) {
@@ -1469,10 +1929,103 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function focusMessageInput() {
+    setEmojiPickerVisible(false)
+    setAttachmentPickerVisible(false)
     setComposerFocused(true)
     requestAnimationFrame(() => {
       messageInputRef.current?.focus()
     })
+  }
+
+  function toggleEmojiPicker() {
+    if (emojiPickerVisible) {
+      focusMessageInput()
+      return
+    }
+
+    Keyboard.dismiss()
+    setAttachmentPickerVisible(false)
+    setComposerFocused(false)
+    setEmojiPickerVisible(true)
+    scheduleKeyboardAwareScroll(120)
+  }
+
+  function openAttachmentPicker() {
+    if (attachmentPickerVisible) {
+      setAttachmentPickerVisible(false)
+      return
+    }
+
+    Keyboard.dismiss()
+    setEmojiPickerVisible(false)
+    setComposerFocused(false)
+    setAttachmentPageIndex(0)
+    setAttachmentPickerVisible(true)
+    scheduleKeyboardAwareScroll(120)
+  }
+
+  function handleAttachmentAction(actionKey) {
+    setAttachmentPickerVisible(false)
+
+    setTimeout(() => {
+      if (actionKey === 'photo') {
+        pickMedia()
+        return
+      }
+
+      if (actionKey === 'camera') {
+        capturePhoto()
+        return
+      }
+
+      if (actionKey === 'video-call') {
+        startVideoCall()
+        return
+      }
+
+      if (actionKey === 'audio-call') {
+        startVoiceCall()
+        return
+      }
+
+      if (actionKey === 'files') {
+        pickDocumentFile()
+        return
+      }
+
+      if (actionKey === 'location') {
+        openLocationPreview()
+        return
+      }
+
+      if (actionKey === 'red-packet') {
+        setRedPacketComposerVisible(true)
+        return
+      }
+
+      if (actionKey === 'favorite') {
+        navigation.navigate('Favorite')
+        return
+      }
+
+      Alert.alert('Contact card', 'Contact card sharing can be connected here next.')
+    }, 180)
+  }
+
+  function appendEmoji(emoji) {
+    setMessageText((current) => `${current}${emoji}`)
+
+    if (!conversation?.id || !otherUser?.id) return
+
+    updateMyPresence({ online: true, typing: true })
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      updateMyPresence({ online: true, typing: false })
+    }, 2500)
   }
 
   function handleReplyToMessage(message) {
@@ -1849,13 +2402,125 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }, [currentUser?.id, messageActionTarget])
 
   const chatStatusText = getChatStatusText()
+  const quickChatActions = [
+    {
+      key: 'new-chat',
+      icon: 'chatbubble-ellipses-outline',
+      title: 'New chat',
+      subtitle: 'Start a message',
+    },
+    {
+      key: 'add-contacts',
+      icon: 'person-add-outline',
+      title: 'Add contacts',
+      subtitle: 'Find people',
+    },
+    {
+      key: 'scan',
+      icon: 'scan-outline',
+      title: 'Scan',
+      subtitle: 'RentalX ID',
+    },
+  ]
+
+  function handleQuickChatAction(actionKey) {
+    setQuickChatMenuVisible(false)
+
+    if (actionKey === 'new-chat') {
+      setConversationSearchQuery('')
+      Alert.alert('New chat', 'Open a profile or property and tap Message to start a new chat.')
+      return
+    }
+
+    if (actionKey === 'add-contacts') {
+      Alert.alert('Add contacts', 'Contact adding can be connected here next.')
+      return
+    }
+    Alert.alert('Scan', 'RentalX ID QR scanning can be connected here next.')
+  }
+
+  function openMessagingSettings() {
+    Alert.alert('Messaging settings', 'Messaging management options can be added here next.')
+  }
+
+  const visibleConversationRows = useMemo(() => {
+    const query = normalizeConversationSearch(conversationSearchQuery)
+
+    if (!query) return conversationRows
+
+    return conversationRows.filter((item) =>
+      getConversationSearchText(item).includes(query)
+    )
+  }, [conversationRows, conversationSearchQuery])
+
   const activeConversationRows = useMemo(
     () =>
-      conversationRows.filter((item) =>
+      visibleConversationRows.filter((item) =>
         Boolean(item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online)
       ),
-    [conversationRows, presenceByUserId]
+    [presenceByUserId, visibleConversationRows]
   )
+  const attachmentActions = [
+    {
+      key: 'photo',
+      icon: 'image-outline',
+      title: 'Photo',
+      color: '#22c55e',
+    },
+    {
+      key: 'camera',
+      icon: 'camera-outline',
+      title: 'Camera',
+      color: '#0ea5e9',
+    },
+    {
+      key: 'video-call',
+      icon: 'videocam-outline',
+      title: 'Video call',
+      color: '#8b5cf6',
+    },
+    {
+      key: 'audio-call',
+      icon: 'call-outline',
+      title: 'Audio call',
+      color: '#06b6d4',
+    },
+    {
+      key: 'files',
+      icon: 'document-text-outline',
+      title: 'Files',
+      color: '#f97316',
+    },
+    {
+      key: 'location',
+      icon: 'location-outline',
+      title: 'Location',
+      color: '#14b8a6',
+    },
+    {
+      key: 'red-packet',
+      icon: 'gift-outline',
+      title: 'Red packet',
+      color: '#ef4444',
+    },
+    {
+      key: 'contact-card',
+      icon: 'id-card-outline',
+      title: 'Contact',
+      color: '#64748b',
+    },
+  ]
+  const attachmentMoreActions = [
+    {
+      key: 'favorite',
+      icon: 'heart-outline',
+      title: 'Favorite',
+      color: '#e11d48',
+    },
+  ]
+  const attachmentActionPages = [attachmentActions, attachmentMoreActions]
+  const attachmentPageWidth = Math.max(0, windowWidth - 32)
+  const attachmentTileWidth = Math.min(76, Math.max(58, (attachmentPageWidth - 30) / 4))
   const currentRecordingLevel = recorderState?.isRecording
     ? (recordingWaveform[recordingWaveform.length - 1] ?? normalizeMeteringLevel(recorderState?.metering))
     : 0
@@ -1863,11 +2528,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const recordingAuraMaxSize = Math.min(windowWidth * 0.96, windowHeight * 0.48)
   const recordingAuraMinSize = Math.min(110, recordingAuraMaxSize * 0.42)
   const recordingAuraStep = (recordingAuraMaxSize - recordingAuraMinSize) / 9
+  const composerTrayVisible = emojiPickerVisible || attachmentPickerVisible
   const leftAccessoryWidth = composerFocusAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [42, 0],
-  })
-  const sideAccessoryWidth = composerFocusAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [42, 0],
   })
@@ -1973,37 +2635,188 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </View>
             ) : (
               <>
-                <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900' }}>
-                  Messages
-                </Text>
-                <Text style={{ color: theme.mutedText, marginTop: 3 }}>
-                  Chat with property owners and renters
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900' }}>
+                    Messages
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={openMessagingSettings}
+                      activeOpacity={0.85}
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 19,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="settings-outline" size={21} color={theme.accent} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setQuickChatMenuVisible(true)}
+                      activeOpacity={0.85}
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 19,
+                        backgroundColor: theme.accentSoft,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="add" size={24} color={theme.accent} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    width: '100%',
+                    height: 46,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 12,
+                    marginTop: 12,
+                  }}
+                >
+                  <Ionicons name="search" size={18} color={theme.mutedText} />
+                  <TextInput
+                    value={conversationSearchQuery}
+                    onChangeText={setConversationSearchQuery}
+                    placeholder="Search messages"
+                    placeholderTextColor={theme.mutedText}
+                    returnKeyType="search"
+                    style={{
+                      flex: 1,
+                      color: theme.text,
+                      fontSize: 14,
+                      marginLeft: 8,
+                    }}
+                  />
+                  {conversationSearchQuery ? (
+                    <TouchableOpacity onPress={() => setConversationSearchQuery('')}>
+                      <Ionicons name="close-circle" size={18} color={theme.mutedText} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </>
             )}
           </View>
+
+          <Modal
+            visible={quickChatMenuVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setQuickChatMenuVisible(false)}
+          >
+            <Pressable
+              onPress={() => setQuickChatMenuVisible(false)}
+              style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.12)' }}
+            >
+              <Pressable
+                onPress={() => {}}
+                style={{
+                  position: 'absolute',
+                  top: insets.top + 58,
+                  right: 16,
+                  width: 178,
+                  backgroundColor: theme.surface,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  paddingVertical: 6,
+                  overflow: 'hidden',
+                }}
+              >
+                {quickChatActions.map((action) => (
+                  <TouchableOpacity
+                    key={action.key}
+                    onPress={() => handleQuickChatAction(action.key)}
+                    activeOpacity={0.84}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 10,
+                      paddingVertical: 9,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 15,
+                        backgroundColor: theme.accentSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 9,
+                      }}
+                    >
+                      <Ionicons name={action.icon} size={16} color={theme.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 12, fontWeight: '900' }}>
+                        {action.title}
+                      </Text>
+                      <Text style={{ color: theme.mutedText, fontSize: 10, marginTop: 1 }}>
+                        {action.subtitle}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           {activeConversationRows.length ? (
             <View
               style={{
                 backgroundColor: theme.surface,
-                paddingTop: 10,
-                paddingBottom: 10,
+                paddingTop: 7,
+                paddingBottom: 8,
                 borderBottomWidth: 1,
                 borderBottomColor: theme.border,
               }}
             >
-              <Text
+              <View
                 style={{
-                  color: theme.mutedText,
-                  fontSize: 12,
-                  fontWeight: '800',
+                  flexDirection: 'row',
+                  alignItems: 'center',
                   paddingHorizontal: 16,
-                  marginBottom: 8,
+                  marginBottom: 6,
                 }}
               >
-                Active now
-              </Text>
+                <View
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 4,
+                    backgroundColor: '#22c55e',
+                    marginRight: 6,
+                  }}
+                />
+                <Text
+                  style={{
+                    color: theme.mutedText,
+                    fontSize: 10,
+                    fontWeight: '900',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Active now
+                </Text>
+              </View>
 
               <FlatList
                 data={activeConversationRows}
@@ -2011,7 +2824,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 horizontal
                 inverted
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 16 }}
+                contentContainerStyle={{ paddingHorizontal: 14 }}
                 renderItem={({ item }) => {
                   const activeProfile = item.other_profile
                   const activeName = getProfileName(activeProfile, 'User')
@@ -2027,24 +2840,29 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                         })
                       }
                       style={{
-                        width: 68,
-                        marginRight: 12,
+                        width: 54,
+                        marginRight: 8,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 1,
+                        borderColor: theme.border,
                         alignItems: 'center',
                       }}
                     >
                       <View>
-                        <Avatar profile={activeProfile} name={activeName} size={52} />
+                        <Avatar profile={activeProfile} name={activeName} size={38} />
                         <View
                           style={{
                             position: 'absolute',
-                            right: 1,
-                            bottom: 1,
-                            width: 14,
-                            height: 14,
-                            borderRadius: 7,
+                            right: -1,
+                            bottom: -1,
+                            width: 11,
+                            height: 11,
+                            borderRadius: 6,
                             backgroundColor: '#22c55e',
                             borderWidth: 2,
-                            borderColor: theme.surface,
+                            borderColor: theme.surfaceMuted,
                           }}
                         />
                       </View>
@@ -2052,9 +2870,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       <Text
                         style={{
                           color: theme.text,
-                          fontSize: 11,
-                          fontWeight: '700',
-                          marginTop: 6,
+                          fontSize: 9,
+                          fontWeight: '800',
+                          marginTop: 4,
                           textAlign: 'center',
                         }}
                         numberOfLines={1}
@@ -2069,7 +2887,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           ) : null}
 
           <FlatList
-            data={conversationRows}
+            data={visibleConversationRows}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <ConversationRow
@@ -2099,10 +2917,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               <View style={{ alignItems: 'center', padding: 34 }}>
                 <Ionicons name="chatbubbles-outline" size={48} color={theme.mutedText} />
                 <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 12 }}>
-                  No messages yet
+                  {conversationSearchQuery ? 'No chats found' : 'No messages yet'}
                 </Text>
                 <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 6 }}>
-                  Open a property or owner profile and tap Message to start.
+                  {conversationSearchQuery
+                    ? 'Try another name or message.'
+                    : 'Open a property or owner profile and tap Message to start.'}
                 </Text>
               </View>
             }
@@ -2118,7 +2938,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: activeWallpaperPreset.backgroundColor }}>
+    <SafeAreaView
+      edges={embeddedTabShell ? ['top', 'right', 'bottom', 'left'] : ['top', 'right', 'left']}
+      style={{ flex: 1, backgroundColor: activeWallpaperPreset.backgroundColor }}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
@@ -2193,32 +3016,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </Text>
             </View>
           </Pressable>
-
-          <TouchableOpacity
-            onPress={startVoiceCall}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="call-outline" size={22} color={activeColorPreset.accent} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={startVideoCall}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="videocam-outline" size={23} color={activeColorPreset.accent} />
-          </TouchableOpacity>
 
           <TouchableOpacity
             onPress={openChatSettings}
@@ -2304,6 +3101,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 onPressCallHistory={handlePressCallHistory}
                 onToggleReaction={toggleMessageReaction}
                 onLongPressMessage={openMessageActions}
+                redPacket={redPacketsByMessageId[item.id]}
+                onOpenRedPacket={openRedPacket}
+                openingRedPacketId={openingRedPacketId}
                 outgoingBubbleColor={activeColorPreset.bubble}
                 highlighted={highlightedMessageId === item.id}
               />
@@ -2512,7 +3312,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             backgroundColor: theme.surface,
             paddingHorizontal: 10,
             paddingTop: 8,
-            paddingBottom: Math.max(insets.bottom, 10),
+            paddingBottom: composerTrayVisible ? 8 : embeddedTabShell ? Math.max(insets.bottom, 10) : 0,
             borderTopWidth: 1,
             borderTopColor: theme.border,
           }}
@@ -2593,6 +3393,36 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   >
                     <Ionicons name="call" size={17} color="#1877F2" />
                   </View>
+                ) : isLocationMessage(replyTarget) ? (
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      marginRight: 10,
+                      flexShrink: 0,
+                      backgroundColor: '#dcfce7',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="location" size={18} color="#16a34a" />
+                  </View>
+                ) : isRedPacketMessage(replyTarget) ? (
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      marginRight: 10,
+                      flexShrink: 0,
+                      backgroundColor: '#fee2e2',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="gift" size={18} color="#dc2626" />
+                  </View>
                 ) : null}
 
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -2621,276 +3451,922 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   justifyContent: 'center',
                   marginLeft: 8,
                 }}
-              >
-                <Ionicons name="close" size={20} color={theme.mutedText} />
-              </TouchableOpacity>
-            </View>
-          ) : null}
+                >
+                  <Ionicons name="close" size={20} color={theme.mutedText} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              overflow: 'visible',
-            }}
-          >
-          <Animated.View
-            style={{
-              width: leftAccessoryWidth,
-              height: 42,
-              marginRight: accessorySpacing,
-              opacity: accessoryOpacity,
-              overflow: 'hidden',
-            }}
-          >
-            <TouchableOpacity
-              onPress={capturePhoto}
-              disabled={uploading || sending || composerFocused}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#eef6ff',
-                borderColor: activeColorPreset.accent,
-                borderWidth: 1,
-                opacity: uploading || sending ? 0.5 : 1,
-              }}
-            >
-              <Ionicons name="camera-outline" size={22} color={activeColorPreset.accent} />
-            </TouchableOpacity>
-          </Animated.View>
-
-          <Animated.View
-            style={{
-              flex: 1,
-              minHeight: 42,
-              borderRadius: inputRadius,
-              backgroundColor: inputBackground,
-            }}
-          >
-            <TextInput
-              ref={messageInputRef}
-              value={messageText}
-              onFocus={() => {
-                setComposerFocused(true)
-                scheduleKeyboardAwareScroll(40)
-              }}
-              onBlur={() => setComposerFocused(false)}
-              onChangeText={(text) => {
-                setMessageText(text)
-
-                if (!conversation?.id || !otherUser?.id) return
-
-                updateMyPresence({ online: true, typing: text.trim().length > 0 })
-
-                if (typingTimeoutRef.current) {
-                  clearTimeout(typingTimeoutRef.current)
-                }
-
-                typingTimeoutRef.current = setTimeout(() => {
-                  updateMyPresence({ online: true, typing: false })
-                }, 2500)
-              }}
-              placeholder="Type a message"
-              placeholderTextColor="#94a3b8"
-              multiline
-              style={{
-                minHeight: 42,
-                maxHeight: 116,
-                paddingHorizontal: 15,
-                paddingTop: 10,
-                paddingBottom: 10,
-                textAlignVertical: 'top',
-                color: theme.text,
-                fontSize: 15,
-              }}
-            />
-          </Animated.View>
-
-          <Animated.View
-            style={{
-              width: sideAccessoryWidth,
-              height: 42,
-              marginLeft: accessorySpacing,
-              opacity: accessoryOpacity,
-              overflow: 'hidden',
-            }}
-          >
-            <TouchableOpacity
-              onPress={pickMedia}
-              disabled={uploading || sending || composerFocused}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: uploading || sending ? 0.5 : 1,
-              }}
-            >
-              <Ionicons name="image-outline" size={20} color={activeColorPreset.accent} />
-            </TouchableOpacity>
-          </Animated.View>
-
-          <Animated.View
-            style={{
-              width: sideAccessoryWidth,
-              height: 42,
-              marginLeft: composerFocused ? 0 : 2,
-              opacity: accessoryOpacity,
-              overflow: 'hidden',
-            }}
-          >
-            <TouchableOpacity
-              onPress={pickDocumentFile}
-              disabled={uploading || sending || composerFocused}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: uploading || sending ? 0.5 : 1,
-              }}
-            >
-              <Ionicons name="document-outline" size={20} color={activeColorPreset.accent} />
-            </TouchableOpacity>
-          </Animated.View>
-
-          {messageText.trim() ? (
-            <TouchableOpacity
-              onPress={sendTextMessage}
-              disabled={sending}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: activeColorPreset.accent,
-                marginLeft: 8,
-                opacity: sending ? 0.55 : 1,
-              }}
-            >
-              {sending ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Ionicons name="send" size={18} color="#fff" />
-              )}
-            </TouchableOpacity>
-          ) : (
             <View
               style={{
-                width: 42,
-                height: 42,
-                marginLeft: 8,
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
                 overflow: 'visible',
-                zIndex: recorderState?.isRecording ? 20 : 1,
-                elevation: recorderState?.isRecording ? 20 : 0,
               }}
             >
-              {recorderState?.isRecording
-                ? Array.from({ length: 10 }).map((_, index) => {
-                  const active = index < recordingAuraCount
-                  const size = recordingAuraMinSize + index * recordingAuraStep
-                  const opacityBase = active
-                    ? Math.max(0.08, currentRecordingLevel * (0.85 - index * 0.055))
-                    : 0.03
-                  const rotation = `${(index % 4) * 90}deg`
+              <Animated.View
+                style={{
+                  width: leftAccessoryWidth,
+                  height: 42,
+                  marginRight: accessorySpacing,
+                  opacity: accessoryOpacity,
+                  overflow: recorderState?.isRecording ? 'visible' : 'hidden',
+                  zIndex: recorderState?.isRecording ? 20 : 1,
+                  elevation: recorderState?.isRecording ? 20 : 0,
+                }}
+              >
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'visible',
+                  }}
+                >
+                  {recorderState?.isRecording
+                    ? Array.from({ length: 10 }).map((_, index) => {
+                      const active = index < recordingAuraCount
+                      const size = recordingAuraMinSize + index * recordingAuraStep
+                      const opacityBase = active
+                        ? Math.max(0.08, currentRecordingLevel * (0.85 - index * 0.055))
+                        : 0.03
+                      const rotation = `${(index % 4) * 90}deg`
 
-                  return (
-                    <Animated.View
-                      key={`recording-aura-${index}`}
-                      pointerEvents="none"
-                      style={{
-                        position: 'absolute',
-                        left: 21 - size / 2,
-                        top: 21 - size / 2,
-                        width: size,
-                        height: size,
-                        borderTopWidth: 4,
-                        borderRightWidth: 4,
-                        borderTopColor: hexToRgba(activeColorPreset.accent, opacityBase),
-                        borderRightColor: hexToRgba(activeColorPreset.accent, opacityBase),
-                        borderLeftColor: 'transparent',
-                        borderBottomColor: 'transparent',
-                        borderTopLeftRadius: size / 2,
-                        borderTopRightRadius: size / 2,
-                        borderBottomRightRadius: size / 2,
-                        borderBottomLeftRadius: size / 2,
-                        transform: [
-                          { rotate: rotation },
-                          {
-                            scale: recordingPulseAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0.96, 1.03 + currentRecordingLevel * 0.06],
-                            }),
-                          },
-                        ],
-                      }}
-                    />
-                  )
-                })
-                : null}
+                      return (
+                        <Animated.View
+                          key={`recording-aura-${index}`}
+                          pointerEvents="none"
+                          style={{
+                            position: 'absolute',
+                            left: 21 - size / 2,
+                            top: 21 - size / 2,
+                            width: size,
+                            height: size,
+                            borderTopWidth: 4,
+                            borderRightWidth: 4,
+                            borderTopColor: hexToRgba(activeColorPreset.accent, opacityBase),
+                            borderRightColor: hexToRgba(activeColorPreset.accent, opacityBase),
+                            borderLeftColor: 'transparent',
+                            borderBottomColor: 'transparent',
+                            borderTopLeftRadius: size / 2,
+                            borderTopRightRadius: size / 2,
+                            borderBottomRightRadius: size / 2,
+                            borderBottomLeftRadius: size / 2,
+                            transform: [
+                              { rotate: rotation },
+                              {
+                                scale: recordingPulseAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [0.96, 1.03 + currentRecordingLevel * 0.06],
+                                }),
+                              },
+                            ],
+                          }}
+                        />
+                      )
+                    })
+                    : null}
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (skipNextMicTapRef.current) {
+                        skipNextMicTapRef.current = false
+                        return
+                      }
+
+                      toggleRecording()
+                    }}
+                    onLongPress={async () => {
+                      skipNextMicTapRef.current = true
+                      longPressRecordingRef.current = true
+
+                      if (!recorderState?.isRecording) {
+                        const didStart = await startRecording()
+
+                        if (!didStart) {
+                          longPressRecordingRef.current = false
+                          skipNextMicTapRef.current = false
+                        }
+                      }
+                    }}
+                    onPressOut={() => {
+                      if (longPressRecordingRef.current && recorderState?.isRecording) {
+                        stopAndSendRecordingDirectly()
+                      }
+                    }}
+                    delayLongPress={160}
+                    disabled={uploading || sending}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: activeColorPreset.accent,
+                      opacity: uploading || sending ? 0.55 : 1,
+                    }}
+                  >
+                    {uploading ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Ionicons
+                        name={recorderState?.isRecording ? 'stop' : 'mic'}
+                        size={20}
+                        color="#fff"
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+
+              <Animated.View
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: inputRadius,
+                  backgroundColor: inputBackground,
+                }}
+              >
+                <TextInput
+                  ref={messageInputRef}
+                  value={messageText}
+                  onFocus={() => {
+                    setEmojiPickerVisible(false)
+                    setAttachmentPickerVisible(false)
+                    setComposerFocused(true)
+                    scheduleKeyboardAwareScroll(40)
+                  }}
+                  onBlur={() => setComposerFocused(false)}
+                  onChangeText={(text) => {
+                    setMessageText(text)
+
+                    if (!conversation?.id || !otherUser?.id) return
+
+                    updateMyPresence({ online: true, typing: text.trim().length > 0 })
+
+                    if (typingTimeoutRef.current) {
+                      clearTimeout(typingTimeoutRef.current)
+                    }
+
+                    typingTimeoutRef.current = setTimeout(() => {
+                      updateMyPresence({ online: true, typing: false })
+                    }, 2500)
+                  }}
+                  placeholder="Type a message"
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  style={{
+                    flex: 1,
+                    minHeight: 42,
+                    maxHeight: 116,
+                    paddingHorizontal: 15,
+                    paddingTop: 10,
+                    paddingBottom: 10,
+                    textAlignVertical: 'top',
+                    color: theme.text,
+                    fontSize: 15,
+                  }}
+                />
+              </Animated.View>
 
               <TouchableOpacity
-                onPress={() => {
-                  if (skipNextMicTapRef.current) {
-                    skipNextMicTapRef.current = false
-                    return
-                  }
-
-                  toggleRecording()
-                }}
-                onLongPress={async () => {
-                  skipNextMicTapRef.current = true
-                  longPressRecordingRef.current = true
-
-                  if (!recorderState?.isRecording) {
-                    const didStart = await startRecording()
-
-                    if (!didStart) {
-                      longPressRecordingRef.current = false
-                      skipNextMicTapRef.current = false
-                    }
-                  }
-                }}
-                onPressOut={() => {
-                  if (longPressRecordingRef.current && recorderState?.isRecording) {
-                    stopAndSendRecordingDirectly()
-                  }
-                }}
-                delayLongPress={160}
-                disabled={uploading}
+                onPress={toggleEmojiPicker}
+                activeOpacity={0.82}
                 style={{
                   width: 42,
                   height: 42,
                   borderRadius: 21,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: activeColorPreset.accent,
-                  opacity: uploading ? 0.55 : 1,
+                  marginLeft: 4,
+                  backgroundColor: emojiPickerVisible ? hexToRgba(activeColorPreset.accent, 0.14) : 'transparent',
                 }}
               >
-                {uploading ? (
+                <Ionicons
+                  name={emojiPickerVisible ? 'keypad-outline' : 'happy-outline'}
+                  size={21}
+                  color={activeColorPreset.accent}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={openAttachmentPicker}
+                disabled={uploading || sending}
+                activeOpacity={0.82}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginLeft: 2,
+                  backgroundColor: attachmentPickerVisible ? hexToRgba(activeColorPreset.accent, 0.14) : 'transparent',
+                  opacity: uploading || sending ? 0.55 : 1,
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={23} color={activeColorPreset.accent} />
+              </TouchableOpacity>
+
+              {messageText.trim() ? (
+                <TouchableOpacity
+                  onPress={sendTextMessage}
+                  disabled={sending}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: activeColorPreset.accent,
+                    marginLeft: 8,
+                    opacity: sending ? 0.55 : 1,
+                  }}
+                >
+                  {sending ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Ionicons name="send" size={18} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
+          {emojiPickerVisible ? (
+            <View
+              style={{
+                backgroundColor: theme.surface,
+                borderTopLeftRadius: 22,
+                borderTopRightRadius: 22,
+                borderTopWidth: 1,
+                borderTopColor: theme.border,
+                paddingHorizontal: 14,
+                paddingTop: 10,
+                paddingBottom: Math.max(insets.bottom, 10) + 10,
+                maxHeight: Math.min(windowHeight * 0.4, 320),
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: theme.border,
+                  alignSelf: 'center',
+                  marginBottom: 10,
+                }}
+              />
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
+                  Emojis
+                </Text>
+                <TouchableOpacity
+                  onPress={focusMessageInput}
+                  activeOpacity={0.84}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: hexToRgba(activeColorPreset.accent, 0.14),
+                  }}
+                >
+                  <Ionicons name="keypad-outline" size={18} color={activeColorPreset.accent} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                keyboardShouldPersistTaps="always"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 7,
+                  paddingBottom: 4,
+                }}
+              >
+                {QUICK_EMOJIS.map((emoji, index) => {
+                  const tileBackground =
+                    index % 4 === 0
+                      ? theme.surfaceMuted
+                      : index % 4 === 1
+                        ? theme.accentSoft
+                        : index % 4 === 2
+                          ? hexToRgba(activeColorPreset.accent, 0.1)
+                          : theme.surface
+
+                  return (
+                    <TouchableOpacity
+                      key={`${emoji}-${index}`}
+                      onPress={() => appendEmoji(emoji)}
+                      activeOpacity={0.78}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: index % 3 === 0 ? 18 : 13,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: tileBackground,
+                        borderWidth: 1,
+                        borderColor: index % 4 === 2 ? hexToRgba(activeColorPreset.accent, 0.24) : theme.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: index % 5 === 0 ? 22 : 20 }}>{emoji}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {attachmentPickerVisible ? (
+            <View
+              style={{
+                backgroundColor: theme.surface,
+                borderTopLeftRadius: 22,
+                borderTopRightRadius: 22,
+                borderTopWidth: 1,
+                borderTopColor: theme.border,
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: Math.max(insets.bottom, 10) + 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: theme.border,
+                  alignSelf: 'center',
+                  marginBottom: 12,
+                }}
+              />
+
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="always"
+                decelerationRate="fast"
+                onMomentumScrollEnd={(event) => {
+                  const nextIndex = Math.round(
+                    event.nativeEvent.contentOffset.x / Math.max(attachmentPageWidth, 1)
+                  )
+                  setAttachmentPageIndex(nextIndex)
+                }}
+              >
+                {attachmentActionPages.map((pageActions, pageIndex) => (
+                  <View
+                    key={`attachment-page-${pageIndex}`}
+                    style={{
+                      width: attachmentPageWidth,
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: 10,
+                      justifyContent: 'space-between',
+                      paddingRight: pageIndex === attachmentActionPages.length - 1 ? 0 : 8,
+                    }}
+                  >
+                    {pageActions.map((action) => (
+                      <TouchableOpacity
+                        key={action.key}
+                        onPress={() => handleAttachmentAction(action.key)}
+                        activeOpacity={0.84}
+                        disabled={uploading || sending}
+                        style={{
+                          width: attachmentTileWidth,
+                          minHeight: 68,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingVertical: 6,
+                          opacity: uploading || sending ? 0.55 : 1,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 19,
+                            backgroundColor: hexToRgba(action.color, 0.16),
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginBottom: 5,
+                          }}
+                        >
+                          <Ionicons name={action.icon} size={19} color={action.color} />
+                        </View>
+                        <Text
+                          style={{
+                            color: theme.text,
+                            fontSize: 10,
+                            fontWeight: '900',
+                            textAlign: 'center',
+                          }}
+                          numberOfLines={1}
+                        >
+                          {action.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View
+                pointerEvents="none"
+                style={{
+                  flexDirection: 'row',
+                  alignSelf: 'center',
+                  gap: 5,
+                  marginTop: 8,
+                }}
+              >
+                {attachmentActionPages.map((_, pageIndex) => (
+                  <View
+                    key={`attachment-dot-${pageIndex}`}
+                    style={{
+                      width: pageIndex === attachmentPageIndex ? 14 : 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: pageIndex === attachmentPageIndex ? activeColorPreset.accent : theme.border,
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
+      </KeyboardAvoidingView>
+
+      <Modal
+        visible={redPacketComposerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!sendingRedPacket) {
+            setRedPacketComposerVisible(false)
+          }
+        }}
+      >
+        <Pressable
+          onPress={() => {
+            if (!sendingRedPacket) {
+              setRedPacketComposerVisible(false)
+            }
+          }}
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(15, 23, 42, 0.32)',
+          }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={insets.top}
+          >
+            <Pressable
+              onPress={() => {}}
+              style={{
+                backgroundColor: theme.surface,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                borderWidth: 1,
+                borderColor: theme.border,
+                paddingHorizontal: 16,
+                paddingTop: 10,
+                paddingBottom: Math.max(insets.bottom, 10) + 14,
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: theme.border,
+                  alignSelf: 'center',
+                  marginBottom: 12,
+                }}
+              />
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: '#fee2e2',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 10,
+                  }}
+                >
+                  <Ionicons name="gift" size={20} color="#dc2626" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                    Send red packet
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 2 }}>
+                    A gift the receiver can open once.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setRedPacketComposerVisible(false)}
+                  disabled={sendingRedPacket}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: sendingRedPacket ? 0.5 : 1,
+                  }}
+                >
+                  <Ionicons name="close" size={20} color={theme.mutedText} />
+                </TouchableOpacity>
+              </View>
+
+              <View
+                style={{
+                  borderRadius: 20,
+                  backgroundColor: '#b91c1c',
+                  overflow: 'hidden',
+                  marginBottom: 14,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: '#dc2626',
+                    padding: 14,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity
+                      onPress={pickRedPacketPhoto}
+                      disabled={sendingRedPacket}
+                      activeOpacity={0.82}
+                      style={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: 16,
+                        backgroundColor: 'rgba(255,255,255,0.18)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        marginRight: 12,
+                      }}
+                    >
+                      {redPacketPhotoAsset?.uri ? (
+                        <Image
+                          source={{ uri: redPacketPhotoAsset.uri }}
+                          style={{ width: '100%', height: '100%' }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Ionicons name="image-outline" size={24} color="#fff7ed" />
+                      )}
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: '#fff7ed', fontSize: 14, fontWeight: '900' }}>
+                        Red packet preview
+                      </Text>
+                      <Text
+                        style={{ color: 'rgba(255,255,255,0.82)', fontSize: 12, marginTop: 3 }}
+                        numberOfLines={2}
+                      >
+                        {redPacketWish.trim() || 'Best wishes'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    alignItems: 'center',
+                    paddingVertical: 14,
+                    paddingHorizontal: 14,
+                    backgroundColor: '#991b1b',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 74,
+                      height: 74,
+                      borderRadius: 37,
+                      backgroundColor: '#facc15',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Text style={{ color: '#7f1d1d', fontWeight: '900' }}>Open</Text>
+                  </View>
+                  <Text style={{ color: '#fde68a', fontSize: 19, fontWeight: '900' }}>
+                    {parseRedPacketAmountInput(redPacketAmount) > 0
+                      ? formatCurrencyAmount(parseRedPacketAmountInput(redPacketAmount), 'BDT')
+                      : '৳ 0'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ gap: 10 }}>
+                <View
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>
+                    Amount
+                  </Text>
+                  <TextInput
+                    value={redPacketAmount}
+                    onChangeText={setRedPacketAmount}
+                    keyboardType="decimal-pad"
+                    placeholder="Enter gift amount"
+                    placeholderTextColor={theme.mutedText}
+                    editable={!sendingRedPacket}
+                    style={{ color: theme.text, fontSize: 18, fontWeight: '900', paddingVertical: 3 }}
+                  />
+                </View>
+
+                <View
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>
+                    Best wishes
+                  </Text>
+                  <TextInput
+                    value={redPacketWish}
+                    onChangeText={setRedPacketWish}
+                    placeholder="Write your wish"
+                    placeholderTextColor={theme.mutedText}
+                    editable={!sendingRedPacket}
+                    multiline
+                    maxLength={160}
+                    style={{ color: theme.text, fontSize: 14, minHeight: 44, textAlignVertical: 'top' }}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={sendRedPacket}
+                disabled={sendingRedPacket || sending}
+                style={{
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#dc2626',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 14,
+                  opacity: sendingRedPacket || sending ? 0.6 : 1,
+                }}
+              >
+                {sendingRedPacket ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>
+                    Send red packet
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={locationPreviewLoading || Boolean(locationPreview)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!locationPreviewLoading) {
+            setLocationPreview(null)
+          }
+        }}
+      >
+        <Pressable
+          onPress={() => {
+            if (!locationPreviewLoading) {
+              setLocationPreview(null)
+            }
+          }}
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(15, 23, 42, 0.28)',
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: theme.surface,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderWidth: 1,
+              borderColor: theme.border,
+              paddingHorizontal: 16,
+              paddingTop: 10,
+              paddingBottom: Math.max(insets.bottom, 10) + 14,
+            }}
+          >
+            <View
+              style={{
+                width: 42,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: theme.border,
+                alignSelf: 'center',
+                marginBottom: 12,
+              }}
+            />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: theme.accentSoft,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons name="location" size={19} color={theme.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                  Share location
+                </Text>
+                <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 2 }}>
+                  Preview before sending
+                </Text>
+              </View>
+              {!locationPreviewLoading ? (
+                <TouchableOpacity
+                  onPress={() => setLocationPreview(null)}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="close" size={20} color={theme.mutedText} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <View
+              style={{
+                height: 190,
+                borderRadius: 18,
+                overflow: 'hidden',
+                backgroundColor: theme.surfaceMuted,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}
+            >
+              {locationPreviewLoading ? (
+                <View
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 18,
+                  }}
+                >
+                  <ActivityIndicator color={theme.accent} />
+                  <Text style={{ color: theme.text, fontWeight: '900', marginTop: 12 }}>
+                    Detecting your location
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                    Please wait while we prepare the map preview.
+                  </Text>
+                </View>
+              ) : locationPreview && HAS_ANDROID_GOOGLE_MAPS_KEY ? (
+                <MapView
+                  pointerEvents="none"
+                  style={{ flex: 1 }}
+                  region={{
+                    latitude: locationPreview.latitude,
+                    longitude: locationPreview.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  }}
+                >
+                  <Marker
+                    coordinate={{
+                      latitude: locationPreview.latitude,
+                      longitude: locationPreview.longitude,
+                    }}
+                  />
+                </MapView>
+              ) : locationPreview ? (
+                <View
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 18,
+                  }}
+                >
+                  <Ionicons name="map-outline" size={40} color={theme.accent} />
+                  <Text style={{ color: theme.text, fontWeight: '900', marginTop: 10 }}>
+                    Map preview unavailable
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 12, textAlign: 'center', marginTop: 5 }}>
+                    The location will still open in Google Maps after sending.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {locationPreview ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  backgroundColor: theme.surfaceMuted,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }} numberOfLines={1}>
+                  {locationPreview.label || 'Current location'}
+                </Text>
+                <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 4 }}>
+                  {locationPreview.latitude.toFixed(5)}, {locationPreview.longitude.toFixed(5)}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <TouchableOpacity
+                onPress={() => setLocationPreview(null)}
+                disabled={locationPreviewLoading || sending}
+                style={{
+                  flex: 1,
+                  height: 48,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: locationPreviewLoading || sending ? 0.55 : 1,
+                }}
+              >
+                <Text style={{ color: theme.text, fontWeight: '900' }}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={sendLocationPreview}
+                disabled={!locationPreview || locationPreviewLoading || sending}
+                style={{
+                  flex: 1,
+                  height: 48,
+                  borderRadius: 16,
+                  backgroundColor: activeColorPreset.accent,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: !locationPreview || locationPreviewLoading || sending ? 0.55 : 1,
+                }}
+              >
+                {sending ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Ionicons
-                    name={recorderState?.isRecording ? 'stop' : 'mic'}
-                    size={20}
-                    color="#fff"
-                  />
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>Send location</Text>
                 )}
               </TouchableOpacity>
             </View>
-          )}
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <MediaViewer
         visible={mediaViewer.visible}
@@ -2918,7 +4394,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       />
 
       {!embeddedTabShell ? (
-        <BottomNavBar navigation={navigation} activeTab="chat" />
+        <BottomNavBar navigation={navigation} activeTab="chat" compactTop />
       ) : null}
     </SafeAreaView>
   )

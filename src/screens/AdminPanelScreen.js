@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
+import { fetchPendingWalletTopupRequestCount } from '../lib/wallet'
 import { useAppSettings } from '../lib/appSettings'
 
 function withAlpha(hexColor, alphaHex) {
@@ -22,6 +23,7 @@ const STATUS_COLORS = {
   review: '#2563eb',
   report: '#dc2626',
   users: '#16a34a',
+  wallet: '#b45309',
 }
 
 function HubCard({ icon, title, subtitle, badgeCount = 0, onPress, tint, theme }) {
@@ -137,6 +139,7 @@ export default function AdminPanelScreen({ navigation }) {
     pendingPropertyReviews: 0,
     pendingUserReports: 0,
     pendingPropertyReports: 0,
+    pendingWalletRequests: 0,
     totalUsers: 0,
   })
 
@@ -156,6 +159,7 @@ export default function AdminPanelScreen({ navigation }) {
         pendingPropertyReviews: 0,
         pendingUserReports: 0,
         pendingPropertyReports: 0,
+        pendingWalletRequests: 0,
         totalUsers: 0,
       })
       setLoading(false)
@@ -167,6 +171,7 @@ export default function AdminPanelScreen({ navigation }) {
       { count: propertyCount },
       { count: totalUserCount },
       reportCounts,
+      pendingWalletRequests,
     ] = await Promise.all([
       supabase
         .from('user_profiles')
@@ -180,6 +185,7 @@ export default function AdminPanelScreen({ navigation }) {
         .from('user_profiles')
         .select('user_id', { count: 'exact', head: true }),
       fetchAdminReportCounts(),
+      fetchPendingWalletTopupRequestCount(),
     ])
 
     setCounts({
@@ -187,6 +193,7 @@ export default function AdminPanelScreen({ navigation }) {
       pendingPropertyReviews: propertyCount || 0,
       pendingUserReports: reportCounts.userReportCount || 0,
       pendingPropertyReports: reportCounts.propertyReportCount || 0,
+      pendingWalletRequests: pendingWalletRequests || 0,
       totalUsers: totalUserCount || 0,
     })
     setLoading(false)
@@ -241,11 +248,21 @@ export default function AdminPanelScreen({ navigation }) {
       )
       .subscribe()
 
+    const walletChannel = supabase
+      .channel(`admin-hub-wallet-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallet_topup_requests' },
+        refresh
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(profileChannel)
       supabase.removeChannel(propertyChannel)
       supabase.removeChannel(userReportChannel)
       supabase.removeChannel(propertyReportChannel)
+      supabase.removeChannel(walletChannel)
     }
   }, [authorized, loadAdminHub])
 
@@ -350,6 +367,13 @@ export default function AdminPanelScreen({ navigation }) {
             icon="people"
             theme={theme}
           />
+          <SummaryTile
+            label="Wallet requests"
+            value={counts.pendingWalletRequests}
+            tint={STATUS_COLORS.wallet}
+            icon="cash"
+            theme={theme}
+          />
         </View>
 
         <HubCard
@@ -370,6 +394,16 @@ export default function AdminPanelScreen({ navigation }) {
           tint={STATUS_COLORS.review}
           theme={theme}
           onPress={() => navigation.navigate('ReviewVerify')}
+        />
+
+        <HubCard
+          icon="wallet-outline"
+          title="E-money Requests"
+          subtitle="Approve wallet money requests and add balance to user accounts."
+          badgeCount={counts.pendingWalletRequests}
+          tint={STATUS_COLORS.wallet}
+          theme={theme}
+          onPress={() => navigation.navigate('AdminWallet')}
         />
 
         <HubCard

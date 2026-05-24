@@ -22,6 +22,7 @@ import { fetchUserSocialCounts } from '../lib/social'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
+import { fetchPendingWalletTopupRequestCount } from '../lib/wallet'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
 import { APP_APPEARANCE_MODES, APP_LANGUAGES, APP_THEMES, useAppSettings } from '../lib/appSettings'
 
@@ -348,7 +349,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       return
     }
 
-    const [{ count: ownerCount }, { count: propertyCount }, reportCounts] = await Promise.all([
+    const [{ count: ownerCount }, { count: propertyCount }, reportCounts, pendingWalletRequests] = await Promise.all([
       supabase
         .from('user_profiles')
         .select('user_id', { count: 'exact', head: true })
@@ -358,6 +359,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
         .select('id', { count: 'exact', head: true })
         .eq('verification_status', 'pending'),
       fetchAdminReportCounts(),
+      fetchPendingWalletTopupRequestCount(),
     ])
 
     setAdminPanelCount(
@@ -365,6 +367,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       + (propertyCount || 0)
       + (reportCounts.userReportCount || 0)
       + (reportCounts.propertyReportCount || 0)
+      + (pendingWalletRequests || 0)
     )
   }, [])
 
@@ -439,11 +442,21 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       )
       .subscribe()
 
+    const walletChannel = supabase
+      .channel(`profile-admin-wallet-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallet_topup_requests' },
+        refreshAdminCount
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(ownerChannel)
       supabase.removeChannel(propertyChannel)
       supabase.removeChannel(userReportChannel)
       supabase.removeChannel(propertyReportChannel)
+      supabase.removeChannel(walletChannel)
     }
   }, [loadAdminPanelCount, showAdminPanel])
 
@@ -1143,6 +1156,14 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                   </View>
                 ) : null}
               </View>
+
+              <ActionCard
+                icon="wallet-outline"
+                title="Wallet"
+                subtitle="View e-money balance, request admin top-up, and see transactions."
+                theme={theme}
+                onPress={() => navigation.navigate('Wallet')}
+              />
 
               <ActionCard
                 icon="newspaper-outline"

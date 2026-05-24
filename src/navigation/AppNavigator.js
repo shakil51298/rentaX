@@ -18,6 +18,7 @@ import FavoriteScreen from '../screens/FavoriteScreen'
 import OwnerProfileScreen from '../screens/OwnerProfileScreen'
 import NotificationsScreen from '../screens/NotificationsScreen'
 import SettingsScreen from '../screens/SettingsScreen'
+import WalletScreen from '../screens/WalletScreen'
 import AdsManagementScreen from '../screens/AdsManagementScreen'
 import AudioCallScreen from '../screens/AudioCallScreen'
 import VideoCallScreen from '../screens/VideoCallScreen'
@@ -34,6 +35,7 @@ import AdminUserPostsScreen from '../screens/AdminUserPostsScreen'
 import CustomerCareScreen from '../screens/CustomerCareScreen'
 import AdminReportsScreen from '../screens/AdminReportsScreen'
 import AdminBannersScreen from '../screens/AdminBannersScreen'
+import AdminWalletScreen from '../screens/AdminWalletScreen'
 import ReportIssueScreen from '../screens/ReportIssueScreen'
 import VisitRequestsScreen from '../screens/VisitRequestsScreen'
 import RecentlyViewedScreen from '../screens/RecentlyViewedScreen'
@@ -52,6 +54,9 @@ const LIVE_ALERT_NOTIFICATION_TYPES = new Set([
   'user_report_submitted',
   'property_report_submitted',
   'property_case_appealed',
+  'wallet_topup_requested',
+  'wallet_topup_approved',
+  'wallet_topup_rejected',
   'owner_verification_review_requested',
   'property_verification_review_requested',
 ])
@@ -573,6 +578,11 @@ export default function AppNavigator() {
           options={{ title: 'Profile' }}
         />
         <Stack.Screen
+          name="Wallet"
+          component={WalletScreen}
+          options={{ title: 'Wallet' }}
+        />
+        <Stack.Screen
           name="VerificationCenter"
           component={VerificationCenterScreen}
           options={{ title: t('stackVerificationCenter', 'Verification center') }}
@@ -601,6 +611,11 @@ export default function AppNavigator() {
           name="AdminBanners"
           component={AdminBannersScreen}
           options={{ title: t('stackAdminBanners', 'Home Banners') }}
+        />
+        <Stack.Screen
+          name="AdminWallet"
+          component={AdminWalletScreen}
+          options={{ title: 'E-money requests' }}
         />
         <Stack.Screen
           name="AdminUserDetail"

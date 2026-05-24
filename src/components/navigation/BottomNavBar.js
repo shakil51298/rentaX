@@ -49,6 +49,7 @@ export default function BottomNavBar({
   notificationUnreadCount,
   onTabPress,
   userType = 'renter',
+  compactTop = false,
 }) {
   const insets = useSafeAreaInsets()
   const { theme } = useAppSettings()
@@ -203,9 +204,9 @@ export default function BottomNavBar({
       style={{
         flexDirection: 'row',
         justifyContent: 'space-around',
-        paddingTop: 8,
+        paddingTop: compactTop ? 0 : 8,
         paddingBottom: Math.max(insets.bottom, 10),
-        minHeight: 58 + Math.max(insets.bottom, 10),
+        minHeight: (compactTop ? 50 : 58) + Math.max(insets.bottom, 10),
         backgroundColor: theme.navBackground,
         borderTopWidth: 1,
         borderTopColor: theme.navBorder,

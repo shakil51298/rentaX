@@ -47,6 +47,31 @@ export function formatDurationSeconds(totalSeconds = 0) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+export const CHAT_LOCATION_MIME_TYPE = 'application/vnd.rentalx.location'
+export const CHAT_RED_PACKET_MIME_TYPE = 'application/vnd.rentalx.red-packet'
+
+export function isLocationMessage(message = {}) {
+  return String(message.media_mime_type || '') === CHAT_LOCATION_MIME_TYPE
+}
+
+export function isRedPacketMessage(message = {}) {
+  return String(message.media_mime_type || '') === CHAT_RED_PACKET_MIME_TYPE
+}
+
+export function formatCurrencyAmount(amount, currency = 'BDT') {
+  const value = Number(amount || 0)
+  const formatted = Number.isFinite(value)
+    ? value.toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    })
+    : '0'
+
+  if (currency === 'BDT') return `৳ ${formatted}`
+
+  return `${currency} ${formatted}`
+}
+
 export function mediaLabel(type) {
   if (type === 'image') return 'Photo'
   if (type === 'video') return 'Video'
