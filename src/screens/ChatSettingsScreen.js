@@ -19,6 +19,11 @@ import {
   setConversationPinned,
 } from '../lib/chatPreferences'
 import { getProfileName } from '../lib/userDisplay'
+import {
+  buildGroupProfile,
+  fetchGroupMembers,
+  isGroupConversation,
+} from '../lib/chatGroups'
 
 function getConversationDeletionField(conversation, userId) {
   if (!conversation || !userId) return null
@@ -178,9 +183,13 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const conversationId = route?.params?.conversationId
   const participant = route?.params?.participant || null
   const property = route?.params?.property || null
+  const conversation = route?.params?.conversation || null
+  const isGroup = participant?.is_group || isGroupConversation(conversation)
   const { theme } = useAppSettings()
   const [muted, setMuted] = useState(false)
   const [pinned, setPinned] = useState(false)
+  const [groupMembers, setGroupMembers] = useState(route?.params?.groupMembers || [])
+  const [currentUserId, setCurrentUserId] = useState(null)
   const [savingMute, setSavingMute] = useState(false)
   const [savingPinned, setSavingPinned] = useState(false)
   const [clearing, setClearing] = useState(false)
@@ -188,18 +197,44 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const loadPreferences = useCallback(async () => {
     if (!conversationId) return
 
-    const [nextMuted, nextPinned] = await Promise.all([
+    const [
+      nextMuted,
+      nextPinned,
+      {
+        data: { user },
+      },
+    ] = await Promise.all([
       isConversationMuted(conversationId),
       isConversationPinned(conversationId),
+      supabase.auth.getUser(),
     ])
 
     setMuted(nextMuted)
     setPinned(nextPinned)
+    setCurrentUserId(user?.id || null)
   }, [conversationId])
 
   useEffect(() => {
     loadPreferences()
   }, [loadPreferences])
+
+  useEffect(() => {
+    if (!isGroup || !conversationId) return
+
+    let isMounted = true
+
+    fetchGroupMembers(conversationId)
+      .then((members) => {
+        if (isMounted) setGroupMembers(members)
+      })
+      .catch(() => {
+        if (isMounted) setGroupMembers([])
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [conversationId, isGroup])
 
   async function toggleMute(nextValue) {
     if (!conversationId || savingMute) return
@@ -251,6 +286,28 @@ export default function ChatSettingsScreen({ route, navigation }) {
 
             if (!user?.id) {
               Alert.alert('Login required', 'Please log in again first.')
+              return
+            }
+
+            if (isGroup) {
+              const clearedAt = new Date().toISOString()
+              const { error } = await supabase
+                .from('chat_group_members')
+                .update({
+                  cleared_at: clearedAt,
+                  last_read_at: clearedAt,
+                })
+                .eq('conversation_id', conversationId)
+                .eq('user_id', user.id)
+
+              if (error) throw error
+
+              Alert.alert('Chat cleared', 'This group chat history was cleared from your side.', [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.navigate('MainTabs', { screen: 'Chat' }),
+                },
+              ])
               return
             }
 
@@ -318,6 +375,12 @@ export default function ChatSettingsScreen({ route, navigation }) {
     ])
   }
 
+  const currentGroupMember = groupMembers.find((member) => member.user_id === currentUserId)
+  const canInviteGroupMembers =
+    !isGroup ||
+    conversation?.group_invite_policy !== 'admins' ||
+    currentGroupMember?.role === 'admin'
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
       <ScrollView
@@ -336,15 +399,26 @@ export default function ChatSettingsScreen({ route, navigation }) {
             gap: 10,
           }}
         >
-          {participant ? <MemberTile profile={participant} /> : null}
+          {(isGroup ? groupMembers.slice(0, 4).map((member) => (
+            <MemberTile
+              key={member.user_id}
+              profile={member.profile}
+            />
+          )) : participant ? <MemberTile profile={participant} /> : null)}
           <AddGroupTile
-            onPress={() =>
+            onPress={() => {
+              if (isGroup && !canInviteGroupMembers) {
+                Alert.alert('Admins only', 'Only group admins can add members here.')
+                return
+              }
+
               navigation.navigate('CreateGroupChat', {
                 conversationId,
-                participant,
+                participant: isGroup ? null : participant,
                 property,
+                isAddingToGroup: isGroup,
               })
-            }
+            }}
           />
         </View>
 
@@ -391,6 +465,19 @@ export default function ChatSettingsScreen({ route, navigation }) {
             label="Chat appearance and background"
             onPress={() => navigation.navigate('ChatAppearance', { conversationId })}
           />
+          {isGroup ? (
+            <SettingsRow
+              icon="people-circle-outline"
+              label="Group settings and privacy"
+              onPress={() =>
+                navigation.navigate('GroupSettings', {
+                  conversationId,
+                  conversation: conversation || (participant?.is_group ? { id: conversationId, conversation_type: 'group' } : null),
+                  participant: participant?.is_group ? participant : buildGroupProfile(conversation || {}),
+                })
+              }
+            />
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup>

@@ -15,6 +15,11 @@ import { supabase } from '../lib/supabase'
 import { useAppSettings } from '../lib/appSettings'
 import { fetchConnections } from '../lib/social'
 import { getProfileName } from '../lib/userDisplay'
+import {
+  addGroupMembers,
+  createGroupConversation,
+  fetchGroupMembers,
+} from '../lib/chatGroups'
 
 function normalizeProfile(profile = {}) {
   const id = profile.id || profile.user_id
@@ -47,10 +52,15 @@ function getContactSearchText(profile = {}) {
 
 export default function CreateGroupChatScreen({ route, navigation }) {
   const participant = route?.params?.participant || null
+  const conversationId = route?.params?.conversationId || null
+  const isAddingToGroup = Boolean(route?.params?.isAddingToGroup)
   const { theme } = useAppSettings()
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
   const [contacts, setContacts] = useState([])
   const [selectedIds, setSelectedIds] = useState(() => {
+    if (isAddingToGroup) return new Set()
+
     const participantId = participant?.id || participant?.user_id
     return participantId ? new Set([participantId]) : new Set()
   })
@@ -73,11 +83,32 @@ export default function CreateGroupChatScreen({ route, navigation }) {
         fetchConnections({ userId: user.id, kind: 'followers', currentUserId: user.id }),
         fetchConnections({ userId: user.id, kind: 'following', currentUserId: user.id }),
       ])
+      let existingGroupMemberIds = new Set()
+
+      if (isAddingToGroup && conversationId) {
+        try {
+          const members = await fetchGroupMembers(conversationId)
+          existingGroupMemberIds = new Set(
+            members.map((member) => member.user_id).filter(Boolean)
+          )
+        } catch (_error) {
+          existingGroupMemberIds = new Set()
+        }
+      }
+
       const contactsById = {}
 
-      ;[participant, ...followers.map((item) => item.profile), ...following.map((item) => item.profile)]
+      ;[
+        ...(isAddingToGroup ? [] : [participant]),
+        ...followers.map((item) => item.profile),
+        ...following.map((item) => item.profile),
+      ]
         .map(normalizeProfile)
-        .filter((profile) => profile && profile.id !== user.id)
+        .filter((profile) =>
+          profile &&
+          profile.id !== user.id &&
+          !existingGroupMemberIds.has(profile.id)
+        )
         .forEach((profile) => {
           contactsById[profile.id] = profile
         })
@@ -88,7 +119,7 @@ export default function CreateGroupChatScreen({ route, navigation }) {
     } finally {
       setLoading(false)
     }
-  }, [participant])
+  }, [conversationId, isAddingToGroup, participant])
 
   useEffect(() => {
     loadContacts()
@@ -116,23 +147,70 @@ export default function CreateGroupChatScreen({ route, navigation }) {
     })
   }
 
-  function createGroup() {
-    if (selectedIds.size < 2) {
-      Alert.alert('Add one more contact', 'Select at least two people to make a group.')
+  async function createGroup() {
+    if (creating) return
+
+    const minimumSelection = isAddingToGroup ? 1 : 2
+
+    if (selectedIds.size < minimumSelection) {
+      Alert.alert(
+        'Add one more contact',
+        isAddingToGroup
+          ? 'Select at least one contact to add.'
+          : 'Select at least two people to make a group.'
+      )
       return
     }
 
-    const selectedNames = contacts
-      .filter((contact) => selectedIds.has(contact.id))
-      .map((contact) => getProfileName(contact, 'User'))
-      .slice(0, 4)
-      .join(', ')
+    try {
+      setCreating(true)
 
-    Alert.alert(
-      'Group selected',
-      selectedNames,
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
-    )
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user?.id) {
+        Alert.alert('Login needed', 'Please login again first.')
+        return
+      }
+
+      const selectedProfiles = contacts.filter((contact) => selectedIds.has(contact.id))
+
+      if (isAddingToGroup && conversationId) {
+        await addGroupMembers({
+          conversationId,
+          currentUserId: user.id,
+          selectedProfiles,
+        })
+
+        Alert.alert('Members added', 'The selected contacts were added to this group.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ])
+        return
+      }
+
+      const groupConversation = await createGroupConversation({
+        currentUserId: user.id,
+        selectedProfiles,
+      })
+
+      navigation.navigate('MainTabs', {
+        screen: 'Chat',
+        params: {
+          conversationId: groupConversation.id,
+        },
+      })
+    } catch (error) {
+      const message =
+        error?.message?.includes('chat_group_members') ||
+        error?.message?.includes('conversation_type')
+          ? 'Run supabase-chat-groups.sql in Supabase, then try again.'
+          : error?.message || 'Could not create this group.'
+
+      Alert.alert(isAddingToGroup ? 'Add members failed' : 'Group failed', message)
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -256,17 +334,23 @@ export default function CreateGroupChatScreen({ route, navigation }) {
       >
         <TouchableOpacity
           onPress={createGroup}
+          disabled={creating}
           activeOpacity={0.86}
           style={{
             height: 46,
             borderRadius: 14,
-            backgroundColor: selectedIds.size >= 2 ? theme.accent : theme.border,
+            backgroundColor: selectedIds.size >= (isAddingToGroup ? 1 : 2) ? theme.accent : theme.border,
             alignItems: 'center',
             justifyContent: 'center',
+            opacity: creating ? 0.7 : 1,
           }}
         >
           <Text style={{ color: '#fff', fontWeight: '900' }}>
-            Create group ({selectedIds.size})
+            {creating
+              ? isAddingToGroup ? 'Adding...' : 'Creating...'
+              : isAddingToGroup
+                ? `Add members (${selectedIds.size})`
+                : `Create group (${selectedIds.size})`}
           </Text>
         </TouchableOpacity>
       </View>

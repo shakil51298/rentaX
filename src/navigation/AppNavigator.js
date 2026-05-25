@@ -17,6 +17,7 @@ import ChatHistorySearchScreen from '../screens/ChatHistorySearchScreen'
 import ChatHistoryCategoryScreen from '../screens/ChatHistoryCategoryScreen'
 import ChatAppearanceScreen from '../screens/ChatAppearanceScreen'
 import CreateGroupChatScreen from '../screens/CreateGroupChatScreen'
+import GroupSettingsScreen from '../screens/GroupSettingsScreen'
 import ProfileScreen from '../screens/ProfileScreen'
 import FavoriteScreen from '../screens/FavoriteScreen'
 import OwnerProfileScreen from '../screens/OwnerProfileScreen'
@@ -574,7 +575,16 @@ export default function AppNavigator() {
         <Stack.Screen
           name="CreateGroupChat"
           component={CreateGroupChatScreen}
-          options={{ title: t('stackCreateGroupChat', 'Create group') }}
+          options={({ route }) => ({
+            title: route?.params?.isAddingToGroup
+              ? t('stackAddGroupMembers', 'Add members')
+              : t('stackCreateGroupChat', 'Create group'),
+          })}
+        />
+        <Stack.Screen
+          name="GroupSettings"
+          component={GroupSettingsScreen}
+          options={{ title: t('stackGroupSettings', 'Group settings') }}
         />
         <Stack.Screen
           name="AudioCall"

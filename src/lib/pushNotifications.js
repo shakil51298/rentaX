@@ -326,6 +326,16 @@ export function routeFromNotificationData(navigation, payload = {}) {
     return
   }
 
+  if (type === 'chat_message' && payload.isGroup && payload.conversationId) {
+    navigation.navigate('MainTabs', {
+      screen: 'Chat',
+      params: {
+        conversationId: payload.conversationId,
+      },
+    })
+    return
+  }
+
   if (type === 'chat_message' && payload.actorId) {
     navigation.navigate('MainTabs', {
       screen: 'Chat',

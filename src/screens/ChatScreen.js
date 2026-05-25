@@ -72,6 +72,11 @@ import {
 } from '../lib/chatUtils'
 import { fetchWalletBalance } from '../lib/wallet'
 import {
+  buildGroupProfile,
+  fetchGroupMembers,
+  isGroupConversation,
+} from '../lib/chatGroups'
+import {
   buildAgoraChannelName,
   canUseAgoraNativeModule,
   createAgoraCallId,
@@ -150,6 +155,10 @@ function getConversationDeletionField(conversation, userId) {
 }
 
 function getConversationDeletedAt(conversation, userId) {
+  if (isGroupConversation(conversation)) {
+    return conversation?.group_cleared_at || null
+  }
+
   const field = getConversationDeletionField(conversation, userId)
   return field ? conversation?.[field] || null : null
 }
@@ -425,6 +434,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const insets = useSafeAreaInsets()
   const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const routeParams = route.params || EMPTY_ROUTE_PARAMS
+  const requestedConversationId = routeParams?.conversationId || routeParams?.openConversationId || null
   const directTarget = useMemo(() => getDirectTarget(routeParams), [routeParams])
   const directProperty = routeParams?.property || null
 
@@ -435,6 +445,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [conversationProperty, setConversationProperty] = useState(directProperty)
   const [messages, setMessages] = useState([])
   const [conversationRows, setConversationRows] = useState([])
+  const [groupMembers, setGroupMembers] = useState([])
   const [conversationSearchQuery, setConversationSearchQuery] = useState('')
   const [addingContactFromSearch, setAddingContactFromSearch] = useState(false)
   const [quickChatMenuVisible, setQuickChatMenuVisible] = useState(false)
@@ -482,7 +493,18 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const currentUserName = getUserDisplayName(currentUser) || 'Rental X member'
-  const canSend = Boolean(currentUser?.id && otherUser?.id && conversation?.id)
+  const isActiveGroupChat = isGroupConversation(conversation)
+  const activeGroupMember = groupMembers.find((member) => member.user_id === currentUser?.id)
+  const groupCanSend =
+    !isActiveGroupChat ||
+    conversation?.group_message_policy !== 'admins' ||
+    activeGroupMember?.role === 'admin'
+  const canSend = Boolean(
+    currentUser?.id &&
+    conversation?.id &&
+    groupCanSend &&
+    (isActiveGroupChat || otherUser?.id)
+  )
   const messageLookup = useMemo(
     () =>
       messages.reduce((itemsById, message) => {
@@ -508,7 +530,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     currentUserId: currentUser?.id,
     mode,
     conversationId: conversation?.id,
-    otherUserId: otherUser?.id,
+    otherUserId: isActiveGroupChat ? null : otherUser?.id,
   })
 
   const activeColorPreset = resolveChatColorPreset(chatAppearance?.colorPresetId)
@@ -632,12 +654,22 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     })
 
     if (currentUserId) {
-      await supabase
-        .from('chat_messages')
-        .update({ seen_at: new Date().toISOString() })
-        .eq('conversation_id', conversationId)
-        .eq('receiver_id', currentUserId)
-        .is('seen_at', null)
+      const readAt = new Date().toISOString()
+
+      if (isGroupConversation(activeConversation)) {
+        await supabase
+          .from('chat_group_members')
+          .update({ last_read_at: readAt })
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId)
+      } else {
+        await supabase
+          .from('chat_messages')
+          .update({ seen_at: readAt })
+          .eq('conversation_id', conversationId)
+          .eq('receiver_id', currentUserId)
+          .is('seen_at', null)
+      }
     }
 
     if (showLoader) {
@@ -667,7 +699,90 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       return
     }
 
-    const otherIds = (data || []).map((item) =>
+    const directRows = (data || []).filter((item) => !isGroupConversation(item))
+    let groupRows = []
+    let groupMembershipByConversationId = {}
+    let groupMemberCountsByConversationId = {}
+    let groupUnreadCountsByConversationId = {}
+
+    try {
+      const { data: memberships, error: membershipError } = await supabase
+        .from('chat_group_members')
+        .select('conversation_id, role, status, last_read_at, cleared_at')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+
+      if (!membershipError && memberships?.length) {
+        groupMembershipByConversationId = memberships.reduce((itemsById, membership) => {
+          itemsById[membership.conversation_id] = membership
+          return itemsById
+        }, {})
+
+        const groupIds = [...new Set(memberships.map((membership) => membership.conversation_id).filter(Boolean))]
+
+        if (groupIds.length) {
+          const { data: fetchedGroups, error: groupError } = await supabase
+            .from('chat_conversations')
+            .select('*')
+            .in('id', groupIds)
+            .eq('conversation_type', 'group')
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+
+          if (!groupError) {
+            groupRows = fetchedGroups || []
+          }
+
+          const { data: memberCountRows } = await supabase
+            .from('chat_group_members')
+            .select('conversation_id')
+            .in('conversation_id', groupIds)
+            .eq('status', 'active')
+
+          groupMemberCountsByConversationId = (memberCountRows || []).reduce((itemsById, member) => {
+            itemsById[member.conversation_id] = (itemsById[member.conversation_id] || 0) + 1
+            return itemsById
+          }, {})
+
+          const { data: groupMessageRows } = await supabase
+            .from('chat_messages')
+            .select('conversation_id, sender_id, created_at')
+            .in('conversation_id', groupIds)
+            .order('created_at', { ascending: false })
+            .limit(1000)
+
+          groupUnreadCountsByConversationId = (groupMessageRows || []).reduce((itemsById, message) => {
+            if (message.sender_id === user.id) return itemsById
+
+            const membership = groupMembershipByConversationId[message.conversation_id] || {}
+            const unreadAfter = [membership.last_read_at, membership.cleared_at]
+              .filter(Boolean)
+              .sort()
+              .pop()
+
+            if (unreadAfter && new Date(message.created_at).getTime() <= new Date(unreadAfter).getTime()) {
+              return itemsById
+            }
+
+            itemsById[message.conversation_id] = (itemsById[message.conversation_id] || 0) + 1
+            return itemsById
+          }, {})
+        }
+      }
+    } catch (_error) {
+      groupRows = []
+    }
+
+    const directVisibleRows = directRows.filter((item) => isConversationVisibleForUser(item, user.id))
+    const groupVisibleRows = groupRows
+      .map((item) => ({
+        ...item,
+        group_cleared_at: groupMembershipByConversationId[item.id]?.cleared_at || null,
+        my_group_role: groupMembershipByConversationId[item.id]?.role || 'member',
+      }))
+      .filter((item) => isConversationVisibleForUser(item, user.id))
+
+    const otherIds = directVisibleRows.map((item) =>
       item.participant_one_id === user.id
         ? item.participant_two_id
         : item.participant_one_id
@@ -709,26 +824,38 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       getPinnedConversationIds(),
       getMutedConversationIds(),
     ])
-    const visibleRows = (data || []).filter((item) => isConversationVisibleForUser(item, user.id))
 
-    const hydratedRows = visibleRows.map((item) => {
-        const otherId =
-          item.participant_one_id === user.id
-            ? item.participant_two_id
-            : item.participant_one_id
+    const directHydratedRows = directVisibleRows.map((item) => {
+      const otherId =
+        item.participant_one_id === user.id
+          ? item.participant_two_id
+          : item.participant_one_id
 
-        return {
-          ...item,
-          other_user_id: otherId,
-          other_profile: {
-            id: otherId,
-            ...(profilesById[otherId] || { user_id: otherId }),
-          },
-          presence: presenceById[otherId] || null,
-          unread_count: unreadCountsByConversation[item.id] || 0,
-        }
-      })
-    const collapsedRows = collapseConversationRows(hydratedRows, user.id).map((item) => ({
+      return {
+        ...item,
+        other_user_id: otherId,
+        other_profile: {
+          id: otherId,
+          ...(profilesById[otherId] || { user_id: otherId }),
+        },
+        presence: presenceById[otherId] || null,
+        unread_count: unreadCountsByConversation[item.id] || 0,
+      }
+    })
+    const groupHydratedRows = groupVisibleRows.map((item) => ({
+      ...item,
+      is_group: true,
+      other_user_id: null,
+      other_profile: buildGroupProfile(item),
+      presence: null,
+      unread_count: groupUnreadCountsByConversationId[item.id] || 0,
+      group_member_count: groupMemberCountsByConversationId[item.id] || 0,
+    }))
+    const hydratedRows = [
+      ...collapseConversationRows(directHydratedRows, user.id),
+      ...groupHydratedRows,
+    ]
+    const collapsedRows = hydratedRows.map((item) => ({
       ...item,
       is_pinned: pinnedIds.has(String(item.id)),
       is_muted: mutedIds.has(String(item.id)),
@@ -757,12 +884,16 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
     if (lookupError) throw lookupError
 
-    if (existingConversations?.length) {
-      const visibleConversation = existingConversations.find((item) =>
+    const directConversations = (existingConversations || []).filter(
+      (item) => !isGroupConversation(item)
+    )
+
+    if (directConversations.length) {
+      const visibleConversation = directConversations.find((item) =>
         isConversationVisibleForUser(item, user.id)
       )
 
-      return visibleConversation || existingConversations[0]
+      return visibleConversation || directConversations[0]
     }
 
     const { data: createdConversation, error: createError } = await supabase
@@ -783,13 +914,26 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }, [])
 
   const openConversation = useCallback(async ({ item, profile, fromList = false }) => {
+    const isGroup = isGroupConversation(item)
+
     setSelectedConversationIds([])
     setOpenedFromList(fromList)
     setMode('chat')
     setConversation(item)
-    setOtherUser(profile)
+    setOtherUser(isGroup ? buildGroupProfile(item) : profile)
     setConversationProperty(null)
+    setGroupMembers([])
     setReplyTarget(null)
+
+    if (isGroup) {
+      try {
+        const members = await fetchGroupMembers(item.id)
+        setGroupMembers(members)
+      } catch (_error) {
+        setGroupMembers([])
+      }
+    }
+
     await loadMessages(item.id, currentUser?.id, true, item)
   }, [currentUser?.id, loadMessages])
 
@@ -838,6 +982,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       setConversation(nextConversation)
       setOtherUser(targetProfile)
       setConversationProperty(null)
+      setGroupMembers([])
       setReplyTarget(null)
       await loadMessages(nextConversation.id, currentUser.id, true, nextConversation)
     } catch (error) {
@@ -884,6 +1029,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       setConversation(nextConversation)
       setOtherUser(targetProfile)
       setConversationProperty(null)
+      setGroupMembers([])
       setReplyTarget(null)
       await loadMessages(nextConversation.id, currentUser.id, true, nextConversation)
     } catch (error) {
@@ -905,16 +1051,78 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       return
     }
 
+    if (requestedConversationId) {
+      try {
+        const { data: requestedConversation, error: requestedConversationError } = await supabase
+          .from('chat_conversations')
+          .select('*')
+          .eq('id', requestedConversationId)
+          .single()
+
+        if (requestedConversationError) throw requestedConversationError
+
+        const isGroup = isGroupConversation(requestedConversation)
+
+        if (isGroup) {
+          const members = await fetchGroupMembers(requestedConversation.id)
+          const currentMember = members.find((member) => member.user_id === user.id)
+          const nextConversation = {
+            ...requestedConversation,
+            group_cleared_at: currentMember?.cleared_at || null,
+            my_group_role: currentMember?.role || 'member',
+          }
+
+          setOpenedFromList(true)
+          setMode('chat')
+          setConversation(nextConversation)
+          setOtherUser(buildGroupProfile(requestedConversation))
+          setConversationProperty(null)
+          setGroupMembers(members)
+          setReplyTarget(null)
+          await loadMessages(requestedConversation.id, user.id, true, nextConversation)
+          return
+        }
+
+        const otherId = getOtherParticipantId(requestedConversation, user.id)
+
+        if (!otherId || otherId === user.id) {
+          throw new Error('This chat is unavailable.')
+        }
+
+        const profilesById = await fetchProfiles([otherId])
+        const targetProfile = {
+          id: otherId,
+          ...(profilesById[otherId] || { user_id: otherId }),
+        }
+
+        setOpenedFromList(true)
+        setMode('chat')
+        setConversation(requestedConversation)
+        setOtherUser(targetProfile)
+        setConversationProperty(directProperty)
+        setGroupMembers([])
+        setReplyTarget(null)
+        await loadMessages(requestedConversation.id, user.id, true, requestedConversation)
+        return
+      } catch (error) {
+        Alert.alert('Chat unavailable', error.message)
+        setLoading(false)
+        return
+      }
+    }
+
     if (!directTarget?.id) {
       setMode('list')
       setConversation(null)
       setOtherUser(null)
+      setGroupMembers([])
       await loadConversationList(user)
       return
     }
 
     if (directTarget.id === user.id) {
       setMode('list')
+      setGroupMembers([])
       await loadConversationList(user)
       return
     }
@@ -936,6 +1144,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       setOtherUser(hydratedTarget)
       setConversationProperty(directProperty)
       setConversation(nextConversation)
+      setGroupMembers([])
       setReplyTarget(null)
       await loadMessages(nextConversation.id, user.id, true, nextConversation)
     } catch (error) {
@@ -948,6 +1157,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     getOrCreateConversation,
     loadConversationList,
     loadMessages,
+    requestedConversationId,
   ])
 
   useEffect(() => {
@@ -1155,6 +1365,18 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }, [])
 
+  function getGroupMessageReceiverId() {
+    const otherMember = groupMembers.find((member) => member.user_id && member.user_id !== currentUser?.id)
+
+    return (
+      otherMember?.user_id ||
+      (conversation?.participant_one_id === currentUser?.id
+        ? conversation?.participant_two_id
+        : conversation?.participant_one_id) ||
+      null
+    )
+  }
+
   async function sendMessage({
     body = '',
     messageType = 'text',
@@ -1163,11 +1385,24 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     mediaName = null,
     audioDurationMs = null,
   } = {}) {
+    if (isActiveGroupChat && !groupCanSend) {
+      Alert.alert('Admins only', 'Only group admins can send messages in this group.')
+      return null
+    }
+
     if (!canSend || sending) return
 
     const cleanBody = body.trim()
 
     if (!cleanBody && !mediaUrl) return
+
+    const isGroupChat = isActiveGroupChat
+    const receiverId = isGroupChat ? getGroupMessageReceiverId() : otherUser?.id
+
+    if (!receiverId || receiverId === currentUser.id) {
+      Alert.alert('Message unavailable', 'This chat needs another active member before sending.')
+      return
+    }
 
     const replySnapshot = replyTarget || null
     const createdAt = new Date().toISOString()
@@ -1176,7 +1411,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       id: optimisticId,
       conversation_id: conversation.id,
       sender_id: currentUser.id,
-      receiver_id: otherUser.id,
+      receiver_id: receiverId,
       body: cleanBody || null,
       media_url: mediaUrl,
       media_mime_type: mediaMimeType,
@@ -1217,7 +1452,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     const basePayload = {
       conversation_id: conversation.id,
       sender_id: currentUser.id,
-      receiver_id: otherUser.id,
+      receiver_id: receiverId,
       body: cleanBody || null,
       media_url: mediaUrl,
       media_mime_type: mediaMimeType,
@@ -1293,31 +1528,55 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       .update(conversationUpdate)
       .eq('id', conversation.id)
 
-    await sendPushToUser({
-      recipientId: otherUser.id,
-      title: currentUserName,
-      body:
-        isSharedLocation
-          ? 'Shared a location'
-          : isRedPacket
-            ? 'Sent a red packet'
-            : isContactCard
-              ? 'Sent a contact card'
-          : messageType === 'text'
+    const notificationBody =
+      isSharedLocation
+        ? 'Shared a location'
+        : isRedPacket
+          ? 'Sent a red packet'
+          : isContactCard
+            ? 'Sent a contact card'
+        : messageType === 'text'
           ? cleanBody.slice(0, 120)
-          : `Sent a ${mediaLabel(messageType).toLowerCase()}`,
-      data: {
-        type: 'chat_message',
-        actorId: currentUser.id,
-        actorName: currentUserName,
-        actorAvatarUrl: getUserAvatarUrl(currentUser),
-        propertyId: getPropertyId(conversationProperty) || conversation.property_id,
-        propertyTitle: conversationProperty?.title || '',
-        conversationId: conversation.id,
-        messageType,
-        createdAt,
-      },
-    })
+          : `Sent a ${mediaLabel(messageType).toLowerCase()}`
+    const pushPayload = {
+      type: 'chat_message',
+      actorId: currentUser.id,
+      actorName: currentUserName,
+      actorAvatarUrl: getUserAvatarUrl(currentUser),
+      propertyId: getPropertyId(conversationProperty) || conversation.property_id,
+      propertyTitle: conversationProperty?.title || '',
+      conversationId: conversation.id,
+      messageType,
+      createdAt,
+    }
+
+    if (isGroupChat) {
+      const recipients = groupMembers
+        .map((member) => member.user_id)
+        .filter((memberId) => memberId && memberId !== currentUser.id)
+
+      await Promise.all(
+        recipients.map((recipientId) =>
+          sendPushToUser({
+            recipientId,
+            title: otherUserName,
+            body: `${currentUserName}: ${notificationBody}`,
+            data: {
+              ...pushPayload,
+              isGroup: true,
+              groupTitle: otherUserName,
+            },
+          })
+        )
+      )
+    } else {
+      await sendPushToUser({
+        recipientId: otherUser.id,
+        title: currentUserName,
+        body: notificationBody,
+        data: pushPayload,
+      })
+    }
 
     await updateMyPresence({ online: true, typing: false })
     setSending(false)
@@ -1338,7 +1597,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     try {
       const contactIds = [
         currentUser.id,
-        otherUser?.id || otherUser?.user_id,
+        ...(isActiveGroupChat
+          ? groupMembers.map((member) => member.user_id)
+          : [otherUser?.id || otherUser?.user_id]),
         ...conversationRows.map((row) => row.other_user_id),
       ].filter(Boolean)
       const profilesById = await fetchProfiles(contactIds)
@@ -2096,7 +2357,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   async function startVoiceCall() {
-    if (!currentUser?.id || !otherUser?.id) return
+    if (!currentUser?.id || (!isActiveGroupChat && !otherUser?.id)) return
 
     if (!canUseAgoraNativeModule()) {
       Alert.alert(
@@ -2106,29 +2367,46 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       return
     }
 
+    const groupRecipientIds = isActiveGroupChat
+      ? groupMembers
+        .map((member) => member.user_id)
+        .filter((memberId) => memberId && memberId !== currentUser.id)
+      : []
+    const primaryRecipientId = isActiveGroupChat ? groupRecipientIds[0] : otherUser.id
+
+    if (!primaryRecipientId) {
+      Alert.alert('Call unavailable', 'This group needs another active member before calling.')
+      return
+    }
+
     const callId = createAgoraCallId('audio')
     const channelName = buildAgoraChannelName({
       conversationId: conversation?.id,
       callId,
       callerId: currentUser.id,
-      recipientId: otherUser.id,
+      recipientId: primaryRecipientId,
       kind: 'audio',
     })
+    const recipients = isActiveGroupChat ? groupRecipientIds : [otherUser.id]
 
-    sendAgoraCallInvite({
-      callKind: 'audio',
-      caller: currentUser,
-      recipientId: otherUser.id,
-      property: conversationProperty,
-      conversationId: conversation?.id || null,
-      callId,
-      channelName,
-    }).catch((error) => {
+    Promise.all(recipients.map((recipientId) =>
+      sendAgoraCallInvite({
+        callKind: 'audio',
+        caller: currentUser,
+        recipientId,
+        property: conversationProperty,
+        conversationId: conversation?.id || null,
+        callId,
+        channelName,
+      })
+    )).catch((error) => {
       console.warn('Audio call invite failed:', error?.message || error)
     })
 
     navigation.navigate('AudioCall', {
-      participant: otherUser,
+      participant: isActiveGroupChat
+        ? { ...otherUser, id: primaryRecipientId, user_id: primaryRecipientId }
+        : otherUser,
       property: conversationProperty,
       conversationId: conversation?.id || null,
       callId,
@@ -2138,7 +2416,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   async function startVideoCall() {
-    if (!currentUser?.id || !otherUser?.id) return
+    if (!currentUser?.id || (!isActiveGroupChat && !otherUser?.id)) return
 
     if (!canUseAgoraNativeModule()) {
       Alert.alert(
@@ -2148,29 +2426,46 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       return
     }
 
+    const groupRecipientIds = isActiveGroupChat
+      ? groupMembers
+        .map((member) => member.user_id)
+        .filter((memberId) => memberId && memberId !== currentUser.id)
+      : []
+    const primaryRecipientId = isActiveGroupChat ? groupRecipientIds[0] : otherUser.id
+
+    if (!primaryRecipientId) {
+      Alert.alert('Call unavailable', 'This group needs another active member before calling.')
+      return
+    }
+
     const callId = createAgoraCallId('video')
     const channelName = buildAgoraChannelName({
       conversationId: conversation?.id,
       callId,
       callerId: currentUser.id,
-      recipientId: otherUser.id,
+      recipientId: primaryRecipientId,
       kind: 'video',
     })
+    const recipients = isActiveGroupChat ? groupRecipientIds : [otherUser.id]
 
-    sendAgoraCallInvite({
-      callKind: 'video',
-      caller: currentUser,
-      recipientId: otherUser.id,
-      property: conversationProperty,
-      conversationId: conversation?.id || null,
-      callId,
-      channelName,
-    }).catch((error) => {
+    Promise.all(recipients.map((recipientId) =>
+      sendAgoraCallInvite({
+        callKind: 'video',
+        caller: currentUser,
+        recipientId,
+        property: conversationProperty,
+        conversationId: conversation?.id || null,
+        callId,
+        channelName,
+      })
+    )).catch((error) => {
       console.warn('Video call invite failed:', error?.message || error)
     })
 
     navigation.navigate('VideoCall', {
-      participant: otherUser,
+      participant: isActiveGroupChat
+        ? { ...otherUser, id: primaryRecipientId, user_id: primaryRecipientId }
+        : otherUser,
       property: conversationProperty,
       conversationId: conversation?.id || null,
       callId,
@@ -2189,12 +2484,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function openChatSettings() {
-    if (!conversation?.id || !otherUser?.id) return
+    if (!conversation?.id || (!isActiveGroupChat && !otherUser?.id)) return
 
     navigation.navigate('ChatSettings', {
       conversationId: conversation.id,
       participant: otherUser,
       property: conversationProperty || null,
+      conversation,
+      groupMembers,
     })
   }
 
@@ -2544,7 +2841,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           style: 'destructive',
           onPress: async () => {
             const deletedAt = new Date().toISOString()
-            const groups = targetRows.reduce((acc, item) => {
+            const groupTargetIds = targetRows
+              .filter((item) => isGroupConversation(item))
+              .map((item) => item.id)
+            const directTargets = targetRows.filter((item) => !isGroupConversation(item))
+            const groups = directTargets.reduce((acc, item) => {
               const field = getConversationDeletionField(item, currentUser.id)
 
               if (!field) return acc
@@ -2559,9 +2860,25 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
             const groupEntries = Object.entries(groups)
 
-            if (groupEntries.length === 0) {
+            if (groupEntries.length === 0 && groupTargetIds.length === 0) {
               Alert.alert('Delete unavailable', 'Unable to identify your chat records right now.')
               return
+            }
+
+            if (groupTargetIds.length > 0) {
+              const { error } = await supabase
+                .from('chat_group_members')
+                .update({
+                  cleared_at: deletedAt,
+                  last_read_at: deletedAt,
+                })
+                .eq('user_id', currentUser.id)
+                .in('conversation_id', groupTargetIds)
+
+              if (error) {
+                Alert.alert('Delete failed', error.message)
+                return
+              }
             }
 
             for (const [field, ids] of groupEntries) {
@@ -2699,13 +3016,22 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     return actions
   }, [currentUser?.id, messageActionTarget])
 
-  const chatStatusText = getChatStatusText()
+  const groupMemberTotal = groupMembers.length || conversation?.group_member_count || 0
+  const chatStatusText = isActiveGroupChat
+    ? (groupMemberTotal ? `${groupMemberTotal} members` : 'Group chat')
+    : getChatStatusText()
   const quickChatActions = [
     {
       key: 'new-chat',
       icon: 'chatbubble-ellipses-outline',
       title: 'New chat',
       subtitle: 'Start a message',
+    },
+    {
+      key: 'new-group',
+      icon: 'people-outline',
+      title: 'New group',
+      subtitle: 'Create chat',
     },
     {
       key: 'add-contacts',
@@ -2727,6 +3053,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     if (actionKey === 'new-chat') {
       setConversationSearchQuery('')
       requestAnimationFrame(() => conversationSearchInputRef.current?.focus())
+      return
+    }
+
+    if (actionKey === 'new-group') {
+      navigation.navigate('CreateGroupChat')
       return
     }
 
@@ -3312,6 +3643,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
           <Pressable
             onPress={() =>
+              !isActiveGroupChat &&
               otherUser?.id &&
               navigation.navigate('OwnerProfile', {
                 owner: {
@@ -3334,7 +3666,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   {otherUserName}
                 </Text>
 
-                {otherUser?.is_verified ? (
+                {!isActiveGroupChat && otherUser?.is_verified ? (
                   <Ionicons
                     name="checkmark-circle"
                     size={15}
@@ -3910,7 +4242,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       }
                     }}
                     delayLongPress={160}
-                    disabled={uploading || sending}
+                    disabled={uploading || sending || !canSend}
                     style={{
                       width: 42,
                       height: 42,
@@ -3918,7 +4250,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       alignItems: 'center',
                       justifyContent: 'center',
                       backgroundColor: activeColorPreset.accent,
-                      opacity: uploading || sending ? 0.55 : 1,
+                      opacity: uploading || sending || !canSend ? 0.55 : 1,
                     }}
                   >
                     {uploading ? (
@@ -3955,7 +4287,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   onChangeText={(text) => {
                     setMessageText(text)
 
-                    if (!conversation?.id || !otherUser?.id) return
+                    if (!conversation?.id || (!isActiveGroupChat && !otherUser?.id)) return
 
                     updateMyPresence({ online: true, typing: text.trim().length > 0 })
 
@@ -3967,9 +4299,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       updateMyPresence({ online: true, typing: false })
                     }, 2500)
                   }}
-                  placeholder="Type a message"
+                  placeholder={
+                    isActiveGroupChat && !groupCanSend
+                      ? 'Only admins can send messages'
+                      : 'Type a message'
+                  }
                   placeholderTextColor="#94a3b8"
                   multiline
+                  editable={!isActiveGroupChat || groupCanSend}
                   style={{
                     flex: 1,
                     minHeight: 42,
@@ -4006,7 +4343,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
               <TouchableOpacity
                 onPress={openAttachmentPicker}
-                disabled={uploading || sending}
+                disabled={uploading || sending || !canSend}
                 activeOpacity={0.82}
                 style={{
                   width: 42,
@@ -4016,7 +4353,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   justifyContent: 'center',
                   marginLeft: 2,
                   backgroundColor: attachmentPickerVisible ? hexToRgba(activeColorPreset.accent, 0.14) : 'transparent',
-                  opacity: uploading || sending ? 0.55 : 1,
+                  opacity: uploading || sending || !canSend ? 0.55 : 1,
                 }}
               >
                 <Ionicons name="add-circle-outline" size={23} color={activeColorPreset.accent} />
