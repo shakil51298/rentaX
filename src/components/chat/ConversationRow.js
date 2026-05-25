@@ -89,6 +89,24 @@ export default function ConversationRow({
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
+          {item.is_pinned ? (
+            <Ionicons
+              name="pin"
+              size={13}
+              color={theme.mutedText}
+              style={{ marginRight: 4 }}
+            />
+          ) : null}
+
+          {item.is_muted ? (
+            <Ionicons
+              name="notifications-off-outline"
+              size={13}
+              color={theme.mutedText}
+              style={{ marginRight: 4 }}
+            />
+          ) : null}
+
           {isLastMine ? (
             <Ionicons
               name="checkmark-done"

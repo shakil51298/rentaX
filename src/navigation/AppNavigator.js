@@ -13,6 +13,10 @@ import PropertyScreen from '../screens/PropertyScreen'
 import CreatePostScreen from '../screens/CreatePostScreen'
 import ChatScreen from '../screens/ChatScreen'
 import ChatSettingsScreen from '../screens/ChatSettingsScreen'
+import ChatHistorySearchScreen from '../screens/ChatHistorySearchScreen'
+import ChatHistoryCategoryScreen from '../screens/ChatHistoryCategoryScreen'
+import ChatAppearanceScreen from '../screens/ChatAppearanceScreen'
+import CreateGroupChatScreen from '../screens/CreateGroupChatScreen'
 import ProfileScreen from '../screens/ProfileScreen'
 import FavoriteScreen from '../screens/FavoriteScreen'
 import OwnerProfileScreen from '../screens/OwnerProfileScreen'
@@ -551,6 +555,26 @@ export default function AppNavigator() {
           name="ChatSettings"
           component={ChatSettingsScreen}
           options={{ title: t('stackChatSettings', 'Chat settings') }}
+        />
+        <Stack.Screen
+          name="ChatHistorySearch"
+          component={ChatHistorySearchScreen}
+          options={{ title: t('stackChatHistorySearch', 'Search chat history') }}
+        />
+        <Stack.Screen
+          name="ChatHistoryCategory"
+          component={ChatHistoryCategoryScreen}
+          options={({ route }) => ({ title: route?.params?.title || t('stackChatHistorySearch', 'Search chat history') })}
+        />
+        <Stack.Screen
+          name="ChatAppearance"
+          component={ChatAppearanceScreen}
+          options={{ title: t('stackChatAppearance', 'Chat appearance') }}
+        />
+        <Stack.Screen
+          name="CreateGroupChat"
+          component={CreateGroupChatScreen}
+          options={{ title: t('stackCreateGroupChat', 'Create group') }}
         />
         <Stack.Screen
           name="AudioCall"

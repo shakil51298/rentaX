@@ -79,6 +79,7 @@ import {
 } from '../lib/agoraCall'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { getLocationSelectionFromCoords } from '../lib/location'
+import { getMutedConversationIds, getPinnedConversationIds } from '../lib/chatPreferences'
 
 const EMPTY_ROUTE_PARAMS = {}
 const RED_PACKET_MAX_AMOUNT = 200
@@ -243,6 +244,17 @@ function collapseConversationRows(conversations, currentUserId) {
   })
 
   return [...groupedRows.values()]
+}
+
+function sortConversationRowsWithPinned(conversations, pinnedIds) {
+  return [...conversations].sort((firstItem, secondItem) => {
+    const firstPinned = pinnedIds.has(String(firstItem.id))
+    const secondPinned = pinnedIds.has(String(secondItem.id))
+
+    if (firstPinned !== secondPinned) return firstPinned ? -1 : 1
+
+    return getConversationActivityTime(secondItem) - getConversationActivityTime(firstItem)
+  })
 }
 
 function getMessageDeletionField(message, userId) {
@@ -693,6 +705,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         })
     }
 
+    const [pinnedIds, mutedIds] = await Promise.all([
+      getPinnedConversationIds(),
+      getMutedConversationIds(),
+    ])
     const visibleRows = (data || []).filter((item) => isConversationVisibleForUser(item, user.id))
 
     const hydratedRows = visibleRows.map((item) => {
@@ -712,7 +728,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           unread_count: unreadCountsByConversation[item.id] || 0,
         }
       })
-    setConversationRows(collapseConversationRows(hydratedRows, user.id))
+    const collapsedRows = collapseConversationRows(hydratedRows, user.id).map((item) => ({
+      ...item,
+      is_pinned: pinnedIds.has(String(item.id)),
+      is_muted: mutedIds.has(String(item.id)),
+    }))
+
+    setConversationRows(sortConversationRowsWithPinned(collapsedRows, pinnedIds))
     setSelectedConversationIds((current) =>
       current.filter((id) => hydratedRows.some((item) => item.id === id))
     )
@@ -1030,6 +1052,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         loadMessages(conversation.id, currentUser.id, false, conversation)
       }
     }, [conversation, currentUser?.id, loadMessages, mode])
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      if (mode === 'list' && currentUser?.id) {
+        loadConversationList(currentUser)
+      }
+    }, [currentUser, loadConversationList, mode])
   )
 
   useEffect(() => {

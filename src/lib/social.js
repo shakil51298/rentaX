@@ -48,7 +48,7 @@ export async function fetchProfilesByUserIds(userIds) {
 
   const { data } = await supabase
     .from('user_profiles')
-    .select('user_id, email, display_name, avatar_url, cover_url, bio, phone, location, user_type, is_verified, owner_verification_status')
+    .select('user_id, email, display_name, rentalx_id, avatar_url, cover_url, bio, phone, location, user_type, is_verified, owner_verification_status')
     .in('user_id', ids)
 
   return (data || []).reduce((accumulator, profile) => ({

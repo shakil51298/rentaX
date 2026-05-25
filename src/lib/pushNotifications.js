@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { supabase } from './supabase'
+import { isConversationMuted } from './chatPreferences'
 
 let warnedAboutExpoGo = false
 
@@ -49,7 +50,18 @@ function getNotificationChannelId(type) {
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const type = notification?.request?.content?.data?.type
+    const conversationId = notification?.request?.content?.data?.conversationId
     const channelId = getNotificationChannelId(type)
+
+    if (type === 'chat_message' && conversationId && (await isConversationMuted(conversationId))) {
+      return {
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+        priority: Notifications.AndroidNotificationPriority.MIN,
+      }
+    }
 
     return {
       shouldPlaySound: true,
