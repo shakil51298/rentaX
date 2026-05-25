@@ -49,6 +49,7 @@ export function formatDurationSeconds(totalSeconds = 0) {
 
 export const CHAT_LOCATION_MIME_TYPE = 'application/vnd.rentalx.location'
 export const CHAT_RED_PACKET_MIME_TYPE = 'application/vnd.rentalx.red-packet'
+export const CHAT_CONTACT_CARD_MIME_TYPE = 'application/vnd.rentalx.contact-card'
 
 export function isLocationMessage(message = {}) {
   return String(message.media_mime_type || '') === CHAT_LOCATION_MIME_TYPE
@@ -56,6 +57,32 @@ export function isLocationMessage(message = {}) {
 
 export function isRedPacketMessage(message = {}) {
   return String(message.media_mime_type || '') === CHAT_RED_PACKET_MIME_TYPE
+}
+
+export function isContactCardMessage(message = {}) {
+  return String(message.media_mime_type || '') === CHAT_CONTACT_CARD_MIME_TYPE
+}
+
+export function parseContactCardPayload(message = {}) {
+  try {
+    const payload = JSON.parse(message.body || '{}')
+
+    return {
+      userId: payload.userId || payload.user_id || null,
+      displayName: payload.displayName || payload.display_name || 'Rental X member',
+      rentalXId: payload.rentalXId || payload.rentalx_id || '',
+      avatarUrl: payload.avatarUrl || payload.avatar_url || null,
+      isVerified: Boolean(payload.isVerified || payload.is_verified),
+    }
+  } catch {
+    return {
+      userId: null,
+      displayName: message.media_name || 'Rental X member',
+      rentalXId: '',
+      avatarUrl: null,
+      isVerified: false,
+    }
+  }
 }
 
 export function formatCurrencyAmount(amount, currency = 'BDT') {

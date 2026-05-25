@@ -21,9 +21,11 @@ import {
   formatDuration,
   formatDurationSeconds,
   getCallPresentation,
+  isContactCardMessage,
   isLocationMessage,
   isRedPacketMessage,
   isSameDay,
+  parseContactCardPayload,
 } from '../../lib/chatUtils'
 
 function ChatVideo({ uri }) {
@@ -58,6 +60,7 @@ function isDocumentMessage(message) {
   if (!message?.media_url) return false
   if (isLocationMessage(message)) return false
   if (isRedPacketMessage(message)) return false
+  if (isContactCardMessage(message)) return false
 
   const type = String(message.message_type || '')
 
@@ -238,6 +241,10 @@ function getReplySnippet(message) {
   if (message.deleted_for_everyone_at) return 'This message was deleted'
   if (isLocationMessage(message)) return 'Shared location'
   if (isRedPacketMessage(message)) return 'Red packet'
+  if (isContactCardMessage(message)) {
+    const contact = parseContactCardPayload(message)
+    return contact.displayName ? `Contact: ${contact.displayName}` : 'Contact card'
+  }
   if (message.message_type === 'image') return 'Photo'
   if (message.message_type === 'video') return 'Video'
   if (message.message_type === 'voice') return 'Voice message'
@@ -380,6 +387,29 @@ function ReplyPreviewMedia({ message, isMine }) {
           name="gift"
           size={18}
           color={isMine ? '#fff' : '#dc2626'}
+        />
+      </View>
+    )
+  }
+
+  if (isContactCardMessage(message)) {
+    return (
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          marginRight: 10,
+          flexShrink: 0,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#f0fdf4',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons
+          name="id-card"
+          size={18}
+          color={isMine ? '#fff' : '#16a34a'}
         />
       </View>
     )
@@ -701,6 +731,110 @@ function RedPacketMessage({
   )
 }
 
+function ContactCardMessage({ message, isMine, onOpenContactCard }) {
+  const contact = parseContactCardPayload(message)
+  const initial = String(contact.displayName || 'R').charAt(0).toUpperCase()
+
+  return (
+    <View
+      style={{
+        width: 238,
+        paddingHorizontal: 8,
+        paddingVertical: 7,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {contact.avatarUrl ? (
+          <Image
+            source={{ uri: contact.avatarUrl }}
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 23,
+              backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#e2e8f0',
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 23,
+              backgroundColor: isMine ? 'rgba(255,255,255,0.2)' : '#dcfce7',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: isMine ? '#fff' : '#15803d', fontSize: 17, fontWeight: '900' }}>
+              {initial}
+            </Text>
+          </View>
+        )}
+
+        <View style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                color: isMine ? '#fff' : '#0f172a',
+                fontSize: 14,
+                fontWeight: '900',
+                flexShrink: 1,
+              }}
+            >
+              {contact.displayName}
+            </Text>
+            {contact.isVerified ? (
+              <Ionicons
+                name="checkmark-circle"
+                size={14}
+                color={isMine ? '#bfdbfe' : '#1877F2'}
+                style={{ marginLeft: 4 }}
+              />
+            ) : null}
+          </View>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
+              fontSize: 11,
+              marginTop: 3,
+              fontWeight: '800',
+            }}
+          >
+            {contact.rentalXId ? `ID ${contact.rentalXId}` : 'Rental X contact'}
+          </Text>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        onPress={() => onOpenContactCard?.(contact)}
+        disabled={!contact.userId}
+        activeOpacity={0.84}
+        style={{
+          marginTop: 10,
+          minHeight: 36,
+          borderRadius: 13,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: contact.userId ? 1 : 0.6,
+        }}
+      >
+        <Text
+          style={{
+            color: isMine ? '#fff' : '#1877F2',
+            fontSize: 12,
+            fontWeight: '900',
+          }}
+        >
+          Message
+        </Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
 function DocumentMessage({ message, isMine }) {
   async function openDocument() {
     if (!message?.media_url) return
@@ -780,7 +914,8 @@ function renderMessageContent(
   onOpenMedia,
   redPacket,
   onOpenRedPacket,
-  openingRedPacketId
+  openingRedPacketId,
+  onOpenContactCard
 ) {
   if (item.deleted_for_everyone_at) {
     return (
@@ -839,6 +974,16 @@ function renderMessageContent(
     )
   }
 
+  if (isContactCardMessage(item)) {
+    return (
+      <ContactCardMessage
+        message={item}
+        isMine={isMine}
+        onOpenContactCard={onOpenContactCard}
+      />
+    )
+  }
+
   if (isDocumentMessage(item)) {
     return <DocumentMessage message={item} isMine={isMine} />
   }
@@ -872,6 +1017,7 @@ export default function MessageBubble({
   redPacket,
   onOpenRedPacket,
   openingRedPacketId,
+  onOpenContactCard,
   outgoingBubbleColor = '#1877F2',
   highlighted = false,
 }) {
@@ -1060,7 +1206,8 @@ export default function MessageBubble({
               onOpenMedia,
               redPacket,
               onOpenRedPacket,
-              openingRedPacketId
+              openingRedPacketId,
+              onOpenContactCard
             )}
 
             <View

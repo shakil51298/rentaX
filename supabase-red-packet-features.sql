@@ -4,7 +4,7 @@ create table if not exists public.chat_red_packets (
   conversation_id uuid not null references public.chat_conversations(id) on delete cascade,
   sender_id uuid not null references auth.users(id) on delete cascade,
   receiver_id uuid not null references auth.users(id) on delete cascade,
-  amount numeric(12, 2) not null check (amount > 0 and amount <= 500000),
+  amount numeric(12, 2) not null check (amount > 0 and amount <= 200),
   currency text not null default 'BDT',
   wish text,
   photo_url text,
@@ -36,6 +36,16 @@ create table if not exists public.wallet_entries (
   source text not null default 'red_packet_received',
   created_at timestamptz not null default now()
 );
+
+alter table public.chat_red_packets
+  drop constraint if exists chat_red_packets_amount_check;
+
+alter table public.chat_red_packets
+  drop constraint if exists chat_red_packets_amount_max_check;
+
+alter table public.chat_red_packets
+  add constraint chat_red_packets_amount_max_check
+  check (amount > 0 and amount <= 200) not valid;
 
 alter table public.wallet_entries
   alter column red_packet_id drop not null;

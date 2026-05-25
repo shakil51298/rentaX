@@ -24,6 +24,7 @@ export default function ConversationRow({
   const isVideoCall = isLastCall && /video call/i.test(lastMessageText)
   const isLastLocation = item.last_message_type === 'file' && /shared location/i.test(lastMessageText)
   const isLastRedPacket = item.last_message_type === 'file' && /red packet/i.test(lastMessageText)
+  const isLastContactCard = item.last_message_type === 'file' && /contact card/i.test(lastMessageText)
   const isVerified = Boolean(profile?.is_verified)
 
   return (
@@ -118,6 +119,15 @@ export default function ConversationRow({
           {isLastRedPacket ? (
             <Ionicons
               name="gift-outline"
+              size={14}
+              color={theme.mutedText}
+              style={{ marginRight: 4 }}
+            />
+          ) : null}
+
+          {isLastContactCard ? (
+            <Ionicons
+              name="id-card-outline"
               size={14}
               color={theme.mutedText}
               style={{ marginRight: 4 }}

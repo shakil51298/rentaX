@@ -49,7 +49,8 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
         borderRadius: 18,
         borderWidth: 1,
         borderColor: theme.border,
-        padding: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -58,20 +59,20 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         <View
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: 21,
+            width: 38,
+            height: 38,
+            borderRadius: 19,
             backgroundColor: theme.accentSoft,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name={icon} size={22} color={theme.accent} />
+          <Ionicons name={icon} size={20} color={theme.accent} />
         </View>
 
         <View style={{ marginLeft: 12, flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15 }}>
               {title}
             </Text>
             {badgeCount ? (
@@ -93,9 +94,11 @@ function ActionCard({ icon, title, subtitle, onPress, badgeCount = 0, theme }) {
               </View>
             ) : null}
           </View>
-          <Text style={{ color: theme.mutedText, marginTop: 4 }}>
-            {subtitle}
-          </Text>
+          {subtitle ? (
+            <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12 }}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
       </View>
 
@@ -233,9 +236,11 @@ function AccountToggleRow({ title, subtitle, value, onValueChange, disabled, the
     >
       <View style={{ flex: 1 }}>
         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>{title}</Text>
-        <Text style={{ color: theme.mutedText, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
-          {subtitle}
-        </Text>
+        {subtitle ? (
+          <Text style={{ color: theme.mutedText, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
 
       <Switch
@@ -710,6 +715,13 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
             </View>
 
             <View style={{ padding: 16, gap: 16 }}>
+              <ActionCard
+                icon="wallet-outline"
+                title="Wallet"
+                theme={theme}
+                onPress={() => navigation.navigate('Wallet')}
+              />
+
               <View
                 style={{
                   backgroundColor: theme.surface,
@@ -749,9 +761,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
                         {t('profileGeneralSettings', 'General settings')}
                       </Text>
-                      <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
-                        {t('profileGeneralSettingsSubtitle', 'Change the app theme and switch between Bangla and English.')}
-                      </Text>
                     </View>
                   </View>
 
@@ -777,9 +786,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       <View>
                         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                           {t('settingsAppearanceTitle', 'Appearance')}
-                        </Text>
-                        <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
-                          {t('settingsAppearanceSubtitle', 'Choose a light or dark look for the app.')}
                         </Text>
                       </View>
 
@@ -810,9 +816,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                           {t('settingsThemeTitle', 'Theme')}
                         </Text>
-                        <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
-                          {t('settingsThemeSubtitle', 'Pick the colors and button style you want across the app.')}
-                        </Text>
                       </View>
 
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 }}>
@@ -828,38 +831,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                         ))}
                       </View>
 
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <View
-                          style={{
-                            flex: 1,
-                            minHeight: 40,
-                            borderRadius: 13,
-                            backgroundColor: theme.accent,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>
-                            {t('settingsPreviewPrimary', 'Primary')}
-                          </Text>
-                        </View>
-                        <View
-                          style={{
-                            flex: 1,
-                            minHeight: 40,
-                            borderRadius: 13,
-                            backgroundColor: theme.accentSoft,
-                            borderWidth: 1,
-                            borderColor: theme.border,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text style={{ color: theme.accentStrong, fontSize: 12, fontWeight: '900' }}>
-                            {t('settingsPreviewSoft', 'Soft')}
-                          </Text>
-                        </View>
-                      </View>
                     </View>
 
                     <View
@@ -875,9 +846,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       <View>
                         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                           {t('settingsLanguageTitle', 'Language')}
-                        </Text>
-                        <Text style={{ color: theme.mutedText, marginTop: 3, fontSize: 11, lineHeight: 17 }}>
-                          {t('settingsLanguageSubtitle', 'Switch app text between English and Bangla.')}
                         </Text>
                       </View>
 
@@ -936,9 +904,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
                         Account settings
                       </Text>
-                      <Text style={{ color: theme.mutedText, marginTop: 4, fontSize: 12, lineHeight: 18 }}>
-                        Verification, notifications, security, and logout.
-                      </Text>
                     </View>
                   </View>
 
@@ -965,12 +930,9 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                       }}
                     >
                       <Ionicons name="shield-checkmark-outline" size={19} color={theme.accent} />
-                      <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
                         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                           Verification center
-                        </Text>
-                        <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
-                          Manage your account verification.
                         </Text>
                       </View>
                       <Ionicons name="chevron-forward" size={17} color={theme.mutedText} />
@@ -995,12 +957,9 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                         }}
                       >
                         <Ionicons name="notifications-outline" size={19} color={theme.accent} />
-                        <View style={{ flex: 1, marginLeft: 10 }}>
+                        <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
                           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                             Notification settings
-                          </Text>
-                          <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
-                            Message and activity alerts.
                           </Text>
                         </View>
                         <Ionicons
@@ -1021,7 +980,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                         >
                           <AccountToggleRow
                             title="Messages"
-                            subtitle="Notify me when someone sends a chat message."
                             value={notifyMessages}
                             disabled={notificationSaving}
                             onValueChange={(value) => updateNotificationPreference('notify_messages', value)}
@@ -1030,7 +988,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                           <View style={{ height: 1, backgroundColor: theme.border }} />
                           <AccountToggleRow
                             title="Post and comment activity"
-                            subtitle="Notify me about likes, replies, and post activity."
                             value={notifyActivity}
                             disabled={notificationSaving}
                             onValueChange={(value) => updateNotificationPreference('notify_activity', value)}
@@ -1059,12 +1016,9 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                         }}
                       >
                         <Ionicons name="lock-closed-outline" size={19} color={theme.accent} />
-                        <View style={{ flex: 1, marginLeft: 10 }}>
+                        <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
                           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
                             Password and security
-                          </Text>
-                          <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3 }}>
-                            Update login email and password.
                           </Text>
                         </View>
                         <Ionicons
@@ -1158,17 +1112,8 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
               </View>
 
               <ActionCard
-                icon="wallet-outline"
-                title="Wallet"
-                subtitle="View e-money balance, request admin top-up, and see transactions."
-                theme={theme}
-                onPress={() => navigation.navigate('Wallet')}
-              />
-
-              <ActionCard
                 icon="newspaper-outline"
                 title={t('profileAdsManagement', 'Ads Management')}
-                subtitle={t('profileAdsManagementSubtitle', 'View, edit, share, and delete your property posts.')}
                 theme={theme}
                 onPress={() => navigation.navigate('AdsManagement')}
               />
@@ -1177,7 +1122,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                 <ActionCard
                   icon="shield-checkmark-outline"
                   title={t('profileAdminPanel', 'Admin panel')}
-                  subtitle={t('profileAdminPanelSubtitle', 'Review owner and property verification requests.')}
                   badgeCount={adminPanelCount}
                   theme={theme}
                   onPress={() => navigation.navigate('AdminPanel')}
