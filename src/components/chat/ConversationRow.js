@@ -1,6 +1,7 @@
 import { Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Avatar from '../common/Avatar'
+import GroupAvatar from '../common/GroupAvatar'
 import { formatClock } from '../../lib/chatUtils'
 import { getProfileName } from '../../lib/userDisplay'
 import { useAppSettings } from '../../lib/appSettings'
@@ -17,8 +18,9 @@ export default function ConversationRow({
   const { theme } = useAppSettings()
   const profile = item.other_profile
   const name = getProfileName(profile)
+  const isGroup = Boolean(item.is_group || profile?.is_group)
   const isLastMine = item.last_sender_id === currentUserId
-  const isOnline = item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online
+  const isOnline = !isGroup && (item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online)
   const isLastCall = item.last_message_type === 'call'
   const lastMessageText = String(item.last_message || '')
   const isVideoCall = isLastCall && /video call/i.test(lastMessageText)
@@ -44,7 +46,11 @@ export default function ConversationRow({
       }}
     >
       <View>
-        <Avatar profile={profile} name={name} size={52} />
+        {isGroup ? (
+          <GroupAvatar members={item.group_preview_profiles || []} size={52} />
+        ) : (
+          <Avatar profile={profile} name={name} size={52} />
+        )}
 
         {isOnline ? (
           <View
@@ -73,7 +79,7 @@ export default function ConversationRow({
               {name}
             </Text>
 
-            {isVerified ? (
+            {!isGroup && isVerified ? (
               <Ionicons
                 name="checkmark-circle"
                 size={14}

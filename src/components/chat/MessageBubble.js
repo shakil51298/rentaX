@@ -28,6 +28,14 @@ import {
   parseContactCardPayload,
 } from '../../lib/chatUtils'
 
+const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '👍', '🙏']
+
+function displayReaction(reaction) {
+  if (!reaction) return null
+  if (reaction === 'love') return '❤️'
+  return reaction
+}
+
 function ChatVideo({ uri }) {
   const player = useVideoPlayer(uri, (videoPlayer) => {
     videoPlayer.loop = false
@@ -1013,6 +1021,11 @@ export default function MessageBubble({
   onJumpToMessage,
   onPressCallHistory,
   onToggleReaction,
+  onSetReaction,
+  reactionPickerOpen = false,
+  onRequestReactionPicker,
+  onDismissReactionPicker,
+  onReactionInteraction,
   onLongPressMessage,
   redPacket,
   onOpenRedPacket,
@@ -1024,11 +1037,19 @@ export default function MessageBubble({
   const shouldShowDay = !isSameDay(item.created_at, previousMessage?.created_at)
   const isMine = item.sender_id === currentUserId
   const translateX = useRef(new Animated.Value(0)).current
+  const reactionPickerAnim = useRef(new Animated.Value(0)).current
+  const reactionDanceAnim = useRef(new Animated.Value(0)).current
   const tapTimeoutRef = useRef(null)
   const lastTapTimeRef = useRef(0)
-  const reactionCount = [item.sender_reaction, item.receiver_reaction].filter(Boolean).length
+  const reactions = [item.sender_reaction, item.receiver_reaction]
+    .map(displayReaction)
+    .filter(Boolean)
+  const uniqueReactions = [...new Set(reactions)]
+  const reactionCount = reactions.length
   const isCallMessage = item.message_type === 'call'
   const pendingLocal = Boolean(item.pending_local)
+  const canReact = !isCallMessage && !item.deleted_for_everyone_at && !pendingLocal
+  const [reactionPickerMounted, setReactionPickerMounted] = useState(false)
   const hasReplyBlock = Boolean(repliedMessage)
   const bubbleMaxWidth = hasReplyBlock
     ? '94%'
@@ -1069,6 +1090,89 @@ export default function MessageBubble({
     [item, onReply, translateX]
   )
 
+  useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current)
+      }
+      reactionPickerAnim.stopAnimation()
+      reactionDanceAnim.stopAnimation()
+    }
+  }, [reactionDanceAnim, reactionPickerAnim])
+
+  function animateReactionPickerOpen() {
+    setReactionPickerMounted(true)
+    reactionPickerAnim.setValue(0)
+    reactionDanceAnim.setValue(0)
+
+    Animated.parallel([
+      Animated.spring(reactionPickerAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 180,
+        friction: 10,
+      }),
+      Animated.sequence([
+        Animated.delay(80),
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(reactionDanceAnim, {
+              toValue: 1,
+              duration: 460,
+              useNativeDriver: true,
+            }),
+            Animated.timing(reactionDanceAnim, {
+              toValue: 0,
+              duration: 460,
+              useNativeDriver: true,
+            }),
+          ]),
+          { iterations: 3 }
+        ),
+      ]),
+    ]).start()
+  }
+
+  function animateReactionPickerClosed() {
+    reactionDanceAnim.stopAnimation()
+
+    Animated.timing(reactionPickerAnim, {
+      toValue: 0,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setReactionPickerMounted(false)
+      }
+    })
+  }
+
+  useEffect(() => {
+    if (reactionPickerOpen && canReact) {
+      animateReactionPickerOpen()
+      return
+    }
+
+    if (!reactionPickerOpen && reactionPickerMounted) {
+      animateReactionPickerClosed()
+    }
+  }, [canReact, reactionPickerOpen])
+
+  function showReactionPicker() {
+    if (!canReact) return
+
+    onRequestReactionPicker?.(item.id)
+  }
+
+  function hideReactionPicker() {
+    onDismissReactionPicker?.()
+  }
+
+  function selectReaction(reaction) {
+    onSetReaction?.(item, reaction)
+    hideReactionPicker()
+  }
+
   function handleTap() {
     if (item.message_type === 'call') {
       onPressCallHistory?.(item)
@@ -1084,14 +1188,13 @@ export default function MessageBubble({
 
       lastTapTimeRef.current = 0
       onToggleReaction?.(item)
+      hideReactionPicker()
       return
     }
 
     lastTapTimeRef.current = now
     tapTimeoutRef.current = setTimeout(() => {
-      if (item.message_type === 'image' && item.media_url) {
-        onOpenMedia([{ uri: item.media_url, type: 'image' }], 0)
-      }
+      showReactionPicker()
     }, 250)
   }
 
@@ -1126,8 +1229,88 @@ export default function MessageBubble({
           style={{
             transform: [{ translateX }],
             maxWidth: bubbleMaxWidth,
+            overflow: 'visible',
           }}
         >
+          {reactionPickerMounted ? (
+            <Animated.View
+              style={{
+                position: 'absolute',
+                top: -50,
+                [isMine ? 'right' : 'left']: 0,
+                zIndex: 30,
+                elevation: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 8,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                shadowColor: '#0f172a',
+                shadowOpacity: 0.14,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 8 },
+                opacity: reactionPickerAnim,
+                transform: [
+                  {
+                    translateY: reactionPickerAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [10, 0],
+                    }),
+                  },
+                  {
+                    scale: reactionPickerAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.86, 1],
+                    }),
+                  },
+                ],
+              }}
+            >
+              {QUICK_REACTIONS.map((reaction, index) => (
+                <Pressable
+                  key={reaction}
+                  onPressIn={onReactionInteraction}
+                  onPress={() => selectReaction(reaction)}
+                  hitSlop={8}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginLeft: index === 0 ? 0 : 3,
+                    backgroundColor: 'rgba(241,245,249,0.9)',
+                  }}
+                >
+                  <Animated.Text
+                    style={{
+                      fontSize: 19,
+                      transform: [
+                        {
+                          translateY: reactionDanceAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, index % 2 === 0 ? -4 : 3],
+                          }),
+                        },
+                        {
+                          rotate: reactionDanceAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0deg', index % 2 === 0 ? '-5deg' : '5deg'],
+                          }),
+                        },
+                      ],
+                    }}
+                  >
+                    {reaction}
+                  </Animated.Text>
+                </Pressable>
+              ))}
+            </Animated.View>
+          ) : null}
+
           <View
             style={{
               position: 'absolute',
@@ -1140,8 +1323,12 @@ export default function MessageBubble({
           </View>
 
           <Pressable
+            onPressIn={onReactionInteraction}
             onPress={handleTap}
-            onLongPress={() => onLongPressMessage?.(item)}
+            onLongPress={() => {
+              hideReactionPicker()
+              onLongPressMessage?.(item)
+            }}
             delayLongPress={220}
             style={{
               backgroundColor: isMine ? outgoingBubbleColor : '#fff',
@@ -1268,8 +1455,18 @@ export default function MessageBubble({
                 alignItems: 'center',
               }}
             >
-              <Text style={{ fontSize: 12 }}>❤️</Text>
-              {reactionCount > 1 ? (
+              {uniqueReactions.map((reaction, index) => (
+                <Text
+                  key={`${item.id}-reaction-${reaction}`}
+                  style={{
+                    fontSize: 12,
+                    marginLeft: index === 0 ? 0 : -2,
+                  }}
+                >
+                  {reaction}
+                </Text>
+              ))}
+              {reactionCount > uniqueReactions.length ? (
                 <Text style={{ color: '#475569', marginLeft: 4, fontSize: 12, fontWeight: '800' }}>
                   {reactionCount}
                 </Text>

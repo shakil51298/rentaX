@@ -39,6 +39,7 @@ import {
 } from 'expo-audio'
 import { supabase } from '../lib/supabase'
 import Avatar from '../components/common/Avatar'
+import GroupAvatar from '../components/common/GroupAvatar'
 import ActionSheetModal from '../components/common/ActionSheetModal'
 import MediaComposerModal from '../components/chat/MediaComposerModal'
 import MediaViewer from '../components/common/MediaViewer'
@@ -88,6 +89,8 @@ import { getMutedConversationIds, getPinnedConversationIds } from '../lib/chatPr
 
 const EMPTY_ROUTE_PARAMS = {}
 const RED_PACKET_MAX_AMOUNT = 200
+const COMPOSER_INPUT_MIN_HEIGHT = 42
+const COMPOSER_INPUT_MAX_HEIGHT = 116
 const DEFAULT_CHAT_LOCATION_REGION = {
   latitude: 23.8103,
   longitude: 90.4125,
@@ -473,10 +476,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [sendingContactCard, setSendingContactCard] = useState(false)
   const [pendingVoiceNote, setPendingVoiceNote] = useState(null)
   const [recordingWaveform, setRecordingWaveform] = useState([])
+  const [composerInputHeight, setComposerInputHeight] = useState(COMPOSER_INPUT_MIN_HEIGHT)
   const [openedFromList, setOpenedFromList] = useState(false)
   const [selectedConversationIds, setSelectedConversationIds] = useState([])
   const [replyTarget, setReplyTarget] = useState(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState(null)
+  const [activeReactionMessageId, setActiveReactionMessageId] = useState(null)
   const [messageActionTarget, setMessageActionTarget] = useState(null)
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
@@ -490,6 +495,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     updateInterval: 250,
   })
   const voicePreviewStatus = useAudioPlayerStatus(voicePreviewPlayer)
+  const reactionInteractionAtRef = useRef(0)
 
   const otherUserName = getProfileName(otherUser, 'Rental X member')
   const currentUserName = getUserDisplayName(currentUser) || 'Rental X member'
@@ -703,6 +709,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     let groupRows = []
     let groupMembershipByConversationId = {}
     let groupMemberCountsByConversationId = {}
+    let groupMemberIdsByConversationId = {}
     let groupUnreadCountsByConversationId = {}
 
     try {
@@ -735,12 +742,22 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
           const { data: memberCountRows } = await supabase
             .from('chat_group_members')
-            .select('conversation_id')
+            .select('conversation_id, user_id')
             .in('conversation_id', groupIds)
             .eq('status', 'active')
 
           groupMemberCountsByConversationId = (memberCountRows || []).reduce((itemsById, member) => {
             itemsById[member.conversation_id] = (itemsById[member.conversation_id] || 0) + 1
+            return itemsById
+          }, {})
+          groupMemberIdsByConversationId = (memberCountRows || []).reduce((itemsById, member) => {
+            if (!member.user_id) return itemsById
+
+            if (!itemsById[member.conversation_id]) {
+              itemsById[member.conversation_id] = []
+            }
+
+            itemsById[member.conversation_id].push(member.user_id)
             return itemsById
           }, {})
 
@@ -787,7 +804,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         ? item.participant_two_id
         : item.participant_one_id
     )
-    const profilesById = await fetchProfiles(otherIds)
+    const groupPreviewProfileIds = Object.values(groupMemberIdsByConversationId)
+      .flat()
+      .filter(Boolean)
+    const profilesById = await fetchProfiles([...otherIds, ...groupPreviewProfileIds])
     let presenceById = {}
 
     if (otherIds.length > 0) {
@@ -850,6 +870,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       presence: null,
       unread_count: groupUnreadCountsByConversationId[item.id] || 0,
       group_member_count: groupMemberCountsByConversationId[item.id] || 0,
+      group_preview_profiles: (groupMemberIdsByConversationId[item.id] || [])
+        .slice(0, 4)
+        .map((memberId) => ({
+          id: memberId,
+          user_id: memberId,
+          ...(profilesById[memberId] || {}),
+        })),
     }))
     const hydratedRows = [
       ...collapseConversationRows(directHydratedRows, user.id),
@@ -1211,6 +1238,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       return next.slice(-18)
     })
   }, [recorderState?.isRecording, recorderState?.metering])
+
+  useEffect(() => {
+    if (messageText) return
+
+    setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT)
+  }, [messageText])
 
   useEffect(() => {
     const capturedAsset = route?.params?.capturedChatAsset
@@ -2522,6 +2555,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function focusMessageInput() {
+    setActiveReactionMessageId(null)
     setEmojiPickerVisible(false)
     setAttachmentPickerVisible(false)
     setComposerFocused(true)
@@ -2531,6 +2565,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function toggleEmojiPicker() {
+    setActiveReactionMessageId(null)
+
     if (emojiPickerVisible) {
       focusMessageInput()
       return
@@ -2544,6 +2580,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function openAttachmentPicker() {
+    setActiveReactionMessageId(null)
+
     if (attachmentPickerVisible) {
       setAttachmentPickerVisible(false)
       return
@@ -2555,6 +2593,17 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     setAttachmentPageIndex(0)
     setAttachmentPickerVisible(true)
     scheduleKeyboardAwareScroll(120)
+  }
+
+  function handleComposerContentSizeChange(event) {
+    const nextHeight = Math.min(
+      COMPOSER_INPUT_MAX_HEIGHT,
+      Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.ceil(event?.nativeEvent?.contentSize?.height || 0))
+    )
+
+    setComposerInputHeight((currentHeight) =>
+      Math.abs(currentHeight - nextHeight) > 1 ? nextHeight : currentHeight
+    )
   }
 
   function handleAttachmentAction(actionKey) {
@@ -2643,7 +2692,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }
 
-  async function toggleMessageReaction(message) {
+  async function toggleMessageReaction(message, reaction = '❤️') {
     if (!currentUser?.id || !message?.id || message.deleted_for_everyone_at) return
 
     const reactionField = getMessageReactionField(message, currentUser.id)
@@ -2652,7 +2701,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
     suppressAutoScroll(1600)
 
-    const nextReaction = message[reactionField] ? null : 'love'
+    const currentReaction = message[reactionField] === 'love' ? '❤️' : message[reactionField]
+    const nextReaction = currentReaction === reaction ? null : reaction
     const updatedAt = new Date().toISOString()
 
     setMessages((current) =>
@@ -2789,7 +2839,33 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function openMessageActions(message) {
+    setActiveReactionMessageId(null)
     setMessageActionTarget(message)
+  }
+
+  function markReactionInteraction() {
+    reactionInteractionAtRef.current = Date.now()
+  }
+
+  function requestReactionPicker(messageId) {
+    if (!messageId) return
+    setActiveReactionMessageId(messageId)
+  }
+
+  function dismissReactionPicker() {
+    setActiveReactionMessageId(null)
+  }
+
+  function dismissReactionPickerFromOutside() {
+    if (!activeReactionMessageId) return false
+
+    setTimeout(() => {
+      if (Date.now() - reactionInteractionAtRef.current > 80) {
+        setActiveReactionMessageId(null)
+      }
+    }, 0)
+
+    return false
   }
 
   const goBackFromChat = useCallback(() => {
@@ -2968,6 +3044,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const messageActionItems = useMemo(() => {
     if (!messageActionTarget) return []
 
+    const reactionField = getMessageReactionField(messageActionTarget, currentUser?.id)
+    const currentReaction = reactionField ? messageActionTarget[reactionField] : null
+    const actionReaction = currentReaction === 'love' ? '❤️' : currentReaction || '❤️'
     const actions = [
       {
         icon: 'return-down-forward-outline',
@@ -2976,12 +3055,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         onPress: () => handleReplyToMessage(messageActionTarget),
       },
       {
-        icon: messageActionTarget[getMessageReactionField(messageActionTarget, currentUser?.id)] ? 'heart-dislike-outline' : 'heart-outline',
-        title: messageActionTarget[getMessageReactionField(messageActionTarget, currentUser?.id)] ? 'Remove love' : 'Love',
+        icon: currentReaction ? 'heart-dislike-outline' : 'heart-outline',
+        title: currentReaction ? 'Remove reaction' : 'Love',
         subtitle: 'React to this message quickly.',
         onPress: () => {
           setMessageActionTarget(null)
-          toggleMessageReaction(messageActionTarget)
+          toggleMessageReaction(messageActionTarget, actionReaction)
         },
       },
     ]
@@ -3615,6 +3694,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         style={{ flex: 1 }}
+        onTouchEnd={dismissReactionPickerFromOutside}
       >
         <View
           style={{
@@ -3655,7 +3735,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             }
             style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
           >
-            <Avatar profile={otherUser} name={otherUserName} />
+            {isActiveGroupChat ? (
+              <GroupAvatar
+                members={groupMembers.length ? groupMembers : conversation?.group_preview_profiles || []}
+                size={36}
+              />
+            ) : (
+              <Avatar profile={otherUser} name={otherUserName} />
+            )}
 
             <View style={{ flex: 1, marginLeft: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -3720,7 +3807,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           </View>
         ) : null}
 
-        <View style={{ flex: 1 }}>
+        <View
+          style={{ flex: 1 }}
+          onTouchEnd={dismissReactionPickerFromOutside}
+        >
           <View
             pointerEvents="none"
             style={{
@@ -3770,6 +3860,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 onJumpToMessage={jumpToMessage}
                 onPressCallHistory={handlePressCallHistory}
                 onToggleReaction={toggleMessageReaction}
+                onSetReaction={toggleMessageReaction}
+                reactionPickerOpen={activeReactionMessageId === item.id}
+                onRequestReactionPicker={requestReactionPicker}
+                onDismissReactionPicker={dismissReactionPicker}
+                onReactionInteraction={markReactionInteraction}
                 onLongPressMessage={openMessageActions}
                 redPacket={redPacketsByMessageId[item.id]}
                 onOpenRedPacket={openRedPacket}
@@ -3782,6 +3877,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             contentContainerStyle={{ paddingTop: 10, paddingBottom: 16 }}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
+            onTouchEnd={dismissReactionPickerFromOutside}
+            onScrollBeginDrag={dismissReactionPicker}
             onContentSizeChange={() => scrollToBottom(true)}
             onScrollToIndexFailed={(info) => {
               setTimeout(() => {
@@ -4146,7 +4243,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             <View
               style={{
                 flexDirection: 'row',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 overflow: 'visible',
               }}
             >
@@ -4269,7 +4366,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               <Animated.View
                 style={{
                   flex: 1,
-                  minHeight: 42,
+                  height: composerInputHeight,
+                  minHeight: COMPOSER_INPUT_MIN_HEIGHT,
+                  maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
                   borderRadius: inputRadius,
                   backgroundColor: inputBackground,
                 }}
@@ -4306,17 +4405,20 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   }
                   placeholderTextColor="#94a3b8"
                   multiline
+                  onContentSizeChange={handleComposerContentSizeChange}
+                  scrollEnabled={composerInputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                   editable={!isActiveGroupChat || groupCanSend}
                   style={{
-                    flex: 1,
-                    minHeight: 42,
-                    maxHeight: 116,
+                    height: composerInputHeight,
+                    minHeight: COMPOSER_INPUT_MIN_HEIGHT,
+                    maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
                     paddingHorizontal: 15,
                     paddingTop: 10,
                     paddingBottom: 10,
                     textAlignVertical: 'top',
                     color: theme.text,
                     fontSize: 15,
+                    lineHeight: 20,
                   }}
                 />
               </Animated.View>
