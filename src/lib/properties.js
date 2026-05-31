@@ -8,6 +8,7 @@ export async function fetchPropertiesWithProfiles({
   includeBanned = false,
   includePaused = false,
   currentUserId,
+  limit,
 } = {}) {
   let query = supabase
     .from('properties')
@@ -21,6 +22,10 @@ export async function fetchPropertiesWithProfiles({
 
   if (ownerId) {
     query = query.eq('owner_id', ownerId)
+  }
+
+  if (limit) {
+    query = query.limit(limit)
   }
 
   const { data, error } = await query

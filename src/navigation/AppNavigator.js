@@ -267,10 +267,10 @@ function MainTabsNavigator({ guestMode = false }) {
       initialRouteName="Home"
       screenOptions={{
         headerShown: false,
-        lazy: false,
+        lazy: true,
         animation: 'fade',
       }}
-      detachInactiveScreens={false}
+      detachInactiveScreens
       tabBar={({ navigation, state }) => (
         <BottomNavBar
           navigation={navigation}
@@ -303,11 +303,13 @@ function MainTabsNavigator({ guestMode = false }) {
   )
 }
 
-function NotificationCoordinator({ onOpenNotification }) {
+function NotificationCoordinator({ enabled, onOpenNotification }) {
   const handledResponseIds = useRef(new Set())
   const activeNotificationKeys = useRef(new Set())
 
   useEffect(() => {
+    if (!enabled) return undefined
+
     async function syncPushToken() {
       const {
         data: { user },
@@ -338,9 +340,11 @@ function NotificationCoordinator({ onOpenNotification }) {
       appStateSubscription.remove()
       subscription.unsubscribe()
     }
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
+    if (!enabled) return undefined
+
     let isMounted = true
     let notificationChannel = null
 
@@ -402,9 +406,11 @@ function NotificationCoordinator({ onOpenNotification }) {
         supabase.removeChannel(notificationChannel)
       }
     }
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
+    if (!enabled) return undefined
+
     function openResponse(response) {
       const identifier = response?.notification?.request?.identifier
 
@@ -430,7 +436,7 @@ function NotificationCoordinator({ onOpenNotification }) {
     return () => {
       responseListener.remove()
     }
-  }, [onOpenNotification])
+  }, [enabled, onOpenNotification])
 
   return null
 }
@@ -516,7 +522,10 @@ export default function AppNavigator() {
 
   return (
     <>
-      <NotificationCoordinator onOpenNotification={handleOpenNotification} />
+      <NotificationCoordinator
+        enabled={Boolean(session)}
+        onOpenNotification={handleOpenNotification}
+      />
       <NavigationContainer
         ref={navigationRef}
         onReady={() => {

@@ -264,6 +264,7 @@ function getPropertyPrice(post) {
 }
 
 const FILTER_MAX_BUDGET = 500000
+const HOME_FEED_LIMIT = 80
 
 function createDefaultFilters(maxPrice) {
   return {
@@ -565,6 +566,8 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   const { width: screenWidth } = useWindowDimensions()
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
+  const [feedLimit, setFeedLimit] = useState(HOME_FEED_LIMIT)
+  const [loadingMoreProperties, setLoadingMoreProperties] = useState(false)
   const [commentModal, setCommentModal] = useState(false)
   const [selectedPost, setSelectedPost] = useState(null)
   const [comments, setComments] = useState([])
@@ -842,8 +845,21 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }, [draftSearchQuery, searchResults])
 
   useEffect(() => {
-    loadUser()
-    loadProperties()
+    let isMounted = true
+
+    async function bootstrapHome() {
+      const user = await loadUser()
+
+      if (isMounted) {
+        loadProperties({ currentUserId: user?.id })
+      }
+    }
+
+    bootstrapHome()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -1356,6 +1372,7 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }
 
     setCurrentUser(user)
+    return user
   }
 
   async function loadCurrentLocation() {
@@ -1405,7 +1422,10 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }
 
     try {
-      setProperties(await fetchPropertiesWithProfiles({ currentUserId: currentUser?.id }))
+      setProperties(await fetchPropertiesWithProfiles({
+        currentUserId: options.currentUserId ?? currentUser?.id,
+        limit: options.limit || feedLimit,
+      }))
     } catch (error) {
       Alert.alert('Error', error.message)
     }
@@ -1413,7 +1433,24 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     if (!options.silent) {
       setLoading(false)
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, feedLimit])
+
+  async function loadMoreProperties() {
+    if (loading || loadingMoreProperties || properties.length < feedLimit) return
+
+    const nextLimit = feedLimit + HOME_FEED_LIMIT
+    setLoadingMoreProperties(true)
+    setFeedLimit(nextLimit)
+
+    try {
+      await loadProperties({
+        silent: true,
+        limit: nextLimit,
+      })
+    } finally {
+      setLoadingMoreProperties(false)
+    }
+  }
 
   const loadHomeBanners = useCallback(async () => {
     try {
@@ -3113,10 +3150,17 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
             </View>
           ) : null
         }
+        ListFooterComponent={
+          loadingMoreProperties ? (
+            <ActivityIndicator color={theme.accent} style={{ paddingVertical: 18 }} />
+          ) : null
+        }
         contentContainerStyle={{ paddingBottom: 80 }}
         contentInsetAdjustmentBehavior="automatic"
         refreshing={loading && properties.length > 0}
         onRefresh={() => refreshHomeFeed()}
+        onEndReached={loadMoreProperties}
+        onEndReachedThreshold={0.55}
         removeClippedSubviews
         initialNumToRender={4}
         maxToRenderPerBatch={4}
