@@ -100,26 +100,6 @@ const DEFAULT_CHAT_LOCATION_REGION = {
 const HAS_ANDROID_GOOGLE_MAPS_KEY =
   Platform.OS !== 'android' ||
   Boolean(Constants?.expoConfig?.extra?.googleMapsEnabled)
-const QUICK_EMOJIS = [
-  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
-  '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘',
-  '😎', '🤩', '🥳', '🥹', '😌', '🤔', '🫡', '🤗',
-  '😋', '😜', '🤪', '😝', '😏', '😬', '🙄', '😮‍💨',
-  '😢', '😭', '😤', '😡', '😴', '🤒', '😮', '😱',
-  '😳', '🥵', '🥶', '😵‍💫', '🤯', '🤭', '🫢', '🤫',
-  '👍', '👎', '👌', '✌️', '🤝', '🙏', '👏', '🫶',
-  '🙌', '👋', '🤙', '💪', '🫰', '👀', '🧠', '💅',
-  '❤️', '🧡', '💛', '💚', '💙', '💜', '🤍', '💔',
-  '💕', '💞', '💘', '💖', '💗', '💓', '💌', '💋',
-  '🔥', '✨', '💫', '💯', '⭐', '🌟', '🎉', '🎁',
-  '✅', '☑️', '❌', '❗', '❓', '💬', '📞', '📷',
-  '📎', '📄', '📩', '📌', '📝', '📤', '📥', '🔔',
-  '🏠', '🏡', '🏢', '🛏️', '🛁', '🚗', '🔑', '📍',
-  '🛋️', '🍽️', '🧹', '🧺', '🌆', '🌇', '🗺️', '🚪',
-  '💰', '💳', '🧾', '📅', '⏰', '🚀', '☕', '🌙',
-  '☀️', '🌧️', '🍕', '🍔', '🍜', '🎧', '🎵', '🎬',
-]
-
 function normalizeMeteringLevel(metering) {
   if (typeof metering !== 'number' || Number.isNaN(metering)) {
     return 0.18
@@ -457,7 +437,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
-  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false)
   const [attachmentPickerVisible, setAttachmentPickerVisible] = useState(false)
   const [attachmentPageIndex, setAttachmentPageIndex] = useState(0)
   const [locationPreview, setLocationPreview] = useState(null)
@@ -2218,7 +2197,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   async function startRecording() {
     if (!currentUser?.id || recorderState?.isRecording) return false
 
-    setEmojiPickerVisible(false)
     setAttachmentPickerVisible(false)
     const permission = await requestRecordingPermissionsAsync()
 
@@ -2556,27 +2534,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
   function focusMessageInput() {
     setActiveReactionMessageId(null)
-    setEmojiPickerVisible(false)
     setAttachmentPickerVisible(false)
     setComposerFocused(true)
     requestAnimationFrame(() => {
       messageInputRef.current?.focus()
     })
-  }
-
-  function toggleEmojiPicker() {
-    setActiveReactionMessageId(null)
-
-    if (emojiPickerVisible) {
-      focusMessageInput()
-      return
-    }
-
-    Keyboard.dismiss()
-    setAttachmentPickerVisible(false)
-    setComposerFocused(false)
-    setEmojiPickerVisible(true)
-    scheduleKeyboardAwareScroll(120)
   }
 
   function openAttachmentPicker() {
@@ -2588,7 +2550,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
 
     Keyboard.dismiss()
-    setEmojiPickerVisible(false)
     setComposerFocused(false)
     setAttachmentPageIndex(0)
     setAttachmentPickerVisible(true)
@@ -2654,22 +2615,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         openContactCardPicker()
       }
     }, 180)
-  }
-
-  function appendEmoji(emoji) {
-    setMessageText((current) => `${current}${emoji}`)
-
-    if (!conversation?.id || !otherUser?.id) return
-
-    updateMyPresence({ online: true, typing: true })
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
-      updateMyPresence({ online: true, typing: false })
-    }, 2500)
   }
 
   function handleReplyToMessage(message) {
@@ -2996,6 +2941,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       if (mode !== 'chat') return undefined
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (attachmentPickerVisible) {
+          setAttachmentPickerVisible(false)
+          setAttachmentPageIndex(0)
+          return true
+        }
+
         if (messageActionTarget) {
           setMessageActionTarget(null)
           return true
@@ -3008,7 +2959,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       return () => {
         subscription.remove()
       }
-    }, [goBackFromChat, messageActionTarget, mode])
+    }, [attachmentPickerVisible, goBackFromChat, messageActionTarget, mode])
   )
 
   useFocusEffect(
@@ -3247,7 +3198,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const recordingAuraMaxSize = Math.min(windowWidth * 0.96, windowHeight * 0.48)
   const recordingAuraMinSize = Math.min(110, recordingAuraMaxSize * 0.42)
   const recordingAuraStep = (recordingAuraMaxSize - recordingAuraMinSize) / 9
-  const composerTrayVisible = emojiPickerVisible || attachmentPickerVisible
+  const composerTrayVisible = attachmentPickerVisible
   const leftAccessoryWidth = composerFocusAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [42, 0],
@@ -4377,7 +4328,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   ref={messageInputRef}
                   value={messageText}
                   onFocus={() => {
-                    setEmojiPickerVisible(false)
                     setAttachmentPickerVisible(false)
                     setComposerFocused(true)
                     scheduleKeyboardAwareScroll(40)
@@ -4424,26 +4374,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </Animated.View>
 
               <TouchableOpacity
-                onPress={toggleEmojiPicker}
-                activeOpacity={0.82}
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginLeft: 4,
-                  backgroundColor: emojiPickerVisible ? hexToRgba(activeColorPreset.accent, 0.14) : 'transparent',
-                }}
-              >
-                <Ionicons
-                  name={emojiPickerVisible ? 'keypad-outline' : 'happy-outline'}
-                  size={21}
-                  color={activeColorPreset.accent}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 onPress={openAttachmentPicker}
                 disabled={uploading || sending || !canSend}
                 activeOpacity={0.82}
@@ -4485,102 +4415,6 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               ) : null}
             </View>
           </View>
-
-          {emojiPickerVisible ? (
-            <View
-              style={{
-                backgroundColor: theme.surface,
-                borderTopLeftRadius: 22,
-                borderTopRightRadius: 22,
-                borderTopWidth: 1,
-                borderTopColor: theme.border,
-                paddingHorizontal: 14,
-                paddingTop: 10,
-                paddingBottom: Math.max(insets.bottom, 10) + 10,
-                maxHeight: Math.min(windowHeight * 0.4, 320),
-              }}
-            >
-              <View
-                style={{
-                  width: 42,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: theme.border,
-                  alignSelf: 'center',
-                  marginBottom: 10,
-                }}
-              />
-
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 10,
-                }}
-              >
-                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
-                  Emojis
-                </Text>
-                <TouchableOpacity
-                  onPress={focusMessageInput}
-                  activeOpacity={0.84}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: hexToRgba(activeColorPreset.accent, 0.14),
-                  }}
-                >
-                  <Ionicons name="keypad-outline" size={18} color={activeColorPreset.accent} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                keyboardShouldPersistTaps="always"
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 7,
-                  paddingBottom: 4,
-                }}
-              >
-                {QUICK_EMOJIS.map((emoji, index) => {
-                  const tileBackground =
-                    index % 4 === 0
-                      ? theme.surfaceMuted
-                      : index % 4 === 1
-                        ? theme.accentSoft
-                        : index % 4 === 2
-                          ? hexToRgba(activeColorPreset.accent, 0.1)
-                          : theme.surface
-
-                  return (
-                    <TouchableOpacity
-                      key={`${emoji}-${index}`}
-                      onPress={() => appendEmoji(emoji)}
-                      activeOpacity={0.78}
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: index % 3 === 0 ? 18 : 13,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: tileBackground,
-                        borderWidth: 1,
-                        borderColor: index % 4 === 2 ? hexToRgba(activeColorPreset.accent, 0.24) : theme.border,
-                      }}
-                    >
-                      <Text style={{ fontSize: index % 5 === 0 ? 22 : 20 }}>{emoji}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-            </View>
-          ) : null}
 
           {attachmentPickerVisible ? (
             <View
