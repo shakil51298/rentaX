@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -22,6 +23,13 @@ import {
 } from '../lib/ownerResponseQuality'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 import { useAppSettings } from '../lib/appSettings'
+import {
+  fetchUserReviewState,
+  getRelationshipSourceLabel,
+  getReviewSummary,
+  saveUserReview,
+} from '../lib/realReviews'
+import { getProfileName } from '../lib/userDisplay'
 
 function displayNameFromEmail(email) {
   if (!email) return 'Rental X member'
@@ -103,6 +111,98 @@ function TrustMetric({ label, value, accent = '#111827', theme }) {
   )
 }
 
+function ReviewStars({ value, onChange, size = 17, theme }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        const active = Number(value || 0) >= star
+        const icon = active ? 'star' : 'star-outline'
+        const content = (
+          <Ionicons
+            name={icon}
+            size={size}
+            color={active ? '#f59e0b' : theme.mutedText}
+          />
+        )
+
+        if (!onChange) {
+          return <View key={star}>{content}</View>
+        }
+
+        return (
+          <TouchableOpacity
+            key={star}
+            onPress={() => onChange(star)}
+            activeOpacity={0.82}
+            style={{
+              width: size + 15,
+              height: size + 15,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {content}
+          </TouchableOpacity>
+        )
+      })}
+    </View>
+  )
+}
+
+function ReviewCard({ review, theme }) {
+  const reviewerProfile = review.reviewer_profile || {}
+  const reviewerName = getProfileName(reviewerProfile, 'Rental X member')
+  const createdAt = review.created_at ? new Date(review.created_at).toLocaleDateString() : ''
+
+  return (
+    <View
+      style={{
+        backgroundColor: theme.surfaceMuted,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: theme.border,
+        padding: 12,
+        marginTop: 9,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 9,
+          }}
+        >
+          <Text style={{ color: theme.accentStrong, fontSize: 13, fontWeight: '900' }}>
+            {reviewerName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+            {reviewerName}
+          </Text>
+          <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '800', marginTop: 2 }}>
+            {getRelationshipSourceLabel(review.relationship_source)} connection
+            {createdAt ? ` · ${createdAt}` : ''}
+          </Text>
+        </View>
+        <ReviewStars value={review.rating} theme={theme} size={14} />
+      </View>
+
+      {review.body ? (
+        <Text style={{ color: theme.text, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
+          {review.body}
+        </Text>
+      ) : null}
+    </View>
+  )
+}
+
 export default function OwnerProfileScreen({ route, navigation }) {
   const { theme } = useAppSettings()
   const owner = route.params?.owner || {}
@@ -115,6 +215,17 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const [isFollowing, setIsFollowing] = useState(false)
   const [showPhone, setShowPhone] = useState(false)
   const [responseQuality, setResponseQuality] = useState(getEmptyOwnerResponseQuality())
+  const [reviewState, setReviewState] = useState({
+    reviews: [],
+    summary: getReviewSummary([]),
+    eligibility: { eligible: false, sources: [], primarySource: null },
+    myReview: null,
+    setupNeeded: false,
+  })
+  const [reviewModalVisible, setReviewModalVisible] = useState(false)
+  const [reviewRating, setReviewRating] = useState(5)
+  const [reviewBody, setReviewBody] = useState('')
+  const [reviewSaving, setReviewSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [imageViewer, setImageViewer] = useState({
     visible: false,
@@ -174,10 +285,21 @@ export default function OwnerProfileScreen({ route, navigation }) {
     const quality = await fetchOwnerResponseQuality(ownerId).catch(() =>
       getEmptyOwnerResponseQuality()
     )
+    const reviews = await fetchUserReviewState({
+      revieweeId: ownerId,
+      reviewerId: user?.id,
+    }).catch(() => ({
+      reviews: [],
+      summary: getReviewSummary([]),
+      eligibility: { eligible: false, sources: [], primarySource: null },
+      myReview: null,
+      setupNeeded: true,
+    }))
 
     setFollowers(followersCount || counts.followers || 0)
     setFollowing(counts.following || 0)
     setResponseQuality(quality)
+    setReviewState(reviews)
     setLoading(false)
   }, [ownerId])
 
@@ -271,6 +393,60 @@ export default function OwnerProfileScreen({ route, navigation }) {
     })
   }
 
+  function openReviewModal() {
+    if (!currentUser?.id) {
+      Alert.alert('Login required', 'Please log in before writing a real review.')
+      return
+    }
+
+    if (currentUser.id === ownerId) {
+      Alert.alert('Not available', 'You cannot review your own profile.')
+      return
+    }
+
+    if (!reviewState.eligibility?.eligible) {
+      Alert.alert(
+        'Real review locked',
+        'Only users who chatted, had an accepted visit, or completed a rental connection can review this profile.'
+      )
+      return
+    }
+
+    setReviewRating(reviewState.myReview?.rating || 5)
+    setReviewBody(reviewState.myReview?.body || '')
+    setReviewModalVisible(true)
+  }
+
+  async function submitReview() {
+    if (reviewSaving) return
+
+    setReviewSaving(true)
+
+    try {
+      await saveUserReview({
+        reviewerId: currentUser?.id,
+        revieweeId: ownerId,
+        rating: reviewRating,
+        body: reviewBody,
+        relationshipSource: reviewState.eligibility?.primarySource || 'chat',
+      })
+      setReviewModalVisible(false)
+      const nextReviewState = await fetchUserReviewState({
+        revieweeId: ownerId,
+        reviewerId: currentUser?.id,
+      })
+      setReviewState(nextReviewState)
+      Alert.alert('Review saved', 'Your real review is now visible on this profile.')
+    } catch (error) {
+      const message = /user_reviews|has_real_review_connection|violates row-level security|policy/i.test(error.message || '')
+        ? 'Run supabase-real-reviews-features.sql, then make sure you have a chat, accepted visit, or accepted rental with this user.'
+        : error.message
+      Alert.alert('Review failed', message)
+    } finally {
+      setReviewSaving(false)
+    }
+  }
+
   function renderPost({ item }) {
     const isVerifiedProperty = getPropertyVerificationStatus(item) === 'verified'
 
@@ -343,6 +519,11 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const joinedDateLabel = formatJoinedDate(profile?.created_at)
   const responseRateLabel =
     responseQuality.responseRate == null ? 'New owner' : `${responseQuality.responseRate}%`
+  const reviewSummary = reviewState.summary || getReviewSummary([])
+  const canReview = !isOwnProfile && reviewState.eligibility?.eligible
+  const reviewConnectionLabel = reviewState.eligibility?.primarySource
+    ? getRelationshipSourceLabel(reviewState.eligibility.primarySource)
+    : null
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
@@ -530,6 +711,101 @@ export default function OwnerProfileScreen({ route, navigation }) {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <View style={{ flex: 1, paddingRight: 12 }}>
                   <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
+                    Real reviews
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                    Only users with a real chat, visit, or rental connection can review.
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    minWidth: 68,
+                    alignItems: 'center',
+                    backgroundColor: theme.surfaceMuted,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>
+                    {reviewSummary.averageLabel}
+                  </Text>
+                  <ReviewStars value={Math.round(reviewSummary.average || 0)} theme={theme} size={12} />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                    {reviewSummary.total
+                      ? `${reviewSummary.total} trusted review${reviewSummary.total === 1 ? '' : 's'}`
+                      : 'No trusted reviews yet'}
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 3, lineHeight: 16 }}>
+                    {canReview
+                      ? `${reviewConnectionLabel} connection verified.`
+                      : reviewState.setupNeeded
+                        ? 'Review setup needs the Supabase SQL file.'
+                        : isOwnProfile
+                          ? 'Your reviews from renters and owners will appear here.'
+                          : 'Review unlocks after chat, accepted visit, or accepted rental.'}
+                  </Text>
+                </View>
+
+                {!isOwnProfile ? (
+                  <TouchableOpacity
+                    onPress={openReviewModal}
+                    activeOpacity={0.86}
+                    style={{
+                      height: 42,
+                      borderRadius: 14,
+                      paddingHorizontal: 13,
+                      backgroundColor: canReview ? theme.accent : theme.surfaceMuted,
+                      borderWidth: canReview ? 0 : 1,
+                      borderColor: theme.border,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons
+                      name={canReview ? 'star' : 'lock-closed-outline'}
+                      size={16}
+                      color={canReview ? '#fff' : theme.mutedText}
+                    />
+                    <Text
+                      style={{
+                        color: canReview ? '#fff' : theme.mutedText,
+                        fontSize: 12,
+                        fontWeight: '900',
+                        marginLeft: 5,
+                      }}
+                    >
+                      {reviewState.myReview ? 'Edit' : 'Review'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {reviewState.reviews.slice(0, 3).map((review) => (
+                <ReviewCard key={review.id} review={review} theme={theme} />
+              ))}
+            </View>
+
+            <View
+              style={{
+                backgroundColor: theme.surface,
+                padding: 16,
+                marginBottom: 12,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: theme.text }}>
                     Owner response quality
                   </Text>
                   <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
@@ -698,6 +974,120 @@ export default function OwnerProfileScreen({ route, navigation }) {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 28 }}
       />
+
+      <Modal
+        visible={reviewModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReviewModalVisible(false)}
+      >
+        <Pressable
+          onPress={() => setReviewModalVisible(false)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15,23,42,0.42)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: theme.surface,
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              borderWidth: 1,
+              borderColor: theme.border,
+              paddingHorizontal: 18,
+              paddingTop: 16,
+              paddingBottom: 22,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>
+                  {reviewState.myReview ? 'Edit real review' : 'Write real review'}
+                </Text>
+                <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                  {reviewConnectionLabel
+                    ? `${reviewConnectionLabel} connection verified with ${ownerName}.`
+                    : 'Your connection will be checked before saving.'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setReviewModalVisible(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: theme.surfaceMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={18} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ alignItems: 'center', marginTop: 18 }}>
+              <ReviewStars value={reviewRating} onChange={setReviewRating} theme={theme} size={28} />
+            </View>
+
+            <TextInput
+              value={reviewBody}
+              onChangeText={setReviewBody}
+              placeholder="Share your honest experience..."
+              placeholderTextColor={theme.mutedText}
+              multiline
+              maxLength={1000}
+              style={{
+                minHeight: 112,
+                textAlignVertical: 'top',
+                color: theme.text,
+                backgroundColor: theme.surfaceMuted,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: theme.border,
+                paddingHorizontal: 13,
+                paddingVertical: 12,
+                marginTop: 16,
+                fontSize: 13,
+                lineHeight: 19,
+              }}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+              <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800' }}>
+                {reviewBody.length}/1000
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={submitReview}
+              disabled={reviewSaving}
+              activeOpacity={0.86}
+              style={{
+                height: 48,
+                borderRadius: 16,
+                backgroundColor: theme.accent,
+                opacity: reviewSaving ? 0.65 : 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                marginTop: 14,
+              }}
+            >
+              {reviewSaving ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
+              )}
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900', marginLeft: 7 }}>
+                Save review
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   )
 }
