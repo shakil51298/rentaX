@@ -126,6 +126,22 @@ begin
     select 1 from pg_policies
     where schemaname = 'public'
       and tablename = 'user_follows'
+      and policyname = 'Users can add contacts'
+  ) then
+    create policy "Users can add contacts"
+      on public.user_follows
+      for insert
+      to authenticated
+      with check (
+        auth.uid() = follower_id
+        and follower_id <> following_id
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'user_follows'
       and policyname = 'Users can unfollow owners'
   ) then
     create policy "Users can unfollow owners"

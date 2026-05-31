@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   ScrollView,
+  Share,
   Switch,
   Text,
   TextInput,
@@ -15,6 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
+import * as Clipboard from 'expo-clipboard'
+import QRCode from 'react-native-qrcode-svg'
 import { supabase } from '../lib/supabase'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
@@ -292,6 +295,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     title: '',
     uri: null,
   })
+  const [qrModalVisible, setQrModalVisible] = useState(false)
 
   const loadProfile = useCallback(async () => {
     setLoading(true)
@@ -468,6 +472,12 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
   const displayName = profile?.display_name || displayNameFromEmail(email)
   const avatarUrl = profile?.avatar_url || null
   const rentalXId = profile?.rentalx_id || buildRentalXId(currentUserId || email)
+  const qrLogoSource = avatarUrl ? { uri: avatarUrl } : undefined
+  const qrPayload = JSON.stringify({
+    type: 'rentalx_profile',
+    rentalx_id: rentalXId,
+    user_id: currentUserId,
+  })
   const isVerifiedOwner = getOwnerVerificationStatus(profile) === 'verified'
 
   function openImageViewer(title, uri) {
@@ -486,6 +496,26 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       title: '',
       uri: null,
     })
+  }
+
+  async function copyRentalXId() {
+    if (!rentalXId) return
+
+    await Clipboard.setStringAsync(rentalXId)
+    Alert.alert('Copied', 'Rental X ID copied.')
+  }
+
+  async function shareRentalXProfile() {
+    if (!rentalXId) return
+
+    try {
+      await Share.share({
+        title: 'Rental X contact',
+        message: `${displayName || 'Rental X profile'}\nRental X ID: ${rentalXId}\nScan my QR code in Messages or search this ID to add me on Rental X.`,
+      })
+    } catch (error) {
+      Alert.alert('Share failed', error?.message || 'Could not share this profile.')
+    }
   }
 
   function openConnections(kind) {
@@ -696,7 +726,9 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                   </View>
                 </TouchableOpacity>
 
-                <View
+                <TouchableOpacity
+                  onPress={() => setQrModalVisible(true)}
+                  activeOpacity={0.86}
                   style={{
                     marginLeft: 12,
                     width: 44,
@@ -710,7 +742,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
                   }}
                 >
                   <Ionicons name="qr-code-outline" size={22} color={theme.accent} />
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -1135,6 +1167,150 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
           ) : null}
         </View>
       </SwipeTabView>
+
+      <Modal
+        visible={qrModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQrModalVisible(false)}
+      >
+        <Pressable
+          onPress={() => setQrModalVisible(false)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(2, 6, 23, 0.72)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              width: '100%',
+              maxWidth: 330,
+              borderRadius: 24,
+              backgroundColor: theme.surface,
+              borderWidth: 1,
+              borderColor: theme.border,
+              padding: 18,
+              alignItems: 'center',
+            }}
+          >
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 18,
+                backgroundColor: theme.accentSoft,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <Ionicons name="qr-code-outline" size={24} color={theme.accent} />
+            </View>
+
+            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900', textAlign: 'center' }}>
+              {displayName || 'Rental X profile'}
+            </Text>
+            <Text
+              selectable
+              style={{
+                color: theme.mutedText,
+                fontSize: 12,
+                fontWeight: '900',
+                marginTop: 5,
+                textAlign: 'center',
+              }}
+            >
+              Rental X ID  <Text style={{ color: theme.text }}>{rentalXId}</Text>
+            </Text>
+
+            <View
+              style={{
+                marginTop: 16,
+                padding: 14,
+                borderRadius: 22,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: '#e5e7eb',
+              }}
+            >
+              <QRCode
+                value={qrPayload}
+                size={210}
+                color="#020617"
+                backgroundColor="#fff"
+                logo={qrLogoSource}
+                logoSize={46}
+                logoBackgroundColor="#fff"
+                logoMargin={5}
+                logoBorderRadius={23}
+                quietZone={6}
+                ecl="H"
+              />
+            </View>
+
+            <Text style={{ color: theme.mutedText, fontSize: 12, textAlign: 'center', marginTop: 13 }}>
+              Scan from Messages to add this contact.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, width: '100%' }}>
+              <TouchableOpacity
+                onPress={() => setQrModalVisible(false)}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: 15,
+                  backgroundColor: theme.surfaceMuted,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: theme.text, fontWeight: '900' }}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={copyRentalXId}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: 15,
+                  backgroundColor: theme.accent,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                }}
+              >
+                <Ionicons name="copy-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#fff', fontWeight: '900' }}>Copy ID</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={shareRentalXProfile}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: 15,
+                  backgroundColor: theme.accentSoft,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                }}
+              >
+                <Ionicons name="share-social-outline" size={16} color={theme.accent} style={{ marginRight: 6 }} />
+                <Text style={{ color: theme.accentStrong, fontWeight: '900' }}>Share</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={imageViewer.visible}
