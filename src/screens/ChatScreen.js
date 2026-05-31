@@ -86,6 +86,7 @@ import {
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { getLocationSelectionFromCoords } from '../lib/location'
 import { getMutedConversationIds, getPinnedConversationIds } from '../lib/chatPreferences'
+import { fetchConnections } from '../lib/social'
 
 const EMPTY_ROUTE_PARAMS = {}
 const RED_PACKET_MAX_AMOUNT = 200
@@ -405,6 +406,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const keyboardScrollTimerRef = useRef(null)
   const suppressAutoScrollUntilRef = useRef(0)
   const handledCapturedAssetNonceRef = useRef(null)
+  const handledScanNonceRef = useRef(null)
   const longPressRecordingRef = useRef(false)
   const skipNextMicTapRef = useRef(false)
   const composerFocusAnim = useRef(new Animated.Value(0)).current
@@ -420,6 +422,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const requestedConversationId = routeParams?.conversationId || routeParams?.openConversationId || null
   const directTarget = useMemo(() => getDirectTarget(routeParams), [routeParams])
   const directProperty = routeParams?.property || null
+  const scannedRentalXId = routeParams?.scannedRentalXId || null
+  const scannedContactAction = routeParams?.scannedContactAction || 'add-contact'
+  const scanNonce = routeParams?.scanNonce || null
 
   const [currentUser, setCurrentUser] = useState(null)
   const [mode, setMode] = useState(directTarget ? 'chat' : 'list')
@@ -449,10 +454,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [redPacketsByMessageId, setRedPacketsByMessageId] = useState({})
   const [openingRedPacketId, setOpeningRedPacketId] = useState(null)
   const [contactPickerVisible, setContactPickerVisible] = useState(false)
+  const [contactPickerPurpose, setContactPickerPurpose] = useState('share')
   const [contactPickerSearchQuery, setContactPickerSearchQuery] = useState('')
   const [contactPickerContacts, setContactPickerContacts] = useState([])
   const [loadingContactPicker, setLoadingContactPicker] = useState(false)
   const [sendingContactCard, setSendingContactCard] = useState(false)
+  const [contactPickerActionLoadingId, setContactPickerActionLoadingId] = useState(null)
   const [pendingVoiceNote, setPendingVoiceNote] = useState(null)
   const [recordingWaveform, setRecordingWaveform] = useState([])
   const [composerInputHeight, setComposerInputHeight] = useState(COMPOSER_INPUT_MIN_HEIGHT)
@@ -943,10 +950,122 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     await loadMessages(item.id, currentUser?.id, true, item)
   }, [currentUser?.id, loadMessages])
 
-  const startContactFromRentalXId = useCallback(async () => {
-    const rentalXId = normalizeRentalXIdSearch(conversationSearchQuery)
+  async function findProfileByRentalXId(rawRentalXId) {
+    const rentalXId = normalizeRentalXIdSearch(rawRentalXId)
 
-    if (!rentalXId || addingContactFromSearch) return
+    if (!rentalXId) return null
+
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('user_id, email, display_name, rentalx_id, avatar_url, is_verified')
+      .eq('rentalx_id', rentalXId)
+      .maybeSingle()
+
+    if (error) throw error
+
+    if (!profile?.user_id) {
+      Alert.alert('Contact not found', 'No user found with this Rental X ID.')
+      return null
+    }
+
+    if (profile.user_id === currentUser?.id) {
+      Alert.alert('That is your ID', 'Enter another user Rental X ID.')
+      return null
+    }
+
+    return {
+      id: profile.user_id,
+      ...profile,
+    }
+  }
+
+  async function openDirectChatWithProfile(profile) {
+    const targetUserId = profile?.id || profile?.user_id
+
+    if (!currentUser?.id || !targetUserId) return
+
+    if (targetUserId === currentUser.id) {
+      Alert.alert('That is your ID', 'Choose another contact.')
+      return
+    }
+
+    const targetProfile = {
+      id: targetUserId,
+      user_id: targetUserId,
+      ...profile,
+    }
+    const nextConversation = await getOrCreateConversation(currentUser, targetProfile, null)
+
+    await loadConversationList(currentUser)
+    setContactPickerVisible(false)
+    setContactPickerSearchQuery('')
+    setConversationSearchQuery('')
+    setSelectedConversationIds([])
+    setOpenedFromList(true)
+    setMode('chat')
+    setConversation(nextConversation)
+    setOtherUser(targetProfile)
+    setConversationProperty(null)
+    setGroupMembers([])
+    setReplyTarget(null)
+    await loadMessages(nextConversation.id, currentUser.id, true, nextConversation)
+  }
+
+  async function addContactProfile(profile) {
+    const targetUserId = profile?.id || profile?.user_id
+
+    if (!currentUser?.id || !targetUserId || contactPickerActionLoadingId) return
+
+    if (targetUserId === currentUser.id) {
+      Alert.alert('That is your ID', 'Choose another contact.')
+      return
+    }
+
+    try {
+      setContactPickerActionLoadingId(targetUserId)
+
+      const { error } = await supabase
+        .from('user_follows')
+        .upsert(
+          {
+            follower_id: currentUser.id,
+            following_id: targetUserId,
+          },
+          { onConflict: 'follower_id,following_id' }
+        )
+
+      if (error) throw error
+
+      setContactPickerContacts((current) =>
+        current.map((contact) =>
+          (contact.id || contact.user_id) === targetUserId
+            ? { ...contact, is_following: true }
+            : contact
+        )
+      )
+
+      sendPushToUser({
+        recipientId: targetUserId,
+        title: 'New contact',
+        body: `${currentUserName} added you as a contact`,
+        data: {
+          type: 'user_follow',
+          actorId: currentUser.id,
+          actorName: currentUserName,
+          eventKey: `user_follow:${targetUserId}:${currentUser.id}`,
+        },
+      })
+
+      Alert.alert('Contact added', 'This user is now in your contacts.')
+    } catch (error) {
+      Alert.alert('Add contact failed', error?.message || 'Could not add this contact.')
+    } finally {
+      setContactPickerActionLoadingId(null)
+    }
+  }
+
+  async function startContactFromRentalXId(rawRentalXId = conversationSearchQuery) {
+    if (addingContactFromSearch) return
 
     if (!currentUser?.id) {
       Alert.alert('Login needed', 'Please login to add a contact.')
@@ -956,54 +1075,17 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     try {
       setAddingContactFromSearch(true)
 
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('user_id, email, display_name, rentalx_id, avatar_url, is_verified')
-        .eq('rentalx_id', rentalXId)
-        .maybeSingle()
+      const profile = await findProfileByRentalXId(rawRentalXId)
 
-      if (error) throw error
+      if (!profile) return
 
-      if (!profile?.user_id) {
-        Alert.alert('Contact not found', 'No user found with this Rental X ID.')
-        return
-      }
-
-      if (profile.user_id === currentUser.id) {
-        Alert.alert('That is your ID', 'Enter another user Rental X ID.')
-        return
-      }
-
-      const targetProfile = {
-        id: profile.user_id,
-        ...profile,
-      }
-      const nextConversation = await getOrCreateConversation(currentUser, targetProfile, null)
-
-      await loadConversationList(currentUser)
-      setConversationSearchQuery('')
-      setSelectedConversationIds([])
-      setOpenedFromList(true)
-      setMode('chat')
-      setConversation(nextConversation)
-      setOtherUser(targetProfile)
-      setConversationProperty(null)
-      setGroupMembers([])
-      setReplyTarget(null)
-      await loadMessages(nextConversation.id, currentUser.id, true, nextConversation)
+      await openDirectChatWithProfile(profile)
     } catch (error) {
-      Alert.alert('Add contact failed', error?.message || 'Could not add this contact.')
+      Alert.alert('Chat failed', error?.message || 'Could not start this chat.')
     } finally {
       setAddingContactFromSearch(false)
     }
-  }, [
-    addingContactFromSearch,
-    conversationSearchQuery,
-    currentUser,
-    getOrCreateConversation,
-    loadConversationList,
-    loadMessages,
-  ])
+  }
 
   const openContactCard = useCallback(async (contact) => {
     const contactUserId = contact?.userId || contact?.user_id || contact?.id
@@ -1169,6 +1251,50 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   useEffect(() => {
     initializeChat()
   }, [initializeChat])
+
+  useEffect(() => {
+    if (!currentUser?.id || !scannedRentalXId) return
+
+    const scanKey = scanNonce || scannedRentalXId
+
+    if (handledScanNonceRef.current === scanKey) return
+
+    handledScanNonceRef.current = scanKey
+
+    async function handleScannedContact() {
+      try {
+        const profile = await findProfileByRentalXId(scannedRentalXId)
+
+        navigation.setParams?.({
+          scannedRentalXId: undefined,
+          scannedContactAction: undefined,
+          scanNonce: undefined,
+        })
+
+        if (!profile) return
+
+        if (scannedContactAction === 'new-chat') {
+          await openDirectChatWithProfile(profile)
+          return
+        }
+
+        setMode('list')
+        setConversation(null)
+        setOtherUser(null)
+        setConversationProperty(null)
+        setGroupMembers([])
+        setContactPickerPurpose('add-contact')
+        setContactPickerVisible(true)
+        setContactPickerSearchQuery('')
+        setContactPickerContacts([{ ...profile, is_following: false }])
+        await addContactProfile(profile)
+      } catch (error) {
+        Alert.alert('Scan failed', error?.message || 'Could not use this Rental X ID.')
+      }
+    }
+
+    handleScannedContact()
+  }, [currentUser?.id, scanNonce, scannedContactAction, scannedRentalXId])
 
   useEffect(() => {
     Animated.timing(composerFocusAnim, {
@@ -1599,9 +1725,53 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     await sendMessage({ body: messageText })
   }
 
+  async function openMessageContactPicker(purpose = 'new-chat') {
+    if (!currentUser?.id) return
+
+    setContactPickerPurpose(purpose)
+    setContactPickerVisible(true)
+    setContactPickerSearchQuery('')
+    setLoadingContactPicker(true)
+
+    try {
+      const [followers, following] = await Promise.all([
+        fetchConnections({ userId: currentUser.id, kind: 'followers', currentUserId: currentUser.id }),
+        fetchConnections({ userId: currentUser.id, kind: 'following', currentUserId: currentUser.id }),
+      ])
+      const contactIds = [
+        ...followers.map((item) => item.related_user_id),
+        ...following.map((item) => item.related_user_id),
+        ...conversationRows.map((row) => row.other_user_id),
+      ].filter((id) => id && id !== currentUser.id)
+      const profilesById = await fetchProfiles(contactIds)
+      const followingIds = new Set(following.map((item) => item.related_user_id).filter(Boolean))
+      const contactsById = {}
+
+      contactIds.forEach((id) => {
+        const profile = profilesById[id]
+
+        if (profile?.user_id || profile?.id) {
+          const profileId = profile.user_id || profile.id
+          contactsById[profileId] = {
+            id: profileId,
+            ...profile,
+            is_following: followingIds.has(profileId),
+          }
+        }
+      })
+
+      setContactPickerContacts(Object.values(contactsById))
+    } catch (error) {
+      Alert.alert('Contacts unavailable', error?.message || 'Could not load contacts.')
+    } finally {
+      setLoadingContactPicker(false)
+    }
+  }
+
   async function openContactCardPicker() {
     if (!currentUser?.id || !conversation?.id) return
 
+    setContactPickerPurpose('share')
     setContactPickerVisible(true)
     setContactPickerSearchQuery('')
     setLoadingContactPicker(true)
@@ -1650,7 +1820,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }
 
-  async function findContactCardByRentalXId() {
+  async function findContactByRentalXId() {
     const rentalXId = normalizeRentalXIdSearch(contactPickerSearchQuery)
 
     if (!rentalXId || loadingContactPicker) return
@@ -1658,18 +1828,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     try {
       setLoadingContactPicker(true)
 
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('user_id, email, display_name, rentalx_id, avatar_url, is_verified')
-        .eq('rentalx_id', rentalXId)
-        .maybeSingle()
+      const profile = await findProfileByRentalXId(rentalXId)
 
-      if (error) throw error
-
-      if (!profile?.user_id) {
-        Alert.alert('Contact not found', 'No user found with this Rental X ID.')
-        return
-      }
+      if (!profile?.user_id) return
 
       setContactPickerContacts((current) => {
         const exists = current.some((item) => (item.user_id || item.id) === profile.user_id)
@@ -1680,6 +1841,32 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       Alert.alert('Contact search failed', error?.message || 'Could not find this contact.')
     } finally {
       setLoadingContactPicker(false)
+    }
+  }
+
+  async function handleContactPickerSelect(contact) {
+    if (contactPickerPurpose === 'share') {
+      await sendContactCard(contact)
+      return
+    }
+
+    const contactId = contact?.id || contact?.user_id
+
+    if (!contactId || contactPickerActionLoadingId) return
+
+    try {
+      setContactPickerActionLoadingId(contactId)
+
+      if (contactPickerPurpose === 'add-contact') {
+        await addContactProfile(contact)
+        return
+      }
+
+      await openDirectChatWithProfile(contact)
+    } catch (error) {
+      Alert.alert('Contact action failed', error?.message || 'Could not complete this action.')
+    } finally {
+      setContactPickerActionLoadingId(null)
     }
   }
 
@@ -3081,8 +3268,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     setQuickChatMenuVisible(false)
 
     if (actionKey === 'new-chat') {
-      setConversationSearchQuery('')
-      requestAnimationFrame(() => conversationSearchInputRef.current?.focus())
+      openMessageContactPicker('new-chat')
       return
     }
 
@@ -3092,11 +3278,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
 
     if (actionKey === 'add-contacts') {
-      setConversationSearchQuery('')
-      requestAnimationFrame(() => conversationSearchInputRef.current?.focus())
+      openMessageContactPicker('add-contact')
       return
     }
-    Alert.alert('Scan', 'RentalX ID QR scanning can be connected here next.')
+
+    navigation.navigate('ChatQrScanner', {
+      purpose: 'add-contact',
+    })
   }
 
   function openMessagingSettings() {
@@ -3371,7 +3559,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     returnKeyType="search"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    onSubmitEditing={startContactFromRentalXId}
+                    onSubmitEditing={() => startContactFromRentalXId()}
                     style={{
                       flex: 1,
                       color: theme.text,
@@ -3382,7 +3570,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   {conversationSearchQuery ? (
                     <>
                       <TouchableOpacity
-                        onPress={startContactFromRentalXId}
+                        onPress={() => startContactFromRentalXId()}
                         disabled={addingContactFromSearch}
                         activeOpacity={0.82}
                         style={{
@@ -3474,6 +3662,237 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     </View>
                   </TouchableOpacity>
                 ))}
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <Modal
+            visible={contactPickerVisible && contactPickerPurpose !== 'share'}
+            transparent
+            animationType="slide"
+            onRequestClose={() => {
+              if (!contactPickerActionLoadingId) {
+                setContactPickerVisible(false)
+              }
+            }}
+          >
+            <Pressable
+              onPress={() => {
+                if (!contactPickerActionLoadingId) {
+                  setContactPickerVisible(false)
+                }
+              }}
+              style={{
+                flex: 1,
+                justifyContent: 'flex-end',
+                backgroundColor: 'rgba(15, 23, 42, 0.32)',
+              }}
+            >
+              <Pressable
+                onPress={() => {}}
+                style={{
+                  maxHeight: Math.min(windowHeight * 0.72, 560),
+                  backgroundColor: theme.surface,
+                  borderTopLeftRadius: 24,
+                  borderTopRightRadius: 24,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  paddingHorizontal: 16,
+                  paddingTop: 10,
+                  paddingBottom: Math.max(insets.bottom, 10) + 14,
+                }}
+              >
+                <View
+                  style={{
+                    width: 42,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: theme.border,
+                    alignSelf: 'center',
+                    marginBottom: 12,
+                  }}
+                />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: theme.accentSoft,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 10,
+                    }}
+                  >
+                    <Ionicons
+                      name={contactPickerPurpose === 'add-contact' ? 'person-add-outline' : 'chatbubble-ellipses-outline'}
+                      size={21}
+                      color={theme.accent}
+                    />
+                  </View>
+                  <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                    {contactPickerPurpose === 'add-contact' ? 'Add contacts' : 'New chat'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setContactPickerVisible(false)}
+                    disabled={Boolean(contactPickerActionLoadingId)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: contactPickerActionLoadingId ? 0.5 : 1,
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={theme.mutedText} />
+                  </TouchableOpacity>
+                </View>
+
+                <View
+                  style={{
+                    minHeight: 44,
+                    borderRadius: 15,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <Ionicons name="search" size={17} color={theme.mutedText} />
+                  <TextInput
+                    value={contactPickerSearchQuery}
+                    onChangeText={setContactPickerSearchQuery}
+                    placeholder="Search or enter Rental X ID"
+                    placeholderTextColor={theme.mutedText}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    onSubmitEditing={() => findContactByRentalXId()}
+                    style={{
+                      flex: 1,
+                      color: theme.text,
+                      fontSize: 13,
+                      marginLeft: 8,
+                      paddingVertical: 4,
+                    }}
+                  />
+                  {contactPickerSearchQuery ? (
+                    <TouchableOpacity
+                      onPress={() => findContactByRentalXId()}
+                      disabled={loadingContactPicker}
+                      activeOpacity={0.82}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 15,
+                        backgroundColor: theme.accentSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginLeft: 6,
+                      }}
+                    >
+                      {loadingContactPicker ? (
+                        <ActivityIndicator size="small" color={theme.accent} />
+                      ) : (
+                        <Ionicons name="person-add-outline" size={16} color={theme.accent} />
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {loadingContactPicker && !contactPickerContacts.length ? (
+                  <View style={{ paddingVertical: 28 }}>
+                    <ActivityIndicator color={theme.accent} />
+                  </View>
+                ) : (
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 9, paddingBottom: 4 }}
+                  >
+                    {visibleContactPickerContacts.map((contact) => {
+                      const payload = buildContactCardPayload(contact)
+                      const loadingContact = contactPickerActionLoadingId === payload.userId
+                      const isAdded = contactPickerPurpose === 'add-contact' && contact.is_following
+
+                      return (
+                        <TouchableOpacity
+                          key={`message-contact-${payload.userId}`}
+                          onPress={() => handleContactPickerSelect(contact)}
+                          disabled={Boolean(contactPickerActionLoadingId) || isAdded}
+                          activeOpacity={0.84}
+                          style={{
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: theme.border,
+                            backgroundColor: theme.surfaceMuted,
+                            padding: 11,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            opacity: contactPickerActionLoadingId && !loadingContact ? 0.55 : 1,
+                          }}
+                        >
+                          <Avatar profile={contact} name={payload.displayName} size={44} />
+                          <View style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text
+                                numberOfLines={1}
+                                style={{ color: theme.text, fontSize: 14, fontWeight: '900', flexShrink: 1 }}
+                              >
+                                {payload.displayName}
+                              </Text>
+                              {payload.isVerified ? (
+                                <Ionicons
+                                  name="checkmark-circle"
+                                  size={14}
+                                  color={theme.accent}
+                                  style={{ marginLeft: 5 }}
+                                />
+                              ) : null}
+                            </View>
+                            <Text
+                              numberOfLines={1}
+                              style={{ color: theme.mutedText, fontSize: 11, marginTop: 3, fontWeight: '800' }}
+                            >
+                              {payload.rentalXId ? `ID ${payload.rentalXId}` : 'Rental X contact'}
+                            </Text>
+                          </View>
+
+                          {loadingContact ? (
+                            <ActivityIndicator size="small" color={theme.accent} />
+                          ) : (
+                            <Ionicons
+                              name={
+                                contactPickerPurpose === 'add-contact'
+                                  ? (isAdded ? 'checkmark-circle' : 'person-add-outline')
+                                  : 'chatbubble-ellipses-outline'
+                              }
+                              size={19}
+                              color={theme.accent}
+                            />
+                          )}
+                        </TouchableOpacity>
+                      )
+                    })}
+
+                    {!visibleContactPickerContacts.length ? (
+                      <View style={{ alignItems: 'center', paddingVertical: 28 }}>
+                        <Ionicons name="person-add-outline" size={34} color={theme.mutedText} />
+                        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900', marginTop: 10 }}>
+                          No contacts found
+                        </Text>
+                        <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 5 }}>
+                          Enter a Rental X ID and tap the add icon.
+                        </Text>
+                      </View>
+                    ) : null}
+                  </ScrollView>
+                )}
               </Pressable>
             </Pressable>
           </Modal>
@@ -4536,7 +4955,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       </KeyboardAvoidingView>
 
       <Modal
-        visible={contactPickerVisible}
+        visible={contactPickerVisible && contactPickerPurpose === 'share'}
         transparent
         animationType="slide"
         onRequestClose={() => {
@@ -4597,7 +5016,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 <Ionicons name="id-card-outline" size={21} color={theme.accent} />
               </View>
               <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '900' }}>
-                Share contact
+                {contactPickerPurpose === 'new-chat'
+                  ? 'New chat'
+                  : contactPickerPurpose === 'add-contact'
+                    ? 'Add contacts'
+                    : 'Share contact'}
               </Text>
               <TouchableOpacity
                 onPress={() => setContactPickerVisible(false)}
@@ -4637,7 +5060,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
-                onSubmitEditing={findContactCardByRentalXId}
+                onSubmitEditing={() => findContactByRentalXId()}
                 style={{
                   flex: 1,
                   color: theme.text,
@@ -4648,7 +5071,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               />
               {contactPickerSearchQuery ? (
                 <TouchableOpacity
-                  onPress={findContactCardByRentalXId}
+                  onPress={() => findContactByRentalXId()}
                   disabled={loadingContactPicker}
                   activeOpacity={0.82}
                   style={{
@@ -4688,8 +5111,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   return (
                     <TouchableOpacity
                       key={`contact-share-${payload.userId}`}
-                      onPress={() => sendContactCard(contact)}
-                      disabled={sendingContactCard}
+                      onPress={() => handleContactPickerSelect(contact)}
+                      disabled={sendingContactCard || Boolean(contactPickerActionLoadingId)}
                       activeOpacity={0.84}
                       style={{
                         borderRadius: 16,
@@ -4699,7 +5122,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                         padding: 11,
                         flexDirection: 'row',
                         alignItems: 'center',
-                        opacity: sendingContactCard ? 0.65 : 1,
+                        opacity: sendingContactCard || contactPickerActionLoadingId ? 0.65 : 1,
                       }}
                     >
                       {payload.avatarUrl ? (
@@ -4754,10 +5177,20 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                         </Text>
                       </View>
 
-                      {sendingContactCard ? (
+                      {sendingContactCard || contactPickerActionLoadingId === payload.userId ? (
                         <ActivityIndicator size="small" color={theme.accent} />
                       ) : (
-                        <Ionicons name="send-outline" size={18} color={theme.accent} />
+                        <Ionicons
+                          name={
+                            contactPickerPurpose === 'new-chat'
+                              ? 'chatbubble-ellipses-outline'
+                              : contactPickerPurpose === 'add-contact'
+                                ? (contact.is_following ? 'checkmark-circle' : 'person-add-outline')
+                                : 'send-outline'
+                          }
+                          size={18}
+                          color={theme.accent}
+                        />
                       )}
                     </TouchableOpacity>
                   )

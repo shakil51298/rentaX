@@ -22,6 +22,8 @@ import {
 } from '../lib/chatGroups'
 
 function normalizeProfile(profile = {}) {
+  if (!profile) return null
+
   const id = profile.id || profile.user_id
 
   if (!id) return null

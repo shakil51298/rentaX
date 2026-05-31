@@ -28,6 +28,7 @@ import AdsManagementScreen from '../screens/AdsManagementScreen'
 import AudioCallScreen from '../screens/AudioCallScreen'
 import VideoCallScreen from '../screens/VideoCallScreen'
 import ChatCameraScreen from '../screens/ChatCameraScreen'
+import ChatQrScannerScreen from '../screens/ChatQrScannerScreen'
 import LocationScreen from '../screens/LocationScreen'
 import ConnectionsScreen from '../screens/ConnectionsScreen'
 import BlockListScreen from '../screens/BlockListScreen'
@@ -599,6 +600,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="ChatCamera"
           component={ChatCameraScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="ChatQrScanner"
+          component={ChatQrScannerScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
