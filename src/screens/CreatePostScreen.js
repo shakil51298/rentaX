@@ -27,6 +27,7 @@ import { notifySavedSearchMatchesForProperty } from '../lib/savedSearches'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { isPrimaryAdmin } from '../lib/admin'
 import { useAppSettings } from '../lib/appSettings'
+import { createAvailabilityConfirmationPayload } from '../lib/propertyLifecycle'
 import {
   PAYMENT_SAFETY_WARNING,
   buildMediaFingerprints,
@@ -914,6 +915,9 @@ export default function CreatePostScreen({ navigation, route }) {
     const ownerId = adminEditMode && editingPost?.owner_id ? editingPost.owner_id : user.id
     const ownerEmail = adminEditMode && editingPost?.owner_email ? editingPost.owner_email : user.email
     const ownerNameToSave = adminEditMode && editingPost?.owner_name ? editingPost.owner_name : ownerName
+    const availabilityPayload = isEditing
+      ? {}
+      : createAvailabilityConfirmationPayload(ownerId)
 
     const payload = {
       title,
@@ -950,6 +954,7 @@ export default function CreatePostScreen({ navigation, route }) {
         repeatedMediaCount,
       }),
       safety_updated_at: new Date().toISOString(),
+      ...availabilityPayload,
     }
 
     const canAdminEdit = adminEditMode && isPrimaryAdmin(user)
@@ -964,7 +969,9 @@ export default function CreatePostScreen({ navigation, route }) {
     setLoading(false)
 
     if (error) {
-      const setupMessage = /media_fingerprints|safety_flags|suspicious_price_warning|duplicate_photo_warning|duplicate_media_match_count|safety_updated_at/i.test(error.message || '')
+      const setupMessage = /availability_confirmed_at|availability_confirmation_due_at|availability_confirmed_by/i.test(error.message || '')
+        ? 'Run supabase-fresh-listing-verification-features.sql in Supabase, then try again.'
+        : /media_fingerprints|safety_flags|suspicious_price_warning|duplicate_photo_warning|duplicate_media_match_count|safety_updated_at/i.test(error.message || '')
         ? 'Run supabase-scam-protection-features.sql in Supabase, then try again.'
         : error.message
       Alert.alert('Error', setupMessage)

@@ -6,7 +6,7 @@ import { normalizeMediaList } from '../../lib/media'
 import { timeAgo } from '../../lib/time'
 import { getProfileName } from '../../lib/userDisplay'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../../lib/verification'
-import { isUrgentProperty } from '../../lib/propertyLifecycle'
+import { getAvailabilityFreshnessMeta, isUrgentProperty } from '../../lib/propertyLifecycle'
 import { useAppSettings } from '../../lib/appSettings'
 import { getListingSafetySummary } from '../../lib/scamProtection'
 
@@ -118,6 +118,7 @@ export default function PostCard({
   const isAdminBanned = Boolean(item.admin_is_banned)
   const metaChips = getPropertyMetaChips(item)
   const isUrgent = isUrgentProperty(item)
+  const freshnessMeta = getAvailabilityFreshnessMeta(item)
   const safetySummary = getListingSafetySummary(item, ownerProfile)
   const contentText = useMemo(
     () =>
@@ -176,6 +177,32 @@ export default function PostCard({
                     {statusMeta.label}
                   </Text>
                 </View>
+
+              {freshnessMeta ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: freshnessMeta.backgroundColor,
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                    borderWidth: 1,
+                    borderColor: freshnessMeta.borderColor,
+                  }}
+                >
+                  <Ionicons
+                    name={freshnessMeta.icon}
+                    size={11}
+                    color={freshnessMeta.color}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: freshnessMeta.color }}>
+                    {freshnessMeta.compactLabel}
+                  </Text>
+                </View>
+              ) : null}
 
               {isVerifiedProperty ? (
                 <View

@@ -16,7 +16,12 @@ import ActionSheetModal from '../components/common/ActionSheetModal'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
 import { fetchPropertiesWithProfiles } from '../lib/properties'
-import { isUrgentProperty } from '../lib/propertyLifecycle'
+import {
+  createAvailabilityConfirmationPayload,
+  getAvailabilityFreshnessMeta,
+  isAvailabilityConfirmationDue,
+  isUrgentProperty,
+} from '../lib/propertyLifecycle'
 import { getPropertyVerificationStatus } from '../lib/verification'
 import { useAppSettings } from '../lib/appSettings'
 import { buildLeadTotals, fetchOwnerLeadDashboard } from '../lib/ownerLeadDashboard'
@@ -531,6 +536,18 @@ export default function AdsManagementScreen({ navigation }) {
     )
   }
 
+  async function confirmListingAvailability(post) {
+    await updatePostLifecycle(
+      post,
+      createAvailabilityConfirmationPayload(currentUser?.id),
+      {
+        successTitle: 'Availability confirmed',
+        successMessage: 'Renters will now see this listing as verified today.',
+        errorMessage: 'Run supabase-fresh-listing-verification-features.sql in Supabase, then try again.',
+      }
+    )
+  }
+
   async function toggleUrgent(post) {
     const isUrgent = isUrgentProperty(post)
     const urgentUntil = isUrgent
@@ -557,6 +574,7 @@ export default function AdsManagementScreen({ navigation }) {
 
     closeActionSheet()
 
+    const availabilityPayload = createAvailabilityConfirmationPayload(currentUser.id)
     const payload = {
       title: post.title ? `${post.title} (Copy)` : 'Copied listing',
       description: post.description || '',
@@ -583,21 +601,25 @@ export default function AdsManagementScreen({ navigation }) {
       image_url: post.image_url || null,
       media: Array.isArray(post.media) ? post.media : [],
       status: 'open',
-      refreshed_at: new Date().toISOString(),
       urgent_until: null,
       duplicated_from_id: String(post.id),
       verification_status: 'unverified',
       verification_requested_at: null,
       verification_rejection_reason: null,
       admin_is_banned: false,
+      ...availabilityPayload,
     }
 
     const { data, error } = await supabase.from('properties').insert(payload).select('*').single()
 
     if (error) {
+      const setupMessage = /availability_confirmed_at|availability_confirmation_due_at|availability_confirmed_by/i.test(error.message || '')
+        ? 'Run supabase-fresh-listing-verification-features.sql in Supabase, then try again.'
+        : 'Run supabase-property-status-features.sql in Supabase, then try again.'
+
       Alert.alert(
         'Duplicate failed',
-        'Run supabase-property-status-features.sql in Supabase, then try again.'
+        setupMessage
       )
       return
     }
@@ -729,6 +751,12 @@ export default function AdsManagementScreen({ navigation }) {
                   value: posts.filter((item) => isUrgentProperty(item)).length,
                   backgroundColor: '#fff7ed',
                   textColor: '#ea580c',
+                },
+                {
+                  label: 'Needs confirm',
+                  value: posts.filter((item) => isAvailabilityConfirmationDue(item)).length,
+                  backgroundColor: '#fef2f2',
+                  textColor: '#dc2626',
                 },
                 {
                   label: 'Paused',
@@ -915,6 +943,15 @@ export default function AdsManagementScreen({ navigation }) {
             disabled: actionPost?.status !== 'open',
             onPress: () =>
               refreshListing(actionPost),
+          },
+          {
+            icon: 'shield-checkmark-outline',
+            title: 'Confirm still available',
+            subtitle: getAvailabilityFreshnessMeta(actionPost)?.isDue
+              ? 'Update this ad so renters know it is still real.'
+              : getAvailabilityFreshnessMeta(actionPost)?.label || 'Show renters this ad was checked today.',
+            disabled: actionPost?.status !== 'open',
+            onPress: () => confirmListingAvailability(actionPost),
           },
           {
             icon: isUrgentProperty(actionPost) ? 'flash-off-outline' : 'flash-outline',

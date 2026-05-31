@@ -29,7 +29,7 @@ import {
   fetchOwnerResponseQuality,
   getEmptyOwnerResponseQuality,
 } from '../lib/ownerResponseQuality'
-import { isUrgentProperty } from '../lib/propertyLifecycle'
+import { getAvailabilityFreshnessMeta, isUrgentProperty } from '../lib/propertyLifecycle'
 import {
   addComparedProperty,
   loadComparedProperties,
@@ -138,7 +138,7 @@ function formatTenantType(value) {
   return 'Not specified'
 }
 
-function getPropertyDetailRows(post) {
+function getPropertyDetailRows(post, availabilityLabel) {
   return [
     { label: 'Monthly rent', value: post?.price ? `৳ ${post.price}` : 'Not added' },
     { label: 'Location', value: post?.location || 'Not added' },
@@ -153,6 +153,7 @@ function getPropertyDetailRows(post) {
     { label: 'Gas', value: getBooleanLabel(post?.gas_available) },
     { label: 'Pet friendly', value: getBooleanLabel(post?.pet_friendly) },
     { label: 'Available from', value: post?.available_from || 'Not added' },
+    { label: 'Availability verified', value: availabilityLabel || 'Needs owner confirmation' },
     { label: 'Floor', value: post?.floor_no ? String(post.floor_no) : 'Not added' },
     { label: 'Facing', value: post?.facing_direction || 'Not added' },
     { label: 'Balcony', value: getBooleanLabel(post?.has_balcony) },
@@ -1069,7 +1070,8 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
   const isCompared = comparedProperties.some((item) => String(item.id) === String(post?.id))
   const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
   const propertyMetaChips = getPropertyMetaChips(post)
-  const propertyDetailRows = getPropertyDetailRows(post)
+  const freshnessMeta = getAvailabilityFreshnessMeta(post)
+  const propertyDetailRows = getPropertyDetailRows(post, freshnessMeta?.label)
   const safetySummary = getListingSafetySummary(post, ownerProfile)
   const ownerResponseRateLabel =
     ownerResponseQuality.responseRate == null
@@ -1156,6 +1158,27 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                       <Ionicons name="flash" size={12} color="#ea580c" />
                       <Text style={{ color: '#ea580c', fontSize: 11, fontWeight: '800', marginLeft: 4 }}>
                         Urgent
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {freshnessMeta ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: freshnessMeta.backgroundColor,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: freshnessMeta.borderColor,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        marginLeft: 8,
+                      }}
+                    >
+                      <Ionicons name={freshnessMeta.icon} size={12} color={freshnessMeta.color} />
+                      <Text style={{ color: freshnessMeta.color, fontSize: 11, fontWeight: '800', marginLeft: 4 }}>
+                        {freshnessMeta.compactLabel}
                       </Text>
                     </View>
                   ) : null}
