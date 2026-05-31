@@ -46,6 +46,7 @@ import {
   splitVisitTimestamp,
 } from '../lib/visitScheduling'
 import { useAppSettings } from '../lib/appSettings'
+import { PAYMENT_SAFETY_WARNING, getListingSafetySummary } from '../lib/scamProtection'
 
 function timeAgo(date) {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -1069,6 +1070,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
   const visitStatusMeta = visitRequest ? getVisitStatusMeta(visitRequest.status) : null
   const propertyMetaChips = getPropertyMetaChips(post)
   const propertyDetailRows = getPropertyDetailRows(post)
+  const safetySummary = getListingSafetySummary(post, ownerProfile)
   const ownerResponseRateLabel =
     ownerResponseQuality.responseRate == null
       ? 'New owner'
@@ -1288,6 +1290,70 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
                 ) : null}
               </View>
             ))}
+          </View>
+
+          <View
+            style={{
+              marginTop: 12,
+              marginHorizontal: 14,
+              backgroundColor: theme.surfaceMuted,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: safetySummary.levelMeta.border,
+              padding: 14,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: safetySummary.levelMeta.background,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: safetySummary.levelMeta.border,
+                }}
+              >
+                <Ionicons name={safetySummary.levelMeta.icon} size={19} color={safetySummary.levelMeta.tint} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900' }}>
+                  Safety check
+                </Text>
+                <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                  Risk score {safetySummary.score}/100 · {safetySummary.levelMeta.label}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={{ color: theme.text, fontSize: 12, lineHeight: 18, marginTop: 11, fontWeight: '800' }}>
+              {PAYMENT_SAFETY_WARNING}
+            </Text>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 11 }}>
+              {safetySummary.visibleFlags.slice(0, 7).map((flag) => (
+                <View
+                  key={flag.label}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: flag.border,
+                    backgroundColor: flag.background,
+                    paddingHorizontal: 9,
+                    paddingVertical: 5,
+                  }}
+                >
+                  <Ionicons name={flag.icon} size={12} color={flag.tint} />
+                  <Text style={{ color: flag.tint, fontSize: 11, fontWeight: '900', marginLeft: 5 }}>
+                    {flag.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           {media.length > 0 ? (

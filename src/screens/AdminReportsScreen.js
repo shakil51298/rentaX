@@ -22,6 +22,7 @@ import {
 } from '../lib/reporting'
 import { createNotification } from '../lib/notifications'
 import { useAppSettings } from '../lib/appSettings'
+import { getListingSafetySummary } from '../lib/scamProtection'
 
 function withAlpha(hexColor, alphaHex) {
   const cleanHex = String(hexColor || '').replace('#', '')
@@ -110,6 +111,9 @@ function ReportCard({
   theme,
 }) {
   const caseMeta = getCaseStatusMeta(report?.case_status)
+  const safetySummary = report?.property
+    ? getListingSafetySummary(report.property, report.target_profile || {})
+    : null
 
   return (
     <View
@@ -144,6 +148,27 @@ function ReportCard({
           {caseMeta.label}
         </Text>
       </View>
+      {safetySummary ? (
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            marginTop: 7,
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: safetySummary.levelMeta.border,
+            backgroundColor: safetySummary.levelMeta.background,
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+          }}
+        >
+          <Ionicons name={safetySummary.levelMeta.icon} size={12} color={safetySummary.levelMeta.tint} />
+          <Text style={{ color: safetySummary.levelMeta.tint, fontSize: 11, fontWeight: '900', marginLeft: 5 }}>
+            Risk {safetySummary.score}/100
+          </Text>
+        </View>
+      ) : null}
       <Text style={{ color: theme.text, marginTop: 5, lineHeight: 19 }}>
         {subtitle}
       </Text>

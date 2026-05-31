@@ -16,12 +16,26 @@ import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import Avatar from '../components/common/Avatar'
 import { supabase } from '../lib/supabase'
-import { normalizeMediaList, PROPERTY_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
+import {
+  buildMediaContentFingerprint,
+  normalizeMediaList,
+  PROPERTY_MEDIA_BUCKET,
+  uploadMediaAsset,
+} from '../lib/media'
 import { ensureUserProfileRecord } from '../lib/profileSync'
 import { notifySavedSearchMatchesForProperty } from '../lib/savedSearches'
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { isPrimaryAdmin } from '../lib/admin'
 import { useAppSettings } from '../lib/appSettings'
+import {
+  PAYMENT_SAFETY_WARNING,
+  buildMediaFingerprints,
+  buildSafetyFlagsForPost,
+  buildSafetyWarningsForPost,
+  countRepeatedMediaFingerprints,
+  fetchDuplicateMediaMatchCount,
+  getSuspiciousPriceWarnings,
+} from '../lib/scamProtection'
 
 function Field({ label, placeholder, multiline, keyboardType, value, onChangeText, theme }) {
   return (
@@ -133,6 +147,54 @@ function BooleanField({
         { value: 'yes', label: trueLabel },
       ]}
     />
+  )
+}
+
+function SafetyNotice({ warnings, theme }) {
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: warnings.length ? '#fed7aa' : theme.border,
+        backgroundColor: warnings.length ? '#fff7ed' : theme.surfaceMuted,
+        padding: 12,
+        marginBottom: 12,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            backgroundColor: warnings.length ? '#ffedd5' : theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons
+            name={warnings.length ? 'warning-outline' : 'shield-checkmark-outline'}
+            size={16}
+            color={warnings.length ? '#ea580c' : theme.accent}
+          />
+        </View>
+        <View style={{ flex: 1, marginLeft: 9 }}>
+          <Text style={{ color: warnings.length ? '#9a3412' : theme.text, fontSize: 12, fontWeight: '900' }}>
+            Scam protection
+          </Text>
+          <Text style={{ color: warnings.length ? '#c2410c' : theme.mutedText, fontSize: 11, marginTop: 2, lineHeight: 15 }}>
+            {warnings.length ? warnings[0] : PAYMENT_SAFETY_WARNING}
+          </Text>
+        </View>
+      </View>
+
+      {warnings.slice(1, 3).map((warning) => (
+        <Text key={warning} style={{ color: '#c2410c', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+          {warning}
+        </Text>
+      ))}
+    </View>
   )
 }
 
@@ -502,6 +564,34 @@ function isRemoteUri(uri) {
   return /^https?:\/\//i.test(uri || '')
 }
 
+function countRepeatedFingerprints(fingerprints) {
+  const counts = fingerprints.reduce((itemsByFingerprint, fingerprint) => ({
+    ...itemsByFingerprint,
+    [fingerprint]: (itemsByFingerprint[fingerprint] || 0) + 1,
+  }), {})
+
+  return Object.values(counts).filter((count) => count > 1).length
+}
+
+async function prepareMediaForUpload(item) {
+  if (isRemoteUri(item.uri)) {
+    return {
+      ...item,
+      mediaFingerprint: buildMediaFingerprints([item])[0] || null,
+    }
+  }
+
+  const response = await fetch(item.uri)
+  const uploadArrayBuffer = await response.arrayBuffer()
+  const contentType = item.mimeType || item.type || ''
+
+  return {
+    ...item,
+    uploadArrayBuffer,
+    mediaFingerprint: buildMediaContentFingerprint(uploadArrayBuffer, contentType),
+  }
+}
+
 export default function CreatePostScreen({ navigation, route }) {
   const { theme } = useAppSettings()
   const [title, setTitle] = useState('')
@@ -640,6 +730,10 @@ export default function CreatePostScreen({ navigation, route }) {
         type: asset.type === 'video' ? 'video' : 'image',
         mimeType: asset.mimeType,
         fileName: asset.fileName,
+        fileSize: asset.fileSize,
+        assetId: asset.assetId,
+        width: asset.width,
+        height: asset.height,
       }))
 
       setMedia((currentMedia) => {
@@ -666,6 +760,29 @@ export default function CreatePostScreen({ navigation, route }) {
       })
 
       return nextMedia
+    })
+  }
+
+  function confirmSafetyWarnings(warnings) {
+    if (!warnings.length) return Promise.resolve(true)
+
+    return new Promise((resolve) => {
+      Alert.alert(
+        'Safety check',
+        `${warnings.slice(0, 3).join('\n\n')}\n\n${PAYMENT_SAFETY_WARNING}`,
+        [
+          {
+            text: 'Review',
+            style: 'cancel',
+            onPress: () => resolve(false),
+          },
+          {
+            text: 'Post anyway',
+            onPress: () => resolve(true),
+          },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      )
     })
   }
 
@@ -696,16 +813,64 @@ export default function CreatePostScreen({ navigation, route }) {
       // Posting can still continue if profile sync is temporarily unavailable.
     }
 
+    let preparedMedia = []
+
+    try {
+      preparedMedia = await Promise.all(media.map(prepareMediaForUpload))
+    } catch (error) {
+      setLoading(false)
+      Alert.alert('Media check failed', error?.message || 'Could not read the selected media.')
+      return
+    }
+
+    const currentMediaFingerprints = preparedMedia
+      .map((item) => item.mediaFingerprint)
+      .filter(Boolean)
+    const mediaFingerprints = [
+      ...new Set([
+        ...currentMediaFingerprints,
+        ...buildMediaFingerprints(media),
+        ...(isEditing && media.some((item) => item.existing)
+          ? editingPost?.media_fingerprints || []
+          : []),
+      ]),
+    ]
+    const repeatedMediaCount = countRepeatedFingerprints(currentMediaFingerprints)
+    const priceWarnings = getSuspiciousPriceWarnings({ price, sizeSqft })
+    let existingDuplicateMatchCount = 0
+
+    try {
+      existingDuplicateMatchCount = await fetchDuplicateMediaMatchCount({
+        fingerprints: mediaFingerprints,
+        excludePropertyId: editingPost?.id,
+      })
+    } catch (_error) {
+      // If the scam-protection SQL is not installed yet, keep posting available and warn through local checks.
+    }
+
+    const safetyWarnings = buildSafetyWarningsForPost({
+      priceWarnings,
+      duplicateMatchCount: existingDuplicateMatchCount,
+      repeatedMediaCount,
+    })
+    const shouldContinue = await confirmSafetyWarnings(safetyWarnings)
+
+    if (!shouldContinue) {
+      setLoading(false)
+      return
+    }
+
     let uploadedMedia = []
 
     try {
       uploadedMedia = await Promise.all(
-        media.map(async (item) => {
+        preparedMedia.map(async (item) => {
           if (isRemoteUri(item.uri)) {
             return {
               uri: item.uri,
               type: item.type,
               mimeType: item.mimeType || null,
+              mediaFingerprint: item.mediaFingerprint || null,
             }
           }
 
@@ -715,12 +880,15 @@ export default function CreatePostScreen({ navigation, route }) {
             mimeType: item.mimeType,
             userId: user.id,
             bucket: PROPERTY_MEDIA_BUCKET,
+            arrayBuffer: item.uploadArrayBuffer,
+            mediaFingerprint: item.mediaFingerprint,
           })
 
           return {
             uri: uploadResult.mediaUrl,
             type: item.type,
             mimeType: uploadResult.mediaMimeType,
+            mediaFingerprint: uploadResult.mediaFingerprint,
           }
         })
       )
@@ -772,6 +940,16 @@ export default function CreatePostScreen({ navigation, route }) {
       owner_name: ownerNameToSave,
       image_url: uploadedMedia[0]?.uri || null,
       media: uploadedMedia,
+      media_fingerprints: mediaFingerprints,
+      suspicious_price_warning: priceWarnings.length > 0,
+      duplicate_photo_warning: existingDuplicateMatchCount > 0 || repeatedMediaCount > 0,
+      duplicate_media_match_count: existingDuplicateMatchCount + repeatedMediaCount,
+      safety_flags: buildSafetyFlagsForPost({
+        priceWarnings,
+        duplicateMatchCount: existingDuplicateMatchCount,
+        repeatedMediaCount,
+      }),
+      safety_updated_at: new Date().toISOString(),
     }
 
     const canAdminEdit = adminEditMode && isPrimaryAdmin(user)
@@ -786,7 +964,10 @@ export default function CreatePostScreen({ navigation, route }) {
     setLoading(false)
 
     if (error) {
-      Alert.alert('Error', error.message)
+      const setupMessage = /media_fingerprints|safety_flags|suspicious_price_warning|duplicate_photo_warning|duplicate_media_match_count|safety_updated_at/i.test(error.message || '')
+        ? 'Run supabase-scam-protection-features.sql in Supabase, then try again.'
+        : error.message
+      Alert.alert('Error', setupMessage)
       return
     }
 
@@ -824,6 +1005,16 @@ export default function CreatePostScreen({ navigation, route }) {
   }
 
   const previewItem = media[previewIndex] || null
+  const localSafetyWarnings = useMemo(() => {
+    const priceWarnings = getSuspiciousPriceWarnings({ price, sizeSqft })
+    const repeatedMediaCount = countRepeatedMediaFingerprints(media)
+
+    return buildSafetyWarningsForPost({
+      priceWarnings,
+      repeatedMediaCount,
+      duplicateMatchCount: 0,
+    })
+  }, [media, price, sizeSqft])
   const composerName = useMemo(
     () =>
       composerProfile?.display_name ||
@@ -920,6 +1111,8 @@ export default function CreatePostScreen({ navigation, route }) {
             onChangeText={setPrice}
             keyboardType="numeric"
           />
+
+          <SafetyNotice warnings={localSafetyWarnings} theme={theme} />
 
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
             <View style={{ flex: 1 }}>

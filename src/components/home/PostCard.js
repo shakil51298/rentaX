@@ -8,6 +8,7 @@ import { getProfileName } from '../../lib/userDisplay'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../../lib/verification'
 import { isUrgentProperty } from '../../lib/propertyLifecycle'
 import { useAppSettings } from '../../lib/appSettings'
+import { getListingSafetySummary } from '../../lib/scamProtection'
 
 function getStatusMeta(status) {
   if (status === 'rented') {
@@ -117,6 +118,7 @@ export default function PostCard({
   const isAdminBanned = Boolean(item.admin_is_banned)
   const metaChips = getPropertyMetaChips(item)
   const isUrgent = isUrgentProperty(item)
+  const safetySummary = getListingSafetySummary(item, ownerProfile)
   const contentText = useMemo(
     () =>
       `${item.title || ''}\n${item.description || 'No description added'}`,
@@ -219,6 +221,32 @@ export default function PostCard({
                   />
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#ea580c' }}>
                     Urgent
+                  </Text>
+                </View>
+              ) : null}
+
+              {safetySummary.shouldShowCompactWarning ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: safetySummary.levelMeta.background,
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                    borderWidth: 1,
+                    borderColor: safetySummary.levelMeta.border,
+                  }}
+                >
+                  <Ionicons
+                    name={safetySummary.levelMeta.icon}
+                    size={11}
+                    color={safetySummary.levelMeta.tint}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: safetySummary.levelMeta.tint }}>
+                    Risk {safetySummary.score}
                   </Text>
                 </View>
               ) : null}

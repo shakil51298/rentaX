@@ -96,24 +96,48 @@ function fallbackMimeType(type, extension) {
   return 'image/jpeg'
 }
 
+function hashArrayBuffer(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer)
+  let hash = 2166136261
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    hash ^= bytes[index]
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(36)
+}
+
+export function buildMediaContentFingerprint(arrayBuffer, contentType = '') {
+  if (!arrayBuffer?.byteLength) return null
+
+  return `content:${arrayBuffer.byteLength}:${String(contentType || '').toLowerCase()}:${hashArrayBuffer(arrayBuffer)}`
+}
+
 export async function uploadMediaAsset({
   uri,
   type,
   mimeType,
   userId,
   bucket,
+  arrayBuffer,
+  mediaFingerprint,
 }) {
   const extension = getFileExtension(uri, mimeType, type)
   const contentType = mimeType || fallbackMimeType(type, extension)
   const safeName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
   const path = `${userId}/${safeName}`
-  const response = await fetch(uri)
-  const arrayBuffer = await response.arrayBuffer()
+  let uploadBuffer = arrayBuffer
+
+  if (!uploadBuffer) {
+    const response = await fetch(uri)
+    uploadBuffer = await response.arrayBuffer()
+  }
 
   let targetBucket = bucket
   let { data, error } = await supabase.storage
     .from(targetBucket)
-    .upload(path, arrayBuffer, {
+    .upload(path, uploadBuffer, {
       contentType,
       upsert: false,
     })
@@ -124,7 +148,7 @@ export async function uploadMediaAsset({
     targetBucket = fallbackBucket
     ;({ data, error } = await supabase.storage
       .from(targetBucket)
-      .upload(path, arrayBuffer, {
+      .upload(path, uploadBuffer, {
         contentType,
         upsert: false,
       }))
@@ -137,6 +161,7 @@ export async function uploadMediaAsset({
   return {
     mediaUrl: publicUrlData.publicUrl,
     mediaMimeType: contentType,
+    mediaFingerprint: mediaFingerprint || buildMediaContentFingerprint(uploadBuffer, contentType),
   }
 }
 
