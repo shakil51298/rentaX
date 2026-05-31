@@ -19,6 +19,131 @@ import { fetchPropertiesWithProfiles } from '../lib/properties'
 import { isUrgentProperty } from '../lib/propertyLifecycle'
 import { getPropertyVerificationStatus } from '../lib/verification'
 import { useAppSettings } from '../lib/appSettings'
+import { buildLeadTotals, fetchOwnerLeadDashboard } from '../lib/ownerLeadDashboard'
+
+function LeadMetric({ icon, label, value, theme, tint }) {
+  const metricTint = tint || theme.accent
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: '30%',
+        borderRadius: 13,
+        borderWidth: 1,
+        borderColor: theme.border,
+        backgroundColor: theme.surfaceMuted,
+        paddingHorizontal: 9,
+        paddingVertical: 9,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Ionicons name={icon} size={14} color={metricTint} />
+        <Text
+          numberOfLines={1}
+          style={{ color: theme.mutedText, fontSize: 10, fontWeight: '900', marginLeft: 5, flexShrink: 1 }}
+        >
+          {label}
+        </Text>
+      </View>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={{ color: theme.text, fontSize: 16, fontWeight: '900', marginTop: 5 }}
+      >
+        {value}
+      </Text>
+    </View>
+  )
+}
+
+function OwnerLeadSummary({ totals, theme }) {
+  return (
+    <View
+      style={{
+        borderRadius: 15,
+        borderWidth: 1,
+        borderColor: theme.border,
+        backgroundColor: theme.surfaceMuted,
+        padding: 12,
+        marginBottom: 14,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
+            Owner lead dashboard
+          </Text>
+          <Text style={{ color: theme.mutedText, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+            Total renter activity across your live and managed ads.
+          </Text>
+        </View>
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="analytics-outline" size={18} color={theme.accent} />
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <LeadMetric icon="eye-outline" label="Views" value={totals.views || 0} theme={theme} />
+        <LeadMetric icon="heart-outline" label="Saves" value={totals.saves || 0} theme={theme} tint="#dc2626" />
+        <LeadMetric icon="chatbubble-ellipses-outline" label="Chats" value={totals.chats || 0} theme={theme} />
+        <LeadMetric icon="calendar-outline" label="Visits" value={totals.visitRequests || 0} theme={theme} tint="#059669" />
+        <LeadMetric icon="document-text-outline" label="Applications" value={totals.applications || 0} theme={theme} tint="#7c3aed" />
+        <LeadMetric icon="speedometer-outline" label="Response" value={totals.responseRateLabel || 'New'} theme={theme} tint="#ea580c" />
+      </View>
+    </View>
+  )
+}
+
+function ListingLeadDashboard({ metrics, theme }) {
+  const data = metrics || {}
+
+  return (
+    <View
+      style={{
+        backgroundColor: theme.surface,
+        borderWidth: 1,
+        borderColor: theme.border,
+        borderRadius: 16,
+        padding: 11,
+        marginBottom: 8,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Ionicons name="bar-chart-outline" size={16} color={theme.accent} />
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900', marginLeft: 6 }}>
+            Leads
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', maxWidth: 190, flexShrink: 1 }}
+        >
+          {data.usuallyRepliesLabel || 'No reply history yet'}
+        </Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
+        <LeadMetric icon="eye-outline" label="Views" value={data.views || 0} theme={theme} />
+        <LeadMetric icon="heart-outline" label="Saves" value={data.saves || 0} theme={theme} tint="#dc2626" />
+        <LeadMetric icon="chatbubble-ellipses-outline" label="Chats" value={data.chats || 0} theme={theme} />
+        <LeadMetric icon="calendar-outline" label="Visits" value={data.visitRequests || 0} theme={theme} tint="#059669" />
+        <LeadMetric icon="document-text-outline" label="Applications" value={data.applications || 0} theme={theme} tint="#7c3aed" />
+        <LeadMetric icon="speedometer-outline" label="Response" value={data.responseRateLabel || 'New'} theme={theme} tint="#ea580c" />
+      </View>
+    </View>
+  )
+}
 
 export default function AdsManagementScreen({ navigation }) {
   const { theme } = useAppSettings()
@@ -27,6 +152,10 @@ export default function AdsManagementScreen({ navigation }) {
   const [loading, setLoading] = useState(true)
   const [posts, setPosts] = useState([])
   const [pendingVisitCount, setPendingVisitCount] = useState(0)
+  const [leadDashboard, setLeadDashboard] = useState({
+    byPropertyId: {},
+    totals: buildLeadTotals({}),
+  })
   const [mediaViewer, setMediaViewer] = useState({
     visible: false,
     media: [],
@@ -46,6 +175,8 @@ export default function AdsManagementScreen({ navigation }) {
     if (!user?.id) {
       setUserType('renter')
       setPosts([])
+      setPendingVisitCount(0)
+      setLeadDashboard({ byPropertyId: {}, totals: buildLeadTotals({}) })
       setLoading(false)
       return
     }
@@ -65,6 +196,7 @@ export default function AdsManagementScreen({ navigation }) {
     if (resolvedUserType !== 'property_owner') {
       setPosts([])
       setPendingVisitCount(0)
+      setLeadDashboard({ byPropertyId: {}, totals: buildLeadTotals({}) })
       setLoading(false)
       return
     }
@@ -78,8 +210,35 @@ export default function AdsManagementScreen({ navigation }) {
           .eq('status', 'pending'),
         fetchPropertiesWithProfiles({ ownerId: user.id, includeBanned: true, includePaused: true }),
       ])
+      const nextLeadDashboard = await fetchOwnerLeadDashboard({
+        ownerId: user.id,
+        properties: ownerPosts,
+      }).catch(() => {
+        const byPropertyId = ownerPosts.reduce((itemsByPropertyId, post) => ({
+          ...itemsByPropertyId,
+          [String(post.id)]: {
+            views: Number(post.view_count || 0),
+            saves: post.property_favorites?.length || 0,
+            chats: 0,
+            visitRequests: 0,
+            pendingVisitRequests: 0,
+            applications: 0,
+            pendingApplications: 0,
+            responseRate: null,
+            responseRateLabel: 'New',
+            averageReplyLabel: 'No replies yet',
+            usuallyRepliesLabel: 'No reply history yet',
+          },
+        }), {})
 
-      setPendingVisitCount(count || 0)
+        return {
+          byPropertyId,
+          totals: buildLeadTotals(byPropertyId),
+        }
+      })
+
+      setPendingVisitCount(nextLeadDashboard.totals?.pendingVisitRequests || count || 0)
+      setLeadDashboard(nextLeadDashboard)
       setPosts(ownerPosts)
     } catch (error) {
       Alert.alert('Error', error.message)
@@ -603,6 +762,10 @@ export default function AdsManagementScreen({ navigation }) {
             </View>
           ) : null}
 
+          {userType === 'property_owner' && posts.length > 0 ? (
+            <OwnerLeadSummary totals={leadDashboard.totals} theme={theme} />
+          ) : null}
+
           {userType === 'property_owner' ? (
             <TouchableOpacity
               onPress={() => navigation.navigate('VisitRequests')}
@@ -701,19 +864,24 @@ export default function AdsManagementScreen({ navigation }) {
         </View>
 
         {posts.map((item) => (
-          <PostCard
-            key={item.id}
-            item={item}
-            currentUser={currentUser}
-            onToggleLike={toggleLike}
-            onOpenComments={openComments}
-            onToggleFavorite={toggleFavorite}
-            onShare={sharePost}
-            onOpenMedia={openMedia}
-            onOpenOwnerProfile={() => {}}
-            onPressMore={openPostActions}
-            onOpenPost={(post) => navigation.navigate('Property', { property: post })}
-          />
+          <View key={item.id}>
+            <ListingLeadDashboard
+              metrics={leadDashboard.byPropertyId[String(item.id)]}
+              theme={theme}
+            />
+            <PostCard
+              item={item}
+              currentUser={currentUser}
+              onToggleLike={toggleLike}
+              onOpenComments={openComments}
+              onToggleFavorite={toggleFavorite}
+              onShare={sharePost}
+              onOpenMedia={openMedia}
+              onOpenOwnerProfile={() => {}}
+              onPressMore={openPostActions}
+              onOpenPost={(post) => navigation.navigate('Property', { property: post })}
+            />
+          </View>
         ))}
       </ScrollView>
 
