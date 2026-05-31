@@ -123,10 +123,6 @@ as $$
       and (
         conversations.group_created_by = inviter_id
         or private.is_chat_group_admin(target_conversation_id, inviter_id)
-        or (
-          conversations.group_invite_policy = 'members'
-          and private.is_chat_group_member(target_conversation_id, inviter_id)
-        )
       )
   );
 $$;
@@ -134,6 +130,54 @@ $$;
 grant execute on function private.is_chat_group_member(uuid, uuid) to authenticated;
 grant execute on function private.is_chat_group_admin(uuid, uuid) to authenticated;
 grant execute on function private.can_invite_chat_group_member(uuid, uuid) to authenticated;
+
+create or replace function private.enforce_chat_group_member_admin_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare
+  owner_id uuid;
+begin
+  select coalesce(conversations.group_created_by, conversations.created_by)
+    into owner_id
+  from public.chat_conversations conversations
+  where conversations.id = new.conversation_id
+    and conversations.conversation_type = 'group';
+
+  if owner_id is null then
+    return new;
+  end if;
+
+  if old.user_id = owner_id and (new.role <> 'admin' or new.status <> 'active') then
+    raise exception 'Group owner cannot be demoted or removed';
+  end if;
+
+  if old.role = 'admin'
+    and old.user_id is distinct from auth.uid()
+    and new.status is distinct from old.status
+    and new.status <> 'active'
+    and auth.uid() is distinct from owner_id then
+    raise exception 'Only group owner can remove admins';
+  end if;
+
+  if new.role is distinct from old.role and auth.uid() is distinct from owner_id then
+    raise exception 'Only group owner can change admin roles';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists chat_group_members_admin_role_guard
+  on public.chat_group_members;
+
+create trigger chat_group_members_admin_role_guard
+  before update of role, status
+  on public.chat_group_members
+  for each row
+  execute function private.enforce_chat_group_member_admin_changes();
 
 alter table public.chat_group_members enable row level security;
 

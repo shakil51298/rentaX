@@ -378,7 +378,6 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const currentGroupMember = groupMembers.find((member) => member.user_id === currentUserId)
   const canInviteGroupMembers =
     !isGroup ||
-    conversation?.group_invite_policy !== 'admins' ||
     currentGroupMember?.role === 'admin'
 
   return (

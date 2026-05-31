@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
   ScrollView,
   Switch,
   Text,
@@ -127,6 +129,50 @@ function SwitchRow({ icon, label, value, onValueChange, disabled }) {
   )
 }
 
+function MemberActionRow({ icon, label, danger = false, disabled = false, onPress }) {
+  const { theme } = useAppSettings()
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.84}
+      style={{
+        minHeight: 48,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 12,
+          backgroundColor: danger ? '#fee2e2' : theme.accentSoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 10,
+        }}
+      >
+        <Ionicons name={icon} size={18} color={danger ? '#dc2626' : theme.accent} />
+      </View>
+      <Text
+        style={{
+          flex: 1,
+          color: danger ? '#dc2626' : theme.text,
+          fontSize: 14,
+          fontWeight: '900',
+        }}
+      >
+        {label}
+      </Text>
+      <Ionicons name="chevron-forward" size={17} color={theme.mutedText} />
+    </TouchableOpacity>
+  )
+}
+
 export default function GroupSettingsScreen({ route, navigation }) {
   const conversationId = route?.params?.conversationId
   const initialConversation = route?.params?.conversation || null
@@ -137,9 +183,15 @@ export default function GroupSettingsScreen({ route, navigation }) {
   const [title, setTitle] = useState(initialConversation?.group_title || '')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [selectedMember, setSelectedMember] = useState(null)
+  const [memberActionMode, setMemberActionMode] = useState('actions')
+  const [nicknameDraft, setNicknameDraft] = useState('')
+  const [memberActionSaving, setMemberActionSaving] = useState(false)
 
   const currentMember = members.find((member) => member.user_id === currentUserId)
   const canEdit = currentMember?.role === 'admin'
+  const groupOwnerId = conversation?.group_created_by || conversation?.created_by || null
+  const isGroupOwner = Boolean(groupOwnerId && groupOwnerId === currentUserId)
   const privacy = conversation?.group_privacy || 'private'
   const invitePolicy = conversation?.group_invite_policy || 'members'
   const messagePolicy = conversation?.group_message_policy || 'members'
@@ -239,6 +291,143 @@ export default function GroupSettingsScreen({ route, navigation }) {
         },
       },
     ])
+  }
+
+  function openMemberActions(member) {
+    setSelectedMember(member)
+    setNicknameDraft(member?.nickname || '')
+    setMemberActionMode('actions')
+  }
+
+  function closeMemberActions(force = false) {
+    if (memberActionSaving && !force) return
+
+    setSelectedMember(null)
+    setMemberActionMode('actions')
+    setNicknameDraft('')
+  }
+
+  async function updateSelectedMember(updates, successMessage) {
+    if (!selectedMember?.user_id || !conversationId || memberActionSaving) return
+
+    try {
+      setMemberActionSaving(true)
+
+      const { data, error } = await supabase
+        .from('chat_group_members')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', selectedMember.user_id)
+        .select('id, conversation_id, user_id, role, status, joined_at, nickname, last_read_at, cleared_at')
+        .single()
+
+      if (error) throw error
+
+      if (data?.status === 'active') {
+        setMembers((current) =>
+          current.map((member) =>
+            member.user_id === selectedMember.user_id
+              ? { ...member, ...data, profile: member.profile }
+              : member
+          )
+        )
+      } else {
+        setMembers((current) => current.filter((member) => member.user_id !== selectedMember.user_id))
+      }
+
+      Alert.alert('Updated', successMessage)
+      closeMemberActions(true)
+    } catch (error) {
+      Alert.alert('Update failed', error?.message || 'Could not update this member.')
+    } finally {
+      setMemberActionSaving(false)
+    }
+  }
+
+  function removeSelectedMember() {
+    const selectedIsOwner = selectedMember?.user_id && selectedMember.user_id === groupOwnerId
+    const selectedIsAdmin = selectedMember?.role === 'admin'
+
+    if (
+      !selectedMember ||
+      selectedMember.user_id === currentUserId ||
+      selectedIsOwner ||
+      !canEdit ||
+      (selectedIsAdmin && !isGroupOwner)
+    ) return
+
+    Alert.alert('Remove member?', 'This member will no longer see new group messages.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () =>
+          updateSelectedMember(
+            {
+              status: 'removed',
+              left_at: new Date().toISOString(),
+            },
+            'Member removed from this group.'
+          ),
+      },
+    ])
+  }
+
+  async function saveSelectedNickname() {
+    const nextNickname = nicknameDraft.trim()
+
+    await updateSelectedMember(
+      {
+        nickname: nextNickname || null,
+      },
+      nextNickname ? 'Nickname saved.' : 'Nickname removed.'
+    )
+  }
+
+  function toggleSelectedMemberAdmin() {
+    const selectedIsOwner = selectedMember?.user_id && selectedMember.user_id === groupOwnerId
+
+    if (!selectedMember || selectedMember.user_id === currentUserId || selectedIsOwner || !isGroupOwner) return
+
+    const nextRole = selectedMember.role === 'admin' ? 'member' : 'admin'
+
+    updateSelectedMember(
+      { role: nextRole },
+      nextRole === 'admin'
+        ? 'Member is now an admin.'
+        : 'Member admin access was removed.'
+    )
+  }
+
+  function sendMessageToSelectedMember() {
+    if (!selectedMember?.user_id || selectedMember.user_id === currentUserId) return
+
+    const profile = selectedMember.profile || {}
+
+    closeMemberActions()
+    navigation.navigate('MainTabs', {
+      screen: 'Chat',
+      params: {
+        participant: {
+          id: selectedMember.user_id,
+          user_id: selectedMember.user_id,
+          ...profile,
+        },
+      },
+    })
+  }
+
+  function openAddMembers() {
+    if (!canEdit) return
+
+    navigation.navigate('CreateGroupChat', {
+      conversationId,
+      conversation,
+      isAddingToGroup: true,
+    })
   }
 
   if (loading) {
@@ -347,12 +536,50 @@ export default function GroupSettingsScreen({ route, navigation }) {
         </Section>
 
         <Section title={`Members ${members.length}`}>
+          {canEdit ? (
+            <TouchableOpacity
+              onPress={openAddMembers}
+              activeOpacity={0.84}
+              style={{
+                minHeight: 50,
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 14,
+                borderTopWidth: 1,
+                borderTopColor: theme.border,
+                backgroundColor: theme.surface,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 13,
+                  backgroundColor: theme.accentSoft,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons name="person-add-outline" size={18} color={theme.accent} />
+              </View>
+              <Text style={{ flex: 1, color: theme.text, fontWeight: '900' }}>
+                Add new member
+              </Text>
+              <Ionicons name="chevron-forward" size={17} color={theme.mutedText} />
+            </TouchableOpacity>
+          ) : null}
+
           {members.map((member) => {
             const name = getProfileName(member.profile, 'Rental X member')
+            const displayName = member.nickname || name
+            const hasNickname = Boolean(member.nickname)
 
             return (
-              <View
+              <TouchableOpacity
                 key={member.user_id}
+                onPress={() => openMemberActions(member)}
+                activeOpacity={0.84}
                 style={{
                   minHeight: 58,
                   flexDirection: 'row',
@@ -362,21 +589,24 @@ export default function GroupSettingsScreen({ route, navigation }) {
                   borderTopColor: theme.border,
                 }}
               >
-                <Avatar profile={member.profile} name={name} size={38} />
+                <Avatar profile={member.profile} name={displayName} size={38} />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={{ color: theme.text, fontWeight: '900' }} numberOfLines={1}>
-                    {name}
+                    {displayName}
                   </Text>
                   <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 2 }}>
                     {member.role === 'admin' ? 'Admin' : 'Member'}
+                    {hasNickname ? ` • ${name}` : ''}
                   </Text>
                 </View>
                 {member.user_id === currentUserId ? (
                   <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '900' }}>
                     You
                   </Text>
-                ) : null}
-              </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={17} color={theme.mutedText} />
+                )}
+              </TouchableOpacity>
             )
           })}
         </Section>
@@ -397,6 +627,186 @@ export default function GroupSettingsScreen({ route, navigation }) {
           <Text style={{ color: '#dc2626', fontWeight: '900' }}>Leave group</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        visible={Boolean(selectedMember)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => closeMemberActions()}
+      >
+        <Pressable
+          onPress={() => closeMemberActions()}
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(15, 23, 42, 0.42)',
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: theme.surface,
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              paddingHorizontal: 14,
+              paddingTop: 12,
+              paddingBottom: 22,
+            }}
+          >
+            {selectedMember ? (
+              <>
+                <View
+                  style={{
+                    width: 44,
+                    height: 4,
+                    borderRadius: 999,
+                    backgroundColor: theme.border,
+                    alignSelf: 'center',
+                    marginBottom: 14,
+                  }}
+                />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <Avatar
+                    profile={selectedMember.profile}
+                    name={selectedMember.nickname || getProfileName(selectedMember.profile, 'Rental X member')}
+                    size={44}
+                  />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }} numberOfLines={1}>
+                      {selectedMember.nickname || getProfileName(selectedMember.profile, 'Rental X member')}
+                    </Text>
+                    <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 2 }}>
+                      {selectedMember.role === 'admin' ? 'Admin' : 'Member'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => closeMemberActions()}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: theme.surfaceMuted,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={19} color={theme.text} />
+                  </TouchableOpacity>
+                </View>
+
+                {memberActionMode === 'nickname' ? (
+                  <View>
+                    <TextInput
+                      value={nicknameDraft}
+                      onChangeText={setNicknameDraft}
+                      placeholder="Set nickname"
+                      placeholderTextColor={theme.mutedText}
+                      autoCapitalize="words"
+                      style={{
+                        minHeight: 46,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        color: theme.text,
+                        paddingHorizontal: 12,
+                        fontWeight: '800',
+                      }}
+                    />
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                      <TouchableOpacity
+                        onPress={() => setMemberActionMode('actions')}
+                        disabled={memberActionSaving}
+                        style={{
+                          flex: 1,
+                          minHeight: 44,
+                          borderRadius: 14,
+                          backgroundColor: theme.surfaceMuted,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: theme.text, fontWeight: '900' }}>Back</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={saveSelectedNickname}
+                        disabled={memberActionSaving}
+                        style={{
+                          flex: 1,
+                          minHeight: 44,
+                          borderRadius: 14,
+                          backgroundColor: theme.accent,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: memberActionSaving ? 0.65 : 1,
+                        }}
+                      >
+                        {memberActionSaving ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={{ color: '#fff', fontWeight: '900' }}>Save</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.surface,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <MemberActionRow
+                      icon="chatbubble-ellipses-outline"
+                      label="Send message"
+                      disabled={selectedMember.user_id === currentUserId}
+                      onPress={sendMessageToSelectedMember}
+                    />
+                    <MemberActionRow
+                      icon="pricetag-outline"
+                      label="Set nickname"
+                      disabled={!(canEdit || selectedMember.user_id === currentUserId)}
+                      onPress={() => setMemberActionMode('nickname')}
+                    />
+                    {(() => {
+                      const selectedIsOwner = selectedMember.user_id === groupOwnerId
+                      const selectedIsCurrent = selectedMember.user_id === currentUserId
+                      const selectedIsAdmin = selectedMember.role === 'admin'
+
+                      return (
+                        <>
+                          <MemberActionRow
+                            icon={selectedIsAdmin ? 'shield-outline' : 'shield-checkmark-outline'}
+                            label={selectedIsAdmin ? 'Remove from admin' : 'Make admin'}
+                            disabled={!isGroupOwner || selectedIsCurrent || selectedIsOwner}
+                            onPress={toggleSelectedMemberAdmin}
+                          />
+                          <MemberActionRow
+                            icon="person-remove-outline"
+                            label="Remove member"
+                            danger
+                            disabled={
+                              !canEdit ||
+                              selectedIsCurrent ||
+                              selectedIsOwner ||
+                              (selectedIsAdmin && !isGroupOwner)
+                            }
+                            onPress={removeSelectedMember}
+                          />
+                        </>
+                      )
+                    })()}
+                  </View>
+                )}
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   )
 }
