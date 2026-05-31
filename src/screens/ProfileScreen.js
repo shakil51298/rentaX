@@ -380,23 +380,25 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     )
   }, [])
 
+  const refreshProfile = useCallback(() => {
+    loadProfile()
+    loadAdminPanelCount()
+  }, [loadAdminPanelCount, loadProfile])
+
   useFocusEffect(
     useCallback(() => {
-      if (embeddedTabShell) {
-        return undefined
-      }
-
-      loadProfile()
-      loadAdminPanelCount()
-    }, [embeddedTabShell, loadAdminPanelCount, loadProfile])
+      refreshProfile()
+      return undefined
+    }, [refreshProfile])
   )
 
   useEffect(() => {
-    if (!embeddedTabShell) return
+    if (!embeddedTabShell) return undefined
 
-    loadProfile()
-    loadAdminPanelCount()
-  }, [embeddedTabShell, loadAdminPanelCount, loadProfile])
+    return navigation.addListener('tabPress', () => {
+      refreshProfile()
+    })
+  }, [embeddedTabShell, navigation, refreshProfile])
 
   const showAdminPanel = isPrimaryAdmin(email)
 

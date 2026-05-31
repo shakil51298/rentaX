@@ -12,12 +12,18 @@ type PushRequest = {
   data?: Record<string, unknown>
 }
 
+const PHONE_DEFAULT_SOUND_ID = 'phone_default'
+const SILENT_SOUND_ID = 'silent'
+const RENTALX_POP_SOUND_ID = 'rentalx_pop'
+const RENTALX_POP_SOUND_FILE = 'notification.mp3'
+
 function getChannelId(type?: string, requestedChannelId?: string) {
   if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
     return requestedChannelId
   }
 
   if (type === 'chat_message') return 'messages'
+  if (type === 'incoming_audio_call' || type === 'incoming_video_call') return 'calls'
 
   if (
     type === 'owner_verification_review_requested'
@@ -40,6 +46,64 @@ function getChannelId(type?: string, requestedChannelId?: string) {
   }
 
   return 'activity'
+}
+
+function getPreferredSoundConfig(type?: string, soundId?: string | null) {
+  const safeSoundId = soundId || PHONE_DEFAULT_SOUND_ID
+
+  if (type === 'incoming_audio_call' || type === 'incoming_video_call') {
+    if (safeSoundId === SILENT_SOUND_ID) {
+      return { channelId: 'calls_silent', sound: null }
+    }
+
+    if (safeSoundId === RENTALX_POP_SOUND_ID) {
+      return { channelId: 'calls_rentalx_pop', sound: RENTALX_POP_SOUND_FILE }
+    }
+
+    return { channelId: 'calls', sound: 'default' }
+  }
+
+  if (type === 'chat_message') {
+    if (safeSoundId === SILENT_SOUND_ID) {
+      return { channelId: 'messages_silent', sound: null }
+    }
+
+    if (safeSoundId === RENTALX_POP_SOUND_ID) {
+      return { channelId: 'messages_rentalx_pop', sound: RENTALX_POP_SOUND_FILE }
+    }
+
+    return { channelId: 'messages', sound: 'default' }
+  }
+
+  return null
+}
+
+async function resolveRecipientSoundConfig(adminClient: any, payload: PushRequest) {
+  const type = typeof payload.data?.type === 'string' ? payload.data.type : undefined
+  const conversationId = typeof payload.data?.conversationId === 'string' ? payload.data.conversationId : null
+
+  if (!payload.recipientId || !conversationId || (type !== 'chat_message' && type !== 'incoming_audio_call' && type !== 'incoming_video_call')) {
+    return null
+  }
+
+  const { data, error } = await adminClient
+    .from('chat_sound_preferences')
+    .select('notification_sound_id, ringtone_sound_id')
+    .eq('user_id', payload.recipientId)
+    .eq('conversation_id', conversationId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('Chat sound preference lookup failed:', error.message)
+    return null
+  }
+
+  const soundId =
+    type === 'incoming_audio_call' || type === 'incoming_video_call'
+      ? data?.ringtone_sound_id
+      : data?.notification_sound_id
+
+  return getPreferredSoundConfig(type, soundId)
 }
 
 Deno.serve(async (request) => {
@@ -135,20 +199,32 @@ Deno.serve(async (request) => {
     })
   }
 
-  const channelId = getChannelId(
-    typeof payload.data?.type === 'string' ? payload.data.type : undefined,
-    typeof payload.data?.channelId === 'string' ? payload.data.channelId : undefined
-  )
+  const soundConfig = await resolveRecipientSoundConfig(adminClient, payload)
+  const channelId =
+    soundConfig?.channelId ||
+    getChannelId(
+      typeof payload.data?.type === 'string' ? payload.data.type : undefined,
+      typeof payload.data?.channelId === 'string' ? payload.data.channelId : undefined
+    )
 
-  const messages = pushTokens.map((item) => ({
-    to: item.expo_push_token,
-    sound: 'default',
-    title: payload.title,
-    body: payload.body,
-    data: payload.data || {},
-    channelId,
-    priority: 'high',
-  }))
+  const messages = pushTokens.map((item) => {
+    const message: Record<string, unknown> = {
+      to: item.expo_push_token,
+      title: payload.title,
+      body: payload.body,
+      data: payload.data || {},
+      channelId,
+      priority: 'high',
+    }
+
+    const sound = soundConfig ? soundConfig.sound : 'default'
+
+    if (sound) {
+      message.sound = sound
+    }
+
+    return message
+  })
 
   const expoResponse = await fetch('https://exp.host/--/api/v2/push/send', {
     method: 'POST',

@@ -58,6 +58,196 @@ function timeAgo(date) {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
+const VISIT_CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const VISIT_CALENDAR_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+function formatDateValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function parseDateValue(value) {
+  if (!value) return null
+
+  const parts = String(value).split('-').map((part) => Number(part))
+
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null
+
+  const [year, month, day] = parts
+  const date = new Date(year, month - 1, day)
+
+  if (
+    date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) {
+    return null
+  }
+
+  return date
+}
+
+function buildCalendarDays(monthDate) {
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+  const firstWeekday = firstDay.getDay()
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate()
+  const cells = []
+
+  for (let index = 0; index < firstWeekday; index += 1) {
+    cells.push(null)
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day))
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null)
+  }
+
+  return cells
+}
+
+function VisitCalendarPicker({ value, onSelect, theme }) {
+  const initialDate = parseDateValue(value) || new Date()
+  const [visibleMonth, setVisibleMonth] = useState(
+    new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
+  )
+  const selectedDate = parseDateValue(value)
+  const calendarDays = buildCalendarDays(visibleMonth)
+  const todayKey = formatDateValue(new Date())
+
+  useEffect(() => {
+    const nextDate = parseDateValue(value) || new Date()
+    setVisibleMonth(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1))
+  }, [value])
+
+  function moveMonth(offset) {
+    setVisibleMonth((currentMonth) => (
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1)
+    ))
+  }
+
+  return (
+    <View
+      style={{
+        backgroundColor: theme.surfaceMuted,
+        borderWidth: 1,
+        borderColor: theme.border,
+        borderRadius: 16,
+        padding: 12,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <TouchableOpacity
+          onPress={() => moveMonth(-1)}
+          activeOpacity={0.86}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="chevron-back" size={18} color={theme.accent} />
+        </TouchableOpacity>
+
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
+          {VISIT_CALENDAR_MONTHS[visibleMonth.getMonth()]} {visibleMonth.getFullYear()}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => moveMonth(1)}
+          activeOpacity={0.86}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="chevron-forward" size={18} color={theme.accent} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ flexDirection: 'row', marginTop: 14 }}>
+        {VISIT_CALENDAR_WEEKDAYS.map((day) => (
+          <View key={day} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '900' }}>
+              {day}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={{ marginTop: 9, gap: 7 }}>
+        {Array.from({ length: calendarDays.length / 7 }).map((_, rowIndex) => (
+          <View key={`visit-calendar-row-${rowIndex}`} style={{ flexDirection: 'row' }}>
+            {calendarDays.slice(rowIndex * 7, rowIndex * 7 + 7).map((date, columnIndex) => {
+              const dateKey = date ? formatDateValue(date) : `blank-${rowIndex}-${columnIndex}`
+              const isSelected = date && selectedDate && dateKey === formatDateValue(selectedDate)
+              const isToday = dateKey === todayKey
+
+              return (
+                <View key={dateKey} style={{ flex: 1, alignItems: 'center' }}>
+                  {date ? (
+                    <TouchableOpacity
+                      onPress={() => onSelect(dateKey)}
+                      activeOpacity={0.88}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: isSelected ? theme.accent : isToday ? theme.accentSoft : 'transparent',
+                        borderWidth: isToday && !isSelected ? 1 : 0,
+                        borderColor: isToday ? theme.accent : 'transparent',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: isSelected ? '#fff' : theme.text,
+                          fontSize: 12,
+                          fontWeight: isSelected ? '900' : '700',
+                        }}
+                      >
+                        {date.getDate()}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={{ width: 34, height: 34 }} />
+                  )}
+                </View>
+              )
+            })}
+          </View>
+        ))}
+      </View>
+    </View>
+  )
+}
+
 function isVideoUri(uri) {
   return /\.(mp4|mov|m4v|webm)$/i.test(uri || '')
 }
@@ -1826,116 +2016,117 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
               padding: 18,
               borderWidth: 1,
               borderColor: theme.border,
+              maxHeight: '88%',
             }}
           >
-            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18 }}>
-              Schedule a visit
-            </Text>
-            <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>
-              Ask the owner for a visit time. They can accept it, reject it, or propose a better time.
-            </Text>
-
-            <View style={{ marginTop: 14 }}>
-              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
-                Preferred date
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18 }}>
+                Schedule a visit
               </Text>
-              <TextInput
-                value={visitDate}
-                onChangeText={setVisitDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#94a3b8"
-                style={{
-                  backgroundColor: theme.surfaceMuted,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 13,
-                  paddingVertical: 12,
-                  color: theme.text,
-                }}
-              />
-            </View>
-
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
-                Preferred time
+              <Text style={{ color: theme.mutedText, marginTop: 4, lineHeight: 19 }}>
+                Ask the owner for a visit time. They can accept it, reject it, or propose a better time.
               </Text>
-              <TextInput
-                value={visitTime}
-                onChangeText={setVisitTime}
-                placeholder="HH:MM"
-                placeholderTextColor="#94a3b8"
-                style={{
-                  backgroundColor: theme.surfaceMuted,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 13,
-                  paddingVertical: 12,
-                  color: theme.text,
-                }}
-              />
-            </View>
 
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
-                Note for the owner
-              </Text>
-              <TextInput
-                value={visitNote}
-                onChangeText={setVisitNote}
-                placeholder="Anything the owner should know before the visit?"
-                placeholderTextColor="#94a3b8"
-                multiline
-                style={{
-                  minHeight: 90,
-                  backgroundColor: theme.surfaceMuted,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 14,
-                  paddingHorizontal: 13,
-                  paddingVertical: 12,
-                  color: theme.text,
-                  textAlignVertical: 'top',
-                }}
-              />
-            </View>
+              <View style={{ marginTop: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+                  <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12 }}>
+                    Preferred date
+                  </Text>
+                  <Text style={{ color: visitDate ? theme.accent : theme.mutedText, fontWeight: '900', fontSize: 11 }}>
+                    {visitDate || 'Pick a date'}
+                  </Text>
+                </View>
+                <VisitCalendarPicker
+                  value={visitDate}
+                  onSelect={setVisitDate}
+                  theme={theme}
+                />
+              </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
-                onPress={closeVisitModal}
-                style={{
-                  flex: 1,
-                  minHeight: 44,
-                  borderRadius: 14,
-                  backgroundColor: theme.surfaceMuted,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: theme.text, fontWeight: '900' }}>Cancel</Text>
-              </TouchableOpacity>
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+                  Preferred time
+                </Text>
+                <TextInput
+                  value={visitTime}
+                  onChangeText={setVisitTime}
+                  placeholder="HH:MM"
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    backgroundColor: theme.surfaceMuted,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    borderRadius: 14,
+                    paddingHorizontal: 13,
+                    paddingVertical: 12,
+                    color: theme.text,
+                  }}
+                />
+              </View>
 
-              <TouchableOpacity
-                onPress={submitVisitRequest}
-                disabled={visitSaving}
-                style={{
-                  flex: 1,
-                  minHeight: 44,
-                  borderRadius: 14,
-                  backgroundColor: '#1877F2',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: visitSaving ? 0.6 : 1,
-                }}
-              >
-                {visitSaving ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={{ color: '#fff', fontWeight: '900' }}>Send Request</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ color: theme.mutedText, fontWeight: '800', fontSize: 12, marginBottom: 6 }}>
+                  Note for the owner
+                </Text>
+                <TextInput
+                  value={visitNote}
+                  onChangeText={setVisitNote}
+                  placeholder="Anything the owner should know before the visit?"
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  style={{
+                    minHeight: 90,
+                    backgroundColor: theme.surfaceMuted,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    borderRadius: 14,
+                    paddingHorizontal: 13,
+                    paddingVertical: 12,
+                    color: theme.text,
+                    textAlignVertical: 'top',
+                  }}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  onPress={closeVisitModal}
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    borderRadius: 14,
+                    backgroundColor: theme.surfaceMuted,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '900' }}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={submitVisitRequest}
+                  disabled={visitSaving}
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    borderRadius: 14,
+                    backgroundColor: '#1877F2',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: visitSaving ? 0.6 : 1,
+                  }}
+                >
+                  {visitSaving ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '900' }}>Send Request</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>

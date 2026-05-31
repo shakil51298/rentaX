@@ -2,7 +2,7 @@ import React from 'react'
 import AppNavigator from './src/navigation/AppNavigator'
 
 import { useFonts } from 'expo-font'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { Text, View } from 'react-native'
 
 import Ionicons from '@expo/vector-icons/Ionicons'
@@ -95,8 +95,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AppSettingsProvider>
-      <AppContent />
-    </AppSettingsProvider>
+    <SafeAreaProvider>
+      <AppSettingsProvider>
+        <AppContent />
+      </AppSettingsProvider>
+    </SafeAreaProvider>
   )
 }

@@ -32,6 +32,7 @@ import {
 } from '../lib/callSignaling'
 import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
+import { createRingtoneSound } from '../lib/sounds'
 
 function formatCallDuration(totalSeconds) {
   const safeSeconds = Math.max(0, totalSeconds || 0)
@@ -496,14 +497,14 @@ export default function VideoCallScreen({ navigation, route }) {
           playThroughEarpieceAndroid: false,
         })
 
-        const { sound } = await Audio.Sound.createAsync(
-          require('../../assets/sounds/notification.mp3'),
-          {
-            shouldPlay: true,
-            isLooping: true,
-            volume: 0.65,
-          }
-        )
+        const sound = await createRingtoneSound({
+          conversationId,
+          shouldPlay: true,
+          isLooping: true,
+          volume: 0.65,
+        })
+
+        if (!sound) return
 
         if (cancelled) {
           await sound.unloadAsync()

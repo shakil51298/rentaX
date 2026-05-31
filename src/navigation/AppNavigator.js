@@ -4,8 +4,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import * as Notifications from 'expo-notifications'
 import { Ionicons } from '@expo/vector-icons'
-import { ActivityIndicator, AppState, Text, TouchableOpacity, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { ActivityIndicator, Animated, AppState, Pressable, Text, TouchableOpacity, View } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import LoginScreen from '../screens/LoginScreen'
 import HomeScreen from '../screens/HomeScreen'
@@ -54,6 +54,8 @@ import {
   routeFromNotificationData,
 } from '../lib/pushNotifications'
 import { useAppSettings } from '../lib/appSettings'
+import { isConversationMuted } from '../lib/chatPreferences'
+import { playNotificationSound } from '../lib/sounds'
 
 const LIVE_ALERT_NOTIFICATION_TYPES = new Set([
   'saved_search_match',
@@ -303,9 +305,174 @@ function MainTabsNavigator({ guestMode = false }) {
   )
 }
 
-function NotificationCoordinator({ enabled, onOpenNotification }) {
+function getInAppNotificationIcon(type) {
+  if (type === 'chat_message') return 'chatbubble-ellipses'
+  if (type === 'incoming_audio_call' || type === 'incoming_video_call') return 'call'
+  if (type === 'saved_search_match') return 'search'
+  if (type?.startsWith?.('wallet_topup')) return 'wallet'
+  if (type?.includes?.('report') || type?.includes?.('verification')) return 'shield-checkmark'
+  return 'notifications'
+}
+
+function isCallNotificationType(type) {
+  return type === 'incoming_audio_call' || type === 'incoming_video_call'
+}
+
+function buildInAppNotificationKey(item) {
+  const data = item?.data || {}
+
+  return (
+    item?.key ||
+    data.eventKey ||
+    data.notificationId ||
+    [
+      data.type,
+      data.actorId,
+      data.propertyId,
+      data.conversationId,
+      data.callId,
+      data.searchId,
+      data.createdAt,
+      item?.title,
+      item?.body,
+    ]
+      .filter(Boolean)
+      .map(String)
+      .join(':') ||
+    String(Date.now())
+  )
+}
+
+function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
+  const insets = useSafeAreaInsets()
+  const translateY = useRef(new Animated.Value(-120)).current
+  const opacity = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (!notification) return undefined
+
+    translateY.setValue(-120)
+    opacity.setValue(0)
+
+    Animated.parallel([
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 16,
+        stiffness: 180,
+        mass: 0.8,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+    ]).start()
+
+    return undefined
+  }, [notification?.id, opacity, translateY])
+
+  if (!notification) return null
+
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        top: insets.top + 8,
+        left: 12,
+        right: 12,
+        zIndex: 9999,
+        opacity,
+        transform: [{ translateY }],
+      }}
+    >
+      <Pressable
+        onPress={() => onPress(notification)}
+        style={({ pressed }) => ({
+          minHeight: 72,
+          borderRadius: 18,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          backgroundColor: theme.surface,
+          borderWidth: 1,
+          borderColor: theme.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          opacity: pressed ? 0.92 : 1,
+          shadowColor: '#000',
+          shadowOpacity: 0.16,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 10,
+        })}
+      >
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: theme.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons
+            name={getInAppNotificationIcon(notification?.data?.type)}
+            size={21}
+            color={theme.accent}
+          />
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: theme.text,
+              fontSize: 14,
+              fontWeight: '900',
+            }}
+          >
+            {notification.title || 'Rental X'}
+          </Text>
+          <Text
+            numberOfLines={2}
+            style={{
+              marginTop: 2,
+              color: theme.mutedText,
+              fontSize: 12,
+              lineHeight: 17,
+              fontWeight: '600',
+            }}
+          >
+            {notification.body || 'You have a new update.'}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={onDismiss}
+          activeOpacity={0.8}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: theme.accentSoft,
+          }}
+        >
+          <Ionicons name="close" size={18} color={theme.accent} />
+        </TouchableOpacity>
+      </Pressable>
+    </Animated.View>
+  )
+}
+
+function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanner }) {
   const handledResponseIds = useRef(new Set())
   const activeNotificationKeys = useRef(new Set())
+  const appStateRef = useRef(AppState.currentState)
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -323,6 +490,8 @@ function NotificationCoordinator({ enabled, onOpenNotification }) {
     syncPushToken()
 
     const appStateSubscription = AppState.addEventListener('change', (state) => {
+      appStateRef.current = state
+
       if (state === 'active') {
         syncPushToken()
       }
@@ -341,6 +510,38 @@ function NotificationCoordinator({ enabled, onOpenNotification }) {
       subscription.unsubscribe()
     }
   }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return undefined
+
+    const receivedListener = Notifications.addNotificationReceivedListener((notification) => {
+      const content = notification?.request?.content || {}
+      const data = content.data || {}
+      const conversationId = data.conversationId
+
+      Promise.resolve(
+        data.type === 'chat_message' && conversationId
+          ? isConversationMuted(conversationId)
+          : false
+      ).then((isMuted) => {
+        if (isMuted || appStateRef.current !== 'active') {
+          return
+        }
+
+        onShowInAppBanner?.({
+          id: notification?.request?.identifier || String(Date.now()),
+          key: data.eventKey || data.notificationId,
+          title: content.title || 'Rental X',
+          body: content.body || 'You have a new update.',
+          data,
+        })
+      })
+    })
+
+    return () => {
+      receivedListener.remove()
+    }
+  }, [enabled, onShowInAppBanner])
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -380,16 +581,30 @@ function NotificationCoordinator({ enabled, onOpenNotification }) {
 
             activeNotificationKeys.current.add(dedupeKey)
 
+            const bannerPayload = {
+              id: String(nextNotification.id || dedupeKey),
+              key: dedupeKey,
+              title: nextNotification.title || 'Rental X update',
+              body: nextNotification.body || 'You have a new admin update.',
+              data: {
+                type: nextNotification.type,
+                propertyId: nextNotification.property_id ? String(nextNotification.property_id) : null,
+                actorId: nextNotification.actor_id || null,
+                eventKey: dedupeKey,
+              },
+            }
+
+            if (appStateRef.current === 'active') {
+              onShowInAppBanner?.(bannerPayload)
+              return
+            }
+
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: nextNotification.title || 'Rental X update',
-                body: nextNotification.body || 'You have a new admin update.',
+                title: bannerPayload.title,
+                body: bannerPayload.body,
                 sound: 'default',
-                data: {
-                  type: nextNotification.type,
-                  propertyId: nextNotification.property_id ? String(nextNotification.property_id) : null,
-                  actorId: nextNotification.actor_id || null,
-                },
+                data: bannerPayload.data,
               },
               trigger: null,
             })
@@ -406,7 +621,7 @@ function NotificationCoordinator({ enabled, onOpenNotification }) {
         supabase.removeChannel(notificationChannel)
       }
     }
-  }, [enabled])
+  }, [enabled, onShowInAppBanner])
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -444,8 +659,11 @@ function NotificationCoordinator({ enabled, onOpenNotification }) {
 export default function AppNavigator() {
   const pendingNotificationPayload = useRef(null)
   const lastOpenedCallKeyRef = useRef(null)
+  const bannerDismissTimerRef = useRef(null)
+  const recentlyShownBannerKeysRef = useRef(new Map())
   const [session, setSession] = useState(undefined)
   const [guestMode, setGuestMode] = useState(false)
+  const [inAppNotification, setInAppNotification] = useState(null)
   const { theme, t } = useAppSettings()
 
   const handleOpenNotification = useCallback((payload) => {
@@ -471,6 +689,62 @@ export default function AppNavigator() {
 
     pendingNotificationPayload.current = payload
   }, [])
+
+  const dismissInAppNotification = useCallback(() => {
+    if (bannerDismissTimerRef.current) {
+      clearTimeout(bannerDismissTimerRef.current)
+      bannerDismissTimerRef.current = null
+    }
+
+    setInAppNotification(null)
+  }, [])
+
+  const showInAppNotification = useCallback((nextNotification) => {
+    if (!nextNotification) return
+
+    const key = buildInAppNotificationKey(nextNotification)
+    const now = Date.now()
+    const lastShownAt = recentlyShownBannerKeysRef.current.get(key)
+
+    if (lastShownAt && now - lastShownAt < 3500) {
+      return
+    }
+
+    recentlyShownBannerKeysRef.current.set(key, now)
+    recentlyShownBannerKeysRef.current.forEach((shownAt, shownKey) => {
+      if (now - shownAt > 60000) {
+        recentlyShownBannerKeysRef.current.delete(shownKey)
+      }
+    })
+
+    if (nextNotification.playSound !== false && !isCallNotificationType(nextNotification?.data?.type)) {
+      const conversationId = nextNotification?.data?.conversationId
+      playNotificationSound({
+        conversationId,
+        playPhoneDefaultFallback: !conversationId,
+      })
+    }
+
+    if (bannerDismissTimerRef.current) {
+      clearTimeout(bannerDismissTimerRef.current)
+    }
+
+    setInAppNotification({
+      ...nextNotification,
+      id: nextNotification.id || key,
+      key,
+    })
+
+    bannerDismissTimerRef.current = setTimeout(() => {
+      setInAppNotification(null)
+      bannerDismissTimerRef.current = null
+    }, 4800)
+  }, [])
+
+  const handlePressInAppNotification = useCallback((notification) => {
+    dismissInAppNotification()
+    handleOpenNotification(notification?.data || {})
+  }, [dismissInAppNotification, handleOpenNotification])
 
   useEffect(() => {
     let isMounted = true
@@ -512,6 +786,12 @@ export default function AppNavigator() {
     }
   }, [])
 
+  useEffect(() => () => {
+    if (bannerDismissTimerRef.current) {
+      clearTimeout(bannerDismissTimerRef.current)
+    }
+  }, [])
+
   if (session === undefined) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
@@ -521,10 +801,11 @@ export default function AppNavigator() {
   }
 
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <NotificationCoordinator
         enabled={Boolean(session)}
         onOpenNotification={handleOpenNotification}
+        onShowInAppBanner={showInAppNotification}
       />
       <NavigationContainer
         ref={navigationRef}
@@ -723,6 +1004,12 @@ export default function AppNavigator() {
         />
       </Stack.Navigator>
       </NavigationContainer>
-    </>
+      <InAppNotificationBanner
+        notification={inAppNotification}
+        theme={theme}
+        onPress={handlePressInAppNotification}
+        onDismiss={dismissInAppNotification}
+      />
+    </View>
   )
 }

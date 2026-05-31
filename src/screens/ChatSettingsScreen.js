@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Alert,
+  Linking,
+  Modal,
   ScrollView,
   Switch,
   Text,
@@ -15,8 +17,12 @@ import { useAppSettings } from '../lib/appSettings'
 import {
   isConversationMuted,
   isConversationPinned,
+  getConversationNotificationSoundId,
+  getConversationRingtoneSoundId,
   setConversationMuted,
+  setConversationNotificationSoundId,
   setConversationPinned,
+  setConversationRingtoneSoundId,
 } from '../lib/chatPreferences'
 import { getProfileName } from '../lib/userDisplay'
 import {
@@ -24,6 +30,13 @@ import {
   fetchGroupMembers,
   isGroupConversation,
 } from '../lib/chatGroups'
+import {
+  NOTIFICATION_SOUND_OPTIONS,
+  RINGTONE_SOUND_OPTIONS,
+  getNotificationSoundOption,
+  getRingtoneSoundOption,
+  previewSound,
+} from '../lib/sounds'
 
 function getConversationDeletionField(conversation, userId) {
   if (!conversation || !userId) return null
@@ -103,6 +116,148 @@ function SettingsGroup({ children }) {
     >
       {children}
     </View>
+  )
+}
+
+function SoundPickerModal({
+  visible,
+  title,
+  options,
+  selectedId,
+  kind,
+  onClose,
+  onSelect,
+  onPreview,
+}) {
+  const { theme } = useAppSettings()
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={onClose}
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(15, 23, 42, 0.46)',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => {}}
+          style={{
+            backgroundColor: theme.surface,
+            borderTopLeftRadius: 22,
+            borderTopRightRadius: 22,
+            paddingHorizontal: 16,
+            paddingTop: 14,
+            paddingBottom: 26,
+            borderWidth: 1,
+            borderColor: theme.border,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: theme.accentSoft,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name={kind === 'ringtone' ? 'call-outline' : 'notifications-outline'} size={19} color={theme.accent} />
+            </View>
+            <Text style={{ flex: 1, color: theme.text, fontSize: 17, fontWeight: '900' }}>
+              {title}
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              activeOpacity={0.82}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: theme.surfaceMuted,
+              }}
+            >
+              <Ionicons name="close" size={18} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+
+          {options.map((option) => {
+            const selected = option.id === selectedId
+            const isSilent = option.id === 'silent'
+
+            return (
+              <View
+                key={option.id}
+                style={{
+                  minHeight: 58,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: selected ? theme.accent : theme.border,
+                  backgroundColor: selected ? theme.accentSoft : theme.surface,
+                  paddingHorizontal: 12,
+                  marginBottom: 9,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => onSelect(option.id)}
+                  activeOpacity={0.84}
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    minHeight: 56,
+                  }}
+                >
+                  <Ionicons name={option.icon} size={20} color={selected ? theme.accent : theme.mutedText} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
+                      {option.label}
+                    </Text>
+                    <Text numberOfLines={1} style={{ marginTop: 2, color: theme.mutedText, fontSize: 11, fontWeight: '700' }}>
+                      {option.subtitle}
+                    </Text>
+                  </View>
+                  {selected ? <Ionicons name="checkmark-circle" size={20} color={theme.accent} /> : null}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => onPreview(option.id)}
+                  disabled={isSilent}
+                  activeOpacity={0.82}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: isSilent ? theme.surfaceMuted : theme.accent,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: isSilent ? 0.58 : 1,
+                  }}
+                >
+                  <Ionicons name="play" size={17} color={isSilent ? theme.mutedText : '#fff'} />
+                </TouchableOpacity>
+              </View>
+            )
+          })}
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   )
 }
 
@@ -192,6 +347,10 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const [currentUserId, setCurrentUserId] = useState(null)
   const [savingMute, setSavingMute] = useState(false)
   const [savingPinned, setSavingPinned] = useState(false)
+  const [savingSound, setSavingSound] = useState(false)
+  const [notificationSoundId, setNotificationSoundId] = useState('phone_default')
+  const [ringtoneSoundId, setRingtoneSoundId] = useState('phone_default')
+  const [soundPickerKind, setSoundPickerKind] = useState(null)
   const [clearing, setClearing] = useState(false)
 
   const loadPreferences = useCallback(async () => {
@@ -200,17 +359,23 @@ export default function ChatSettingsScreen({ route, navigation }) {
     const [
       nextMuted,
       nextPinned,
+      nextNotificationSoundId,
+      nextRingtoneSoundId,
       {
         data: { user },
       },
     ] = await Promise.all([
       isConversationMuted(conversationId),
       isConversationPinned(conversationId),
+      getConversationNotificationSoundId(conversationId),
+      getConversationRingtoneSoundId(conversationId),
       supabase.auth.getUser(),
     ])
 
     setMuted(nextMuted)
     setPinned(nextPinned)
+    setNotificationSoundId(nextNotificationSoundId)
+    setRingtoneSoundId(nextRingtoneSoundId)
     setCurrentUserId(user?.id || null)
   }, [conversationId])
 
@@ -265,6 +430,81 @@ export default function ChatSettingsScreen({ route, navigation }) {
       Alert.alert('Sticky failed', error?.message || 'Could not update this chat.')
     } finally {
       setSavingPinned(false)
+    }
+  }
+
+  async function syncSoundPreferenceToCloud(nextNotificationSoundId, nextRingtoneSoundId) {
+    if (!conversationId) return
+
+    const userId = currentUserId || (await supabase.auth.getUser()).data?.user?.id
+
+    if (!userId) return
+
+    const { error } = await supabase
+      .from('chat_sound_preferences')
+      .upsert(
+        {
+          user_id: userId,
+          conversation_id: conversationId,
+          notification_sound_id: nextNotificationSoundId,
+          ringtone_sound_id: nextRingtoneSoundId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,conversation_id' }
+      )
+
+    if (error) {
+      console.warn('Cloud sound preference sync failed:', error.message)
+    }
+  }
+
+  async function selectSoundPreference(kind, soundId) {
+    if (!conversationId || savingSound) return
+
+    const previousNotificationSoundId = notificationSoundId
+    const previousRingtoneSoundId = ringtoneSoundId
+    const nextNotificationSoundId = kind === 'notification' ? soundId : notificationSoundId
+    const nextRingtoneSoundId = kind === 'ringtone' ? soundId : ringtoneSoundId
+
+    if (kind === 'notification') {
+      setNotificationSoundId(soundId)
+    } else {
+      setRingtoneSoundId(soundId)
+    }
+
+    setSavingSound(true)
+
+    try {
+      if (kind === 'notification') {
+        await setConversationNotificationSoundId(conversationId, soundId)
+      } else {
+        await setConversationRingtoneSoundId(conversationId, soundId)
+      }
+
+      await syncSoundPreferenceToCloud(nextNotificationSoundId, nextRingtoneSoundId)
+      setSoundPickerKind(null)
+    } catch (error) {
+      setNotificationSoundId(previousNotificationSoundId)
+      setRingtoneSoundId(previousRingtoneSoundId)
+      Alert.alert('Sound update failed', error?.message || 'Could not update this chat sound.')
+    } finally {
+      setSavingSound(false)
+    }
+  }
+
+  async function previewChatSound(kind, soundId) {
+    try {
+      await previewSound(soundId, kind)
+    } catch (error) {
+      Alert.alert('Preview failed', error?.message || 'Could not play this sound.')
+    }
+  }
+
+  async function openPhoneNotificationSettings() {
+    try {
+      await Linking.openSettings()
+    } catch (error) {
+      Alert.alert('Settings unavailable', error?.message || 'Could not open phone settings.')
     }
   }
 
@@ -379,6 +619,11 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const canInviteGroupMembers =
     !isGroup ||
     currentGroupMember?.role === 'admin'
+  const notificationSoundOption = getNotificationSoundOption(notificationSoundId)
+  const ringtoneSoundOption = getRingtoneSoundOption(ringtoneSoundId)
+  const soundPickerOptions = soundPickerKind === 'ringtone'
+    ? RINGTONE_SOUND_OPTIONS
+    : NOTIFICATION_SOUND_OPTIONS
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right', 'bottom']}>
@@ -447,6 +692,37 @@ export default function ChatSettingsScreen({ route, navigation }) {
             )}
           />
           <SettingsRow
+            icon="musical-notes-outline"
+            label="Notification sound"
+            onPress={() => setSoundPickerKind('notification')}
+            right={(
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text numberOfLines={1} style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800', maxWidth: 120 }}>
+                  {notificationSoundOption.label}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.mutedText} />
+              </View>
+            )}
+          />
+          <SettingsRow
+            icon="call-outline"
+            label="Caller tone"
+            onPress={() => setSoundPickerKind('ringtone')}
+            right={(
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text numberOfLines={1} style={{ color: theme.mutedText, fontSize: 12, fontWeight: '800', maxWidth: 120 }}>
+                  {ringtoneSoundOption.label}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.mutedText} />
+              </View>
+            )}
+          />
+          <SettingsRow
+            icon="settings-outline"
+            label="Phone notification settings"
+            onPress={openPhoneNotificationSettings}
+          />
+          <SettingsRow
             icon="pin-outline"
             label="Sticky on top"
             right={(
@@ -505,6 +781,16 @@ export default function ChatSettingsScreen({ route, navigation }) {
           />
         </SettingsGroup>
       </ScrollView>
+      <SoundPickerModal
+        visible={Boolean(soundPickerKind)}
+        title={soundPickerKind === 'ringtone' ? 'Caller tone' : 'Notification sound'}
+        options={soundPickerOptions}
+        selectedId={soundPickerKind === 'ringtone' ? ringtoneSoundId : notificationSoundId}
+        kind={soundPickerKind}
+        onClose={() => setSoundPickerKind(null)}
+        onSelect={(soundId) => selectSoundPreference(soundPickerKind, soundId)}
+        onPreview={(soundId) => previewChatSound(soundPickerKind, soundId)}
+      />
     </SafeAreaView>
   )
 }

@@ -40,7 +40,14 @@
     },
     "plugins": [
       "expo-video",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/notification.mp3"
+          ]
+        }
+      ],
       [
         "expo-audio",
         {

@@ -3,6 +3,12 @@ import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { supabase } from './supabase'
 import { isConversationMuted } from './chatPreferences'
+import {
+  PHONE_DEFAULT_SOUND_ID,
+  RENTALX_POP_SOUND_FILE,
+  getConversationNotificationSoundId,
+  getConversationRingtoneSoundId,
+} from './sounds'
 
 let warnedAboutExpoGo = false
 
@@ -63,10 +69,24 @@ Notifications.setNotificationHandler({
       }
     }
 
+    const isCallNotification = CALL_NOTIFICATION_TYPES.has(type)
+    const messageSoundId =
+      type === 'chat_message'
+        ? await getConversationNotificationSoundId(conversationId)
+        : null
+    const ringtoneSoundId =
+      isCallNotification
+        ? await getConversationRingtoneSoundId(conversationId)
+        : null
+
     return {
-      shouldPlaySound: true,
+      shouldPlaySound:
+        (type === 'chat_message' && messageSoundId === PHONE_DEFAULT_SOUND_ID)
+        || (isCallNotification && ringtoneSoundId === PHONE_DEFAULT_SOUND_ID)
+        || type === 'sound_preview'
+        || type === 'ringtone_preview',
       shouldSetBadge: true,
-      shouldShowBanner: true,
+      shouldShowBanner: false,
       shouldShowList: true,
       priority:
         channelId === 'messages' || channelId === 'admin'
@@ -87,6 +107,7 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 200, 150, 200],
       lightColor: '#1877F2',
+      sound: 'default',
     },
     {
       id: 'activity',
@@ -95,6 +116,7 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 220, 180, 220],
       lightColor: '#1877F2',
+      sound: 'default',
     },
     {
       id: 'messages',
@@ -103,6 +125,25 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 200, 250],
       lightColor: '#34C759',
+      sound: 'default',
+    },
+    {
+      id: 'messages_rentalx_pop',
+      name: 'Messages - Rental X pop',
+      description: 'Direct messages using the Rental X pop sound',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 200, 250],
+      lightColor: '#34C759',
+      sound: RENTALX_POP_SOUND_FILE,
+    },
+    {
+      id: 'messages_silent',
+      name: 'Messages - silent',
+      description: 'Direct messages with no notification sound',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 160],
+      lightColor: '#34C759',
+      sound: null,
     },
     {
       id: 'calls',
@@ -111,6 +152,25 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 320, 180, 320, 180, 320],
       lightColor: '#22c55e',
+      sound: 'default',
+    },
+    {
+      id: 'calls_rentalx_pop',
+      name: 'Calls - Rental X ring',
+      description: 'Incoming audio and video calls using the Rental X tone',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 320, 180, 320, 180, 320],
+      lightColor: '#22c55e',
+      sound: RENTALX_POP_SOUND_FILE,
+    },
+    {
+      id: 'calls_silent',
+      name: 'Calls - silent',
+      description: 'Incoming audio and video calls with no notification sound',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 320, 180],
+      lightColor: '#22c55e',
+      sound: null,
     },
     {
       id: 'offers',
@@ -119,6 +179,7 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 180, 120, 180],
       lightColor: '#F59E0B',
+      sound: 'default',
     },
     {
       id: 'admin',
@@ -127,6 +188,7 @@ async function ensureAndroidChannel() {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 280, 180, 280],
       lightColor: '#EF4444',
+      sound: 'default',
     },
   ]
 
@@ -142,7 +204,7 @@ async function ensureAndroidChannel() {
         enableLights: true,
         enableVibrate: true,
         showBadge: true,
-        sound: 'default',
+        sound: channel.sound,
       })
     )
   )

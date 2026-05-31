@@ -35,6 +35,9 @@ export async function createNotification({
   }
 
   const createdAt = new Date().toISOString()
+  const notificationEventKey =
+    eventKey ||
+    `${type}:${recipientId}:${actorId}:${propertyId || ''}:${commentId || ''}`
 
   const { error } = await supabase.from('notifications').upsert(
     {
@@ -45,9 +48,7 @@ export async function createNotification({
       comment_id: commentId ? String(commentId) : null,
       title,
       body,
-      event_key:
-        eventKey ||
-        `${type}:${recipientId}:${actorId}:${propertyId || ''}:${commentId || ''}`,
+      event_key: notificationEventKey,
       is_read: false,
       created_at: createdAt,
     },
@@ -70,6 +71,7 @@ export async function createNotification({
         propertyId: propertyId ? String(propertyId) : null,
         commentId: commentId ? String(commentId) : null,
         createdAt,
+        eventKey: notificationEventKey,
         ...(pushData || {}),
       },
     })
