@@ -13,6 +13,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -20,6 +21,7 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Clipboard from 'expo-clipboard'
 import * as DocumentPicker from 'expo-document-picker'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -92,6 +94,17 @@ const EMPTY_ROUTE_PARAMS = {}
 const RED_PACKET_MAX_AMOUNT = 200
 const COMPOSER_INPUT_MIN_HEIGHT = 42
 const COMPOSER_INPUT_MAX_HEIGHT = 116
+const MESSAGE_SETTINGS_STORAGE_KEY = 'rentalx.message_settings.v1'
+const DEFAULT_MESSAGE_SETTINGS = {
+  showActiveNow: true,
+  showMessagePreviews: true,
+  showUnreadBadges: true,
+  keepPinnedFirst: true,
+  smartInboxSorting: true,
+  smartReplySuggestions: true,
+  smartSafetyReminders: true,
+  followUpNudges: true,
+}
 const DEFAULT_CHAT_LOCATION_REGION = {
   latitude: 23.8103,
   longitude: 90.4125,
@@ -175,6 +188,38 @@ function sortConversationsByActivity(conversations = []) {
     (firstItem, secondItem) =>
       getConversationActivityTime(secondItem) - getConversationActivityTime(firstItem)
   )
+}
+
+function sortMessageRowsWithSettings(rows = [], settings = DEFAULT_MESSAGE_SETTINGS, presenceByUserId = {}) {
+  const orderedRows = [...rows]
+
+  if (!settings.smartInboxSorting && !settings.keepPinnedFirst) {
+    return sortConversationsByActivity(orderedRows)
+  }
+
+  return orderedRows.sort((firstItem, secondItem) => {
+    if (settings.keepPinnedFirst && Boolean(firstItem.is_pinned) !== Boolean(secondItem.is_pinned)) {
+      return firstItem.is_pinned ? -1 : 1
+    }
+
+    if (settings.smartInboxSorting) {
+      const firstUnread = firstItem.unread_count || 0
+      const secondUnread = secondItem.unread_count || 0
+
+      if (Boolean(firstUnread) !== Boolean(secondUnread)) {
+        return firstUnread ? -1 : 1
+      }
+
+      const firstOnline = firstItem.presence?.is_online || presenceByUserId[firstItem.other_user_id]?.is_online
+      const secondOnline = secondItem.presence?.is_online || presenceByUserId[secondItem.other_user_id]?.is_online
+
+      if (Boolean(firstOnline) !== Boolean(secondOnline)) {
+        return firstOnline ? -1 : 1
+      }
+    }
+
+    return getConversationActivityTime(secondItem) - getConversationActivityTime(firstItem)
+  })
 }
 
 function normalizeConversationSearch(value) {
@@ -397,6 +442,49 @@ function getContactSearchText(profile = {}) {
     .toLowerCase()
 }
 
+function MessageSettingsRow({ icon, title, subtitle, value, onValueChange }) {
+  const { theme } = useAppSettings()
+
+  return (
+    <View
+      style={{
+        minHeight: 58,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+      }}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 13,
+          backgroundColor: theme.accentSoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 10,
+        }}
+      >
+        <Ionicons name={icon} size={17} color={theme.accent} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 2, lineHeight: 15 }} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: theme.border, true: theme.accentSoft }}
+        thumbColor={value ? theme.accent : theme.mutedText}
+      />
+    </View>
+  )
+}
+
 export default function ChatScreen({ route, navigation, embeddedTabShell = false }) {
   const { theme } = useAppSettings()
   const flatListRef = useRef(null)
@@ -437,6 +525,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [conversationSearchQuery, setConversationSearchQuery] = useState('')
   const [addingContactFromSearch, setAddingContactFromSearch] = useState(false)
   const [quickChatMenuVisible, setQuickChatMenuVisible] = useState(false)
+  const [messagingSettingsVisible, setMessagingSettingsVisible] = useState(false)
+  const [messageSettings, setMessageSettings] = useState(DEFAULT_MESSAGE_SETTINGS)
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -1251,6 +1341,34 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   useEffect(() => {
     initializeChat()
   }, [initializeChat])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadMessageSettings() {
+      try {
+        const rawValue = await AsyncStorage.getItem(MESSAGE_SETTINGS_STORAGE_KEY)
+        const savedSettings = rawValue ? JSON.parse(rawValue) : {}
+
+        if (isMounted) {
+          setMessageSettings({
+            ...DEFAULT_MESSAGE_SETTINGS,
+            ...(savedSettings && typeof savedSettings === 'object' ? savedSettings : {}),
+          })
+        }
+      } catch (_error) {
+        if (isMounted) {
+          setMessageSettings(DEFAULT_MESSAGE_SETTINGS)
+        }
+      }
+    }
+
+    loadMessageSettings()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!currentUser?.id || !scannedRentalXId) return
@@ -3288,7 +3406,20 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   function openMessagingSettings() {
-    Alert.alert('Messaging settings', 'Messaging management options can be added here next.')
+    setMessagingSettingsVisible(true)
+  }
+
+  function updateMessageSetting(key, value) {
+    setMessageSettings((current) => {
+      const nextSettings = {
+        ...current,
+        [key]: value,
+      }
+
+      AsyncStorage.setItem(MESSAGE_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings)).catch(() => {})
+
+      return nextSettings
+    })
   }
 
   const visibleConversationRows = useMemo(() => {
@@ -3300,6 +3431,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       getConversationSearchText(item).includes(query)
     )
   }, [conversationRows, conversationSearchQuery])
+
+  const messageListRows = useMemo(
+    () => sortMessageRowsWithSettings(visibleConversationRows, messageSettings, presenceByUserId),
+    [messageSettings, presenceByUserId, visibleConversationRows]
+  )
 
   const visibleContactPickerContacts = useMemo(() => {
     const query = normalizeConversationSearch(contactPickerSearchQuery)
@@ -3313,10 +3449,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
   const activeConversationRows = useMemo(
     () =>
-      visibleConversationRows.filter((item) =>
+      messageSettings.showActiveNow
+        ? messageListRows.filter((item) =>
         Boolean(item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online)
-      ),
-    [presenceByUserId, visibleConversationRows]
+      )
+        : [],
+    [messageListRows, messageSettings.showActiveNow, presenceByUserId]
   )
   const attachmentActions = [
     {
@@ -3667,6 +3805,173 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           </Modal>
 
           <Modal
+            visible={messagingSettingsVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setMessagingSettingsVisible(false)}
+          >
+            <Pressable
+              onPress={() => setMessagingSettingsVisible(false)}
+              style={{
+                flex: 1,
+                justifyContent: 'flex-end',
+                backgroundColor: 'rgba(15, 23, 42, 0.32)',
+              }}
+            >
+              <Pressable
+                onPress={() => {}}
+                style={{
+                  maxHeight: Math.min(windowHeight * 0.78, 620),
+                  backgroundColor: theme.surface,
+                  borderTopLeftRadius: 24,
+                  borderTopRightRadius: 24,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  paddingHorizontal: 16,
+                  paddingTop: 10,
+                  paddingBottom: Math.max(insets.bottom, 10) + 14,
+                }}
+              >
+                <View
+                  style={{
+                    width: 42,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: theme.border,
+                    alignSelf: 'center',
+                    marginBottom: 12,
+                  }}
+                />
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: theme.accentSoft,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 10,
+                    }}
+                  >
+                    <Ionicons name="settings-outline" size={21} color={theme.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                      Message settings
+                    </Text>
+                    <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 2 }}>
+                      Basic and smart controls
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setMessagingSettingsVisible(false)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={theme.mutedText} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                  contentContainerStyle={{ paddingBottom: 18 }}
+                >
+                  <Text
+                    style={{
+                      color: theme.mutedText,
+                      fontSize: 11,
+                      fontWeight: '900',
+                      textTransform: 'uppercase',
+                      marginTop: 8,
+                      marginBottom: 2,
+                    }}
+                  >
+                    Basic
+                  </Text>
+                  <MessageSettingsRow
+                    icon="radio-button-on-outline"
+                    title="Active now"
+                    subtitle="Show online contacts above your chats."
+                    value={messageSettings.showActiveNow}
+                    onValueChange={(value) => updateMessageSetting('showActiveNow', value)}
+                  />
+                  <MessageSettingsRow
+                    icon="chatbox-ellipses-outline"
+                    title="Message previews"
+                    subtitle="Show the latest message text in the list."
+                    value={messageSettings.showMessagePreviews}
+                    onValueChange={(value) => updateMessageSetting('showMessagePreviews', value)}
+                  />
+                  <MessageSettingsRow
+                    icon="notifications-outline"
+                    title="Unread badges"
+                    subtitle="Show counters for unread conversations."
+                    value={messageSettings.showUnreadBadges}
+                    onValueChange={(value) => updateMessageSetting('showUnreadBadges', value)}
+                  />
+                  <MessageSettingsRow
+                    icon="pin-outline"
+                    title="Pinned first"
+                    subtitle="Keep sticky chats at the top of the inbox."
+                    value={messageSettings.keepPinnedFirst}
+                    onValueChange={(value) => updateMessageSetting('keepPinnedFirst', value)}
+                  />
+
+                  <Text
+                    style={{
+                      color: theme.mutedText,
+                      fontSize: 11,
+                      fontWeight: '900',
+                      textTransform: 'uppercase',
+                      marginTop: 12,
+                      marginBottom: 2,
+                    }}
+                  >
+                    Smart
+                  </Text>
+                  <MessageSettingsRow
+                    icon="sparkles-outline"
+                    title="Smart inbox"
+                    subtitle="Prioritize unread and active chats automatically."
+                    value={messageSettings.smartInboxSorting}
+                    onValueChange={(value) => updateMessageSetting('smartInboxSorting', value)}
+                  />
+                  <MessageSettingsRow
+                    icon="return-down-forward-outline"
+                    title="Smart replies"
+                    subtitle="Prepare short reply suggestions for future AI tools."
+                    value={messageSettings.smartReplySuggestions}
+                    onValueChange={(value) => updateMessageSetting('smartReplySuggestions', value)}
+                  />
+                  <MessageSettingsRow
+                    icon="shield-checkmark-outline"
+                    title="Safety reminders"
+                    subtitle="Keep scam and suspicious message warnings enabled."
+                    value={messageSettings.smartSafetyReminders}
+                    onValueChange={(value) => updateMessageSetting('smartSafetyReminders', value)}
+                  />
+                  <MessageSettingsRow
+                    icon="alarm-outline"
+                    title="Follow-up nudges"
+                    subtitle="Remember chats that may need a reply later."
+                    value={messageSettings.followUpNudges}
+                    onValueChange={(value) => updateMessageSetting('followUpNudges', value)}
+                  />
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <Modal
             visible={contactPickerVisible && contactPickerPurpose !== 'share'}
             transparent
             animationType="slide"
@@ -4005,13 +4310,15 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           ) : null}
 
           <FlatList
-            data={visibleConversationRows}
+            data={messageListRows}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <ConversationRow
                 item={item}
                 currentUserId={currentUser?.id}
                 presenceByUserId={presenceByUserId}
+                showPreview={messageSettings.showMessagePreviews}
+                showUnreadBadge={messageSettings.showUnreadBadges}
                 selected={selectedConversationIds.includes(item.id)}
                 selectionMode={selectionMode}
                 onPress={() => {

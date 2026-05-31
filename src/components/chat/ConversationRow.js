@@ -14,6 +14,8 @@ export default function ConversationRow({
   onLongPress,
   selected = false,
   selectionMode = false,
+  showPreview = true,
+  showUnreadBadge = true,
 }) {
   const { theme } = useAppSettings()
   const profile = item.other_profile
@@ -158,20 +160,33 @@ export default function ConversationRow({
             />
           ) : null}
 
-          <Text
-            style={{
-              flex: 1,
-              color: item.unread_count ? theme.text : theme.mutedText,
-              fontWeight: item.unread_count ? '800' : '500',
-            }}
-            numberOfLines={1}
-          >
-            {item.last_message || 'Start the conversation'}
-          </Text>
+          {showPreview ? (
+            <Text
+              style={{
+                flex: 1,
+                color: item.unread_count ? theme.text : theme.mutedText,
+                fontWeight: item.unread_count ? '800' : '500',
+              }}
+              numberOfLines={1}
+            >
+              {item.last_message || 'Start the conversation'}
+            </Text>
+          ) : (
+            <Text
+              style={{
+                flex: 1,
+                color: theme.mutedText,
+                fontWeight: '700',
+              }}
+              numberOfLines={1}
+            >
+              Preview hidden
+            </Text>
+          )}
         </View>
       </View>
 
-      {item.unread_count ? (
+      {showUnreadBadge && item.unread_count ? (
         <View
           style={{
             minWidth: 22,
