@@ -19,6 +19,12 @@ import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '../lib/supabase'
 import { PROFILE_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { useAppSettings } from '../lib/appSettings'
+import {
+  cancelAccountDeletionRequest,
+  fetchMyActiveAccountDeletionRequest,
+  formatAccountDeletionDate,
+  requestAccountDeletion,
+} from '../lib/accountDeletion'
 
 const USER_TYPES = [
   { id: 'property_owner', title: 'Property owner' },
@@ -406,6 +412,8 @@ export default function SettingsScreen({ navigation, route }) {
   const [userType, setUserType] = useState('renter')
   const [isVerified, setIsVerified] = useState(false)
   const [ownerVerificationStatus, setOwnerVerificationStatus] = useState('unverified')
+  const [accountDeletionRequest, setAccountDeletionRequest] = useState(null)
+  const [deletionSaving, setDeletionSaving] = useState(false)
 
   useEffect(() => {
     loadUser()
@@ -451,11 +459,16 @@ export default function SettingsScreen({ navigation, route }) {
     setUserType(metadata.user_type || 'renter')
 
     if (user?.id) {
-      const { data } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
+      const [{ data }, activeDeletionRequest] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        fetchMyActiveAccountDeletionRequest(user.id).catch(() => null),
+      ])
+
+      setAccountDeletionRequest(activeDeletionRequest)
 
       if (data) {
         const nextRentalXId = normalizeRentalXId(data.rentalx_id) || fallbackRentalXId
@@ -488,6 +501,8 @@ export default function SettingsScreen({ navigation, route }) {
       } else {
         setOwnerVerificationStatus('unverified')
       }
+    } else {
+      setAccountDeletionRequest(null)
     }
 
     setLoading(false)
@@ -669,6 +684,63 @@ export default function SettingsScreen({ navigation, route }) {
     } else {
       setPendingCoverAsset(asset)
     }
+  }
+
+  async function applyForAccountDeletion() {
+    if (!user?.id || deletionSaving) return
+
+    Alert.alert(
+      'Apply for account deletion?',
+      'Admin can approve this earlier. If it is not reviewed, your account will be scheduled for automatic deletion after 14 days.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletionSaving(true)
+              const request = await requestAccountDeletion()
+              setAccountDeletionRequest(request)
+              Alert.alert(
+                'Request sent',
+                `Your account deletion is scheduled for ${formatAccountDeletionDate(request.scheduled_deletion_at)} unless admin reviews it earlier.`
+              )
+            } catch (error) {
+              Alert.alert(
+                'Request failed',
+                error?.message || 'Run supabase-account-deletion-features.sql, then try again.'
+              )
+            } finally {
+              setDeletionSaving(false)
+            }
+          },
+        },
+      ]
+    )
+  }
+
+  async function cancelDeletionRequest() {
+    if (!accountDeletionRequest?.id || deletionSaving) return
+
+    Alert.alert('Cancel deletion request?', 'Your account will stay active.', [
+      { text: 'Keep request', style: 'cancel' },
+      {
+        text: 'Cancel request',
+        onPress: async () => {
+          try {
+            setDeletionSaving(true)
+            await cancelAccountDeletionRequest(accountDeletionRequest.id)
+            setAccountDeletionRequest(null)
+            Alert.alert('Cancelled', 'Your account deletion request was cancelled.')
+          } catch (error) {
+            Alert.alert('Cancel failed', error?.message || 'Could not cancel this request.')
+          } finally {
+            setDeletionSaving(false)
+          }
+        },
+      },
+    ])
   }
 
   if (loading) {
@@ -934,6 +1006,89 @@ export default function SettingsScreen({ navigation, route }) {
               >
                 <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>
                   {saving ? 'Saving...' : 'Save profile'}
+                </Text>
+              </TouchableOpacity>
+            </SectionCard>
+
+            <SectionCard theme={theme}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: '#fee2e2',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#dc2626" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900' }}>
+                    Account deletion
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 12, lineHeight: 18, marginTop: 2 }}>
+                    Apply to delete your account. Admin can approve, or it will be due after 14 days.
+                  </Text>
+                </View>
+              </View>
+
+              {accountDeletionRequest ? (
+                <View
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                    Request pending
+                  </Text>
+                  <Text style={{ color: theme.mutedText, fontSize: 12, lineHeight: 18, marginTop: 4 }}>
+                    Scheduled for {formatAccountDeletionDate(accountDeletionRequest.scheduled_deletion_at)}.
+                  </Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={accountDeletionRequest ? cancelDeletionRequest : applyForAccountDeletion}
+                disabled={deletionSaving || accountDeletionRequest?.status === 'approved'}
+                activeOpacity={0.86}
+                style={{
+                  marginTop: 12,
+                  minHeight: 44,
+                  borderRadius: 14,
+                  backgroundColor: accountDeletionRequest ? theme.surfaceMuted : '#dc2626',
+                  borderWidth: accountDeletionRequest ? 1 : 0,
+                  borderColor: theme.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  opacity: deletionSaving || accountDeletionRequest?.status === 'approved' ? 0.62 : 1,
+                }}
+              >
+                <Ionicons
+                  name={accountDeletionRequest ? 'refresh-outline' : 'trash-outline'}
+                  size={17}
+                  color={accountDeletionRequest ? theme.text : '#fff'}
+                />
+                <Text
+                  style={{
+                    color: accountDeletionRequest ? theme.text : '#fff',
+                    fontSize: 13,
+                    fontWeight: '900',
+                    marginLeft: 8,
+                  }}
+                >
+                  {deletionSaving
+                    ? 'Working...'
+                    : accountDeletionRequest
+                      ? 'Cancel deletion request'
+                      : 'Apply for account deletion'}
                 </Text>
               </TouchableOpacity>
             </SectionCard>

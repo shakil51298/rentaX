@@ -62,6 +62,8 @@ function getNotificationIcon(type) {
   if (type === 'wallet_topup_requested') return 'cash'
   if (type === 'wallet_topup_approved') return 'wallet'
   if (type === 'wallet_topup_rejected') return 'close-circle'
+  if (type === 'account_deletion_requested') return 'trash'
+  if (type === 'account_deletion_rejected') return 'refresh-circle'
   if (type === 'property_comment') return 'chatbubble-ellipses'
   if (type === 'comment_reply') return 'return-down-forward'
   if (type === 'comment_like') return 'thumbs-up'
@@ -108,6 +110,8 @@ function getNotificationColor(type) {
   if (type === 'wallet_topup_requested') return '#b45309'
   if (type === 'wallet_topup_approved') return '#16a34a'
   if (type === 'wallet_topup_rejected') return '#dc2626'
+  if (type === 'account_deletion_requested') return '#dc2626'
+  if (type === 'account_deletion_rejected') return '#16a34a'
   if (type === 'property_favorite') return '#ef4444'
   if (type === 'user_follow') return '#16a34a'
   if (type === 'owner_verification_approved' || type === 'property_verification_approved') {
@@ -370,6 +374,16 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
 
     if (notification.type === 'wallet_topup_requested') {
       navigation.navigate('AdminWallet')
+      return
+    }
+
+    if (notification.type === 'account_deletion_requested') {
+      navigation.navigate('AdminAccountDeletion')
+      return
+    }
+
+    if (notification.type === 'account_deletion_rejected') {
+      navigation.navigate('MainTabs', { screen: 'Profile' })
       return
     }
 

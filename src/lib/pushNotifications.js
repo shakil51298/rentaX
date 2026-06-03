@@ -32,6 +32,7 @@ const ADMIN_NOTIFICATION_TYPES = new Set([
   'property_report_submitted',
   'property_case_appealed',
   'wallet_topup_requested',
+  'account_deletion_requested',
 ])
 const SAVED_SEARCH_NOTIFICATION_TYPES = new Set(['saved_search_match'])
 const VISIT_REQUEST_OWNER_TYPES = new Set([
@@ -476,6 +477,16 @@ export function routeFromNotificationData(navigation, payload = {}) {
 
   if (type === 'wallet_topup_requested') {
     navigation.navigate('AdminWallet')
+    return
+  }
+
+  if (type === 'account_deletion_requested') {
+    navigation.navigate('AdminAccountDeletion')
+    return
+  }
+
+  if (type === 'account_deletion_rejected') {
+    navigation.navigate('MainTabs', { screen: 'Profile' })
     return
   }
 

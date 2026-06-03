@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
 import { fetchPendingWalletTopupRequestCount } from '../lib/wallet'
+import { fetchPendingAccountDeletionRequestCount } from '../lib/accountDeletion'
 import { useAppSettings } from '../lib/appSettings'
 
 function withAlpha(hexColor, alphaHex) {
@@ -24,6 +25,7 @@ const STATUS_COLORS = {
   report: '#dc2626',
   users: '#16a34a',
   wallet: '#b45309',
+  deletion: '#dc2626',
 }
 
 function HubCard({ icon, title, subtitle, badgeCount = 0, onPress, tint, theme }) {
@@ -140,6 +142,7 @@ export default function AdminPanelScreen({ navigation }) {
     pendingUserReports: 0,
     pendingPropertyReports: 0,
     pendingWalletRequests: 0,
+    pendingDeletionRequests: 0,
     totalUsers: 0,
   })
 
@@ -160,6 +163,7 @@ export default function AdminPanelScreen({ navigation }) {
         pendingUserReports: 0,
         pendingPropertyReports: 0,
         pendingWalletRequests: 0,
+        pendingDeletionRequests: 0,
         totalUsers: 0,
       })
       setLoading(false)
@@ -172,6 +176,7 @@ export default function AdminPanelScreen({ navigation }) {
       { count: totalUserCount },
       reportCounts,
       pendingWalletRequests,
+      pendingDeletionRequests,
     ] = await Promise.all([
       supabase
         .from('user_profiles')
@@ -186,6 +191,7 @@ export default function AdminPanelScreen({ navigation }) {
         .select('user_id', { count: 'exact', head: true }),
       fetchAdminReportCounts(),
       fetchPendingWalletTopupRequestCount(),
+      fetchPendingAccountDeletionRequestCount(),
     ])
 
     setCounts({
@@ -194,6 +200,7 @@ export default function AdminPanelScreen({ navigation }) {
       pendingUserReports: reportCounts.userReportCount || 0,
       pendingPropertyReports: reportCounts.propertyReportCount || 0,
       pendingWalletRequests: pendingWalletRequests || 0,
+      pendingDeletionRequests: pendingDeletionRequests || 0,
       totalUsers: totalUserCount || 0,
     })
     setLoading(false)
@@ -257,12 +264,22 @@ export default function AdminPanelScreen({ navigation }) {
       )
       .subscribe()
 
+    const deletionChannel = supabase
+      .channel(`admin-hub-account-deletion-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'account_deletion_requests' },
+        refresh
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(profileChannel)
       supabase.removeChannel(propertyChannel)
       supabase.removeChannel(userReportChannel)
       supabase.removeChannel(propertyReportChannel)
       supabase.removeChannel(walletChannel)
+      supabase.removeChannel(deletionChannel)
     }
   }, [authorized, loadAdminHub])
 
@@ -404,6 +421,16 @@ export default function AdminPanelScreen({ navigation }) {
           tint={STATUS_COLORS.wallet}
           theme={theme}
           onPress={() => navigation.navigate('AdminWallet')}
+        />
+
+        <HubCard
+          icon="trash-outline"
+          title="Account Deletion"
+          subtitle="Approve account deletion requests or let the 14-day timer handle them."
+          badgeCount={counts.pendingDeletionRequests}
+          tint={STATUS_COLORS.deletion}
+          theme={theme}
+          onPress={() => navigation.navigate('AdminAccountDeletion')}
         />
 
         <HubCard

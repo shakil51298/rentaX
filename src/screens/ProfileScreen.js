@@ -26,6 +26,7 @@ import { getOwnerVerificationStatus } from '../lib/verification'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
 import { fetchPendingWalletTopupRequestCount } from '../lib/wallet'
+import { fetchPendingAccountDeletionRequestCount } from '../lib/accountDeletion'
 import { deactivateDevicePushToken } from '../lib/pushNotifications'
 import { APP_APPEARANCE_MODES, APP_LANGUAGES, APP_THEMES, useAppSettings } from '../lib/appSettings'
 
@@ -358,7 +359,13 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       return
     }
 
-    const [{ count: ownerCount }, { count: propertyCount }, reportCounts, pendingWalletRequests] = await Promise.all([
+    const [
+      { count: ownerCount },
+      { count: propertyCount },
+      reportCounts,
+      pendingWalletRequests,
+      pendingDeletionRequests,
+    ] = await Promise.all([
       supabase
         .from('user_profiles')
         .select('user_id', { count: 'exact', head: true })
@@ -369,6 +376,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
         .eq('verification_status', 'pending'),
       fetchAdminReportCounts(),
       fetchPendingWalletTopupRequestCount(),
+      fetchPendingAccountDeletionRequestCount(),
     ])
 
     setAdminPanelCount(
@@ -377,6 +385,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       + (reportCounts.userReportCount || 0)
       + (reportCounts.propertyReportCount || 0)
       + (pendingWalletRequests || 0)
+      + (pendingDeletionRequests || 0)
     )
   }, [])
 
@@ -462,12 +471,22 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       )
       .subscribe()
 
+    const deletionChannel = supabase
+      .channel(`profile-admin-account-deletion-${Date.now()}-${Math.random()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'account_deletion_requests' },
+        refreshAdminCount
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(ownerChannel)
       supabase.removeChannel(propertyChannel)
       supabase.removeChannel(userReportChannel)
       supabase.removeChannel(propertyReportChannel)
       supabase.removeChannel(walletChannel)
+      supabase.removeChannel(deletionChannel)
     }
   }, [loadAdminPanelCount, showAdminPanel])
 

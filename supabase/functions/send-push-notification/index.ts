@@ -30,6 +30,7 @@ function getChannelId(type?: string, requestedChannelId?: string) {
     || type === 'property_verification_review_requested'
     || type === 'user_report_submitted'
     || type === 'property_report_submitted'
+    || type === 'account_deletion_requested'
   ) {
     return 'admin'
   }

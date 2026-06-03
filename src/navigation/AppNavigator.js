@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import * as Notifications from 'expo-notifications'
 import { Ionicons } from '@expo/vector-icons'
-import { ActivityIndicator, Animated, AppState, Pressable, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Animated, AppState, Pressable, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import LoginScreen from '../screens/LoginScreen'
@@ -42,6 +42,7 @@ import CustomerCareScreen from '../screens/CustomerCareScreen'
 import AdminReportsScreen from '../screens/AdminReportsScreen'
 import AdminBannersScreen from '../screens/AdminBannersScreen'
 import AdminWalletScreen from '../screens/AdminWalletScreen'
+import AdminAccountDeletionScreen from '../screens/AdminAccountDeletionScreen'
 import ReportIssueScreen from '../screens/ReportIssueScreen'
 import VisitRequestsScreen from '../screens/VisitRequestsScreen'
 import RecentlyViewedScreen from '../screens/RecentlyViewedScreen'
@@ -50,6 +51,7 @@ import BottomNavBar from '../components/navigation/BottomNavBar'
 import { supabase } from '../lib/supabase'
 import { clearGuestMode, isGuestModeEnabled } from '../lib/guestSession'
 import {
+  deactivateDevicePushToken,
   registerDevicePushToken,
   routeFromNotificationData,
 } from '../lib/pushNotifications'
@@ -65,6 +67,8 @@ const LIVE_ALERT_NOTIFICATION_TYPES = new Set([
   'wallet_topup_requested',
   'wallet_topup_approved',
   'wallet_topup_rejected',
+  'account_deletion_requested',
+  'account_deletion_rejected',
   'owner_verification_review_requested',
   'property_verification_review_requested',
 ])
@@ -310,6 +314,7 @@ function getInAppNotificationIcon(type) {
   if (type === 'incoming_audio_call' || type === 'incoming_video_call') return 'call'
   if (type === 'saved_search_match') return 'search'
   if (type?.startsWith?.('wallet_topup')) return 'wallet'
+  if (type?.startsWith?.('account_deletion')) return 'trash'
   if (type?.includes?.('report') || type?.includes?.('verification')) return 'shield-checkmark'
   return 'notifications'
 }
@@ -468,6 +473,91 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
     </Animated.View>
   )
 }
+
+const InAppNotificationHost = forwardRef(function InAppNotificationHost({
+  theme,
+  onOpenNotification,
+}, ref) {
+  const bannerDismissTimerRef = useRef(null)
+  const recentlyShownBannerKeysRef = useRef(new Map())
+  const [inAppNotification, setInAppNotification] = useState(null)
+
+  const dismissInAppNotification = useCallback(() => {
+    if (bannerDismissTimerRef.current) {
+      clearTimeout(bannerDismissTimerRef.current)
+      bannerDismissTimerRef.current = null
+    }
+
+    setInAppNotification(null)
+  }, [])
+
+  const showInAppNotification = useCallback((nextNotification) => {
+    if (!nextNotification) return
+
+    const key = buildInAppNotificationKey(nextNotification)
+    const now = Date.now()
+    const lastShownAt = recentlyShownBannerKeysRef.current.get(key)
+
+    if (lastShownAt && now - lastShownAt < 3500) {
+      return
+    }
+
+    recentlyShownBannerKeysRef.current.set(key, now)
+    recentlyShownBannerKeysRef.current.forEach((shownAt, shownKey) => {
+      if (now - shownAt > 60000) {
+        recentlyShownBannerKeysRef.current.delete(shownKey)
+      }
+    })
+
+    if (nextNotification.playSound !== false && !isCallNotificationType(nextNotification?.data?.type)) {
+      const conversationId = nextNotification?.data?.conversationId
+      playNotificationSound({
+        conversationId,
+        playPhoneDefaultFallback: !conversationId,
+      })
+    }
+
+    if (bannerDismissTimerRef.current) {
+      clearTimeout(bannerDismissTimerRef.current)
+    }
+
+    setInAppNotification({
+      ...nextNotification,
+      id: nextNotification.id || key,
+      key,
+    })
+
+    bannerDismissTimerRef.current = setTimeout(() => {
+      setInAppNotification(null)
+      bannerDismissTimerRef.current = null
+    }, 4800)
+  }, [])
+
+  const handlePressInAppNotification = useCallback((notification) => {
+    dismissInAppNotification()
+    onOpenNotification(notification?.data || {})
+  }, [dismissInAppNotification, onOpenNotification])
+
+  useImperativeHandle(ref, () => ({
+    show: showInAppNotification,
+    dismiss: dismissInAppNotification,
+  }), [dismissInAppNotification, showInAppNotification])
+
+  useEffect(() => () => {
+    if (bannerDismissTimerRef.current) {
+      clearTimeout(bannerDismissTimerRef.current)
+    }
+  }, [])
+
+  return (
+    <InAppNotificationBanner
+      notification={inAppNotification}
+      theme={theme}
+      onPress={handlePressInAppNotification}
+      onDismiss={dismissInAppNotification}
+    />
+  )
+})
 
 function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanner }) {
   const handledResponseIds = useRef(new Set())
@@ -656,14 +746,101 @@ function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanne
   return null
 }
 
+function AccountDeletionLogoutWatcher({ userId }) {
+  const handledRef = useRef(false)
+
+  const logoutDeletedAccount = useCallback(async () => {
+    if (handledRef.current) return
+
+    handledRef.current = true
+
+    Alert.alert(
+      'Account deleted',
+      'Your account was deleted successfully. You have been signed out.'
+    )
+
+    await deactivateDevicePushToken().catch(() => null)
+    await clearGuestMode().catch(() => null)
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => null)
+
+    if (navigationRef.isReady()) {
+      navigationRef.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    handledRef.current = false
+  }, [userId])
+
+  useEffect(() => {
+    if (!userId) return undefined
+
+    let isMounted = true
+    let deletionChannel = null
+
+    async function checkDeletedRequest() {
+      const { data, error } = await supabase
+        .from('account_deletion_requests')
+        .select('id, status')
+        .eq('user_id', userId)
+        .eq('status', 'deleted')
+        .limit(1)
+        .maybeSingle()
+
+      if (!isMounted || error) return
+
+      if (data?.status === 'deleted') {
+        await logoutDeletedAccount()
+      }
+    }
+
+    deletionChannel = supabase
+      .channel(`account-deletion-logout-${userId}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'account_deletion_requests',
+          filter: `user_id=eq.${userId}`,
+        },
+        async (payload) => {
+          if (payload.new?.status === 'deleted') {
+            await logoutDeletedAccount()
+          }
+        }
+      )
+      .subscribe()
+
+    checkDeletedRequest()
+
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && !handledRef.current) {
+        checkDeletedRequest()
+      }
+    })
+
+    return () => {
+      isMounted = false
+      appStateSubscription.remove()
+      if (deletionChannel) {
+        supabase.removeChannel(deletionChannel)
+      }
+    }
+  }, [logoutDeletedAccount, userId])
+
+  return null
+}
+
 export default function AppNavigator() {
   const pendingNotificationPayload = useRef(null)
   const lastOpenedCallKeyRef = useRef(null)
-  const bannerDismissTimerRef = useRef(null)
-  const recentlyShownBannerKeysRef = useRef(new Map())
+  const notificationBannerRef = useRef(null)
   const [session, setSession] = useState(undefined)
   const [guestMode, setGuestMode] = useState(false)
-  const [inAppNotification, setInAppNotification] = useState(null)
   const { theme, t } = useAppSettings()
 
   const handleOpenNotification = useCallback((payload) => {
@@ -690,61 +867,9 @@ export default function AppNavigator() {
     pendingNotificationPayload.current = payload
   }, [])
 
-  const dismissInAppNotification = useCallback(() => {
-    if (bannerDismissTimerRef.current) {
-      clearTimeout(bannerDismissTimerRef.current)
-      bannerDismissTimerRef.current = null
-    }
-
-    setInAppNotification(null)
-  }, [])
-
   const showInAppNotification = useCallback((nextNotification) => {
-    if (!nextNotification) return
-
-    const key = buildInAppNotificationKey(nextNotification)
-    const now = Date.now()
-    const lastShownAt = recentlyShownBannerKeysRef.current.get(key)
-
-    if (lastShownAt && now - lastShownAt < 3500) {
-      return
-    }
-
-    recentlyShownBannerKeysRef.current.set(key, now)
-    recentlyShownBannerKeysRef.current.forEach((shownAt, shownKey) => {
-      if (now - shownAt > 60000) {
-        recentlyShownBannerKeysRef.current.delete(shownKey)
-      }
-    })
-
-    if (nextNotification.playSound !== false && !isCallNotificationType(nextNotification?.data?.type)) {
-      const conversationId = nextNotification?.data?.conversationId
-      playNotificationSound({
-        conversationId,
-        playPhoneDefaultFallback: !conversationId,
-      })
-    }
-
-    if (bannerDismissTimerRef.current) {
-      clearTimeout(bannerDismissTimerRef.current)
-    }
-
-    setInAppNotification({
-      ...nextNotification,
-      id: nextNotification.id || key,
-      key,
-    })
-
-    bannerDismissTimerRef.current = setTimeout(() => {
-      setInAppNotification(null)
-      bannerDismissTimerRef.current = null
-    }, 4800)
+    notificationBannerRef.current?.show(nextNotification)
   }, [])
-
-  const handlePressInAppNotification = useCallback((notification) => {
-    dismissInAppNotification()
-    handleOpenNotification(notification?.data || {})
-  }, [dismissInAppNotification, handleOpenNotification])
 
   useEffect(() => {
     let isMounted = true
@@ -786,12 +911,6 @@ export default function AppNavigator() {
     }
   }, [])
 
-  useEffect(() => () => {
-    if (bannerDismissTimerRef.current) {
-      clearTimeout(bannerDismissTimerRef.current)
-    }
-  }, [])
-
   if (session === undefined) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
@@ -807,6 +926,7 @@ export default function AppNavigator() {
         onOpenNotification={handleOpenNotification}
         onShowInAppBanner={showInAppNotification}
       />
+      <AccountDeletionLogoutWatcher userId={session?.user?.id} />
       <NavigationContainer
         ref={navigationRef}
         onReady={() => {
@@ -948,6 +1068,11 @@ export default function AppNavigator() {
           options={{ title: 'E-money requests' }}
         />
         <Stack.Screen
+          name="AdminAccountDeletion"
+          component={AdminAccountDeletionScreen}
+          options={{ title: 'Account deletion' }}
+        />
+        <Stack.Screen
           name="AdminUserDetail"
           component={AdminUserDetailScreen}
           options={{ title: t('stackAdminUserDetail', 'User Detail') }}
@@ -1004,11 +1129,10 @@ export default function AppNavigator() {
         />
       </Stack.Navigator>
       </NavigationContainer>
-      <InAppNotificationBanner
-        notification={inAppNotification}
+      <InAppNotificationHost
+        ref={notificationBannerRef}
         theme={theme}
-        onPress={handlePressInAppNotification}
-        onDismiss={dismissInAppNotification}
+        onOpenNotification={handleOpenNotification}
       />
     </View>
   )
