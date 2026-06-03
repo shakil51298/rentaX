@@ -92,6 +92,9 @@ export default function AudioCallScreen({ navigation, route }) {
   const endCallRef = useRef(null)
   const endingCallRef = useRef(false)
   const connectedAtRef = useRef(null)
+  const durationSecondsRef = useRef(0)
+  const isJoiningRef = useRef(false)
+  const isInChannelRef = useRef(false)
   const stageRef = useRef(stage)
   const joinRequestedRef = useRef(joinRequested)
 
@@ -102,6 +105,10 @@ export default function AudioCallScreen({ navigation, route }) {
   useEffect(() => {
     endingCallRef.current = endingCall
   }, [endingCall])
+
+  useEffect(() => {
+    durationSecondsRef.current = durationSeconds
+  }, [durationSeconds])
 
   useEffect(() => {
     stageRef.current = stage
@@ -115,6 +122,8 @@ export default function AudioCallScreen({ navigation, route }) {
     if (cleanedUpRef.current) return
 
     cleanedUpRef.current = true
+    isJoiningRef.current = false
+    isInChannelRef.current = false
 
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
@@ -122,19 +131,23 @@ export default function AudioCallScreen({ navigation, route }) {
     }
 
     const engine = rtcEngineRef.current
+    const callKey = callKeyRef.current
     rtcEngineRef.current = null
 
-    if (!engine) return
+    if (!engine) {
+      releaseActiveAgoraCall(callKey)
+      return
+    }
 
     try {
       engine.removeAllListeners()
       engine.leaveChannel()
-      engine.release()
+      engine.release(true)
     } catch (error) {
       console.warn('Audio call cleanup failed:', error?.message || error)
     } finally {
       clearActiveAgoraEngine(engine)
-      releaseActiveAgoraCall(callKeyRef.current)
+      releaseActiveAgoraCall(callKey)
     }
   }, [])
 
@@ -158,8 +171,9 @@ export default function AudioCallScreen({ navigation, route }) {
   }, [])
 
   const endCall = useCallback(async ({ remoteEnded = false } = {}) => {
-    if (endingCall) return
+    if (endingCallRef.current) return
 
+    endingCallRef.current = true
     setEndingCall(true)
     setStage('ended')
 
@@ -184,7 +198,7 @@ export default function AudioCallScreen({ navigation, route }) {
     cleanupRtcEngine()
 
     const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
-    const totalDurationSeconds = wasConnectedRef.current ? durationSeconds : 0
+    const totalDurationSeconds = wasConnectedRef.current ? durationSecondsRef.current : 0
 
     try {
       await saveAgoraCallHistory({
@@ -206,7 +220,7 @@ export default function AudioCallScreen({ navigation, route }) {
     } finally {
       navigation.goBack()
     }
-  }, [cleanupRtcEngine, conversationId, durationSeconds, endingCall, navigation, participant?.id, startedByMe, stopRingtone])
+  }, [cleanupRtcEngine, conversationId, navigation, participant?.id, startedByMe, stopRingtone])
 
   useEffect(() => {
     const { channel, ready } = subscribeToCallSignals(callSignalKey, (payload) => {
@@ -299,11 +313,6 @@ export default function AudioCallScreen({ navigation, route }) {
             type: 'ringing',
             senderId: user.id,
           })
-        } else {
-          await sendCallSignal(signalChannelRef.current, {
-            type: 'accepted',
-            senderId: user.id,
-          })
         }
 
         const token = await resolveAgoraToken({
@@ -329,6 +338,14 @@ export default function AudioCallScreen({ navigation, route }) {
 
         engine.addListener('onJoinChannelSuccess', () => {
           if (!mountedRef.current) return
+          isJoiningRef.current = false
+          isInChannelRef.current = true
+          if (!startedByMe) {
+            sendCallSignal(signalChannelRef.current, {
+              type: 'accepted',
+              senderId: currentUserIdRef.current,
+            }).catch(() => null)
+          }
           setStage('waiting')
         })
 
@@ -345,18 +362,18 @@ export default function AudioCallScreen({ navigation, route }) {
         engine.addListener('onUserOffline', () => {
           if (!mountedRef.current) return
           setRemoteJoined(false)
-          endCall({ remoteEnded: true })
+          endCallRef.current?.({ remoteEnded: true })
         })
 
         engine.addListener('onConnectionStateChanged', (_connection, state) => {
-          if (!mountedRef.current || endingCall) return
+          if (!mountedRef.current || endingCallRef.current) return
 
           if (state === ConnectionStateType.ConnectionStateConnecting) {
             setStage('joining')
           }
 
           if (state === ConnectionStateType.ConnectionStateDisconnected && wasConnectedRef.current) {
-            endCall({ remoteEnded: true })
+            endCallRef.current?.({ remoteEnded: true })
           }
         })
 
@@ -364,6 +381,12 @@ export default function AudioCallScreen({ navigation, route }) {
         engine.setEnableSpeakerphone(true)
 
         setStage('joining')
+
+        if (isJoiningRef.current || isInChannelRef.current) {
+          throw new Error('Agora is already joining this call. Please wait a moment.')
+        }
+
+        isJoiningRef.current = true
 
         const joinCode = engine.joinChannel(token, channelName, localUid, {
           channelProfile: ChannelProfileType.ChannelProfileCommunication,
@@ -375,10 +398,25 @@ export default function AudioCallScreen({ navigation, route }) {
         })
 
         if (joinCode < 0) {
+          isJoiningRef.current = false
           throw new Error(engine.getErrorDescription(joinCode) || `Agora join failed (${joinCode}).`)
         }
       } catch (error) {
+        isJoiningRef.current = false
+        isInChannelRef.current = false
+        if (!startedByMe && currentUserIdRef.current) {
+          try {
+            await signalReadyRef.current
+            await sendCallSignal(signalChannelRef.current, {
+              type: 'declined',
+              senderId: currentUserIdRef.current,
+            })
+          } catch (_signalError) {
+            // ignore failed join teardown signaling
+          }
+        }
         releaseActiveAgoraCall(callKeyRef.current)
+        cleanupRtcEngine()
         Alert.alert('Audio call unavailable', error?.message || 'Could not start the audio call.')
         navigation.goBack()
       }
@@ -391,7 +429,7 @@ export default function AudioCallScreen({ navigation, route }) {
       stopRingtone()
       cleanupRtcEngine()
     }
-  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endingCall, endCall, joinRequested, navigation, participant?.id, route?.params?.callId, startedByMe, stopRingtone])
+  }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endCall, joinRequested, navigation, participant?.id, route?.params?.callId, startedByMe, stopRingtone])
 
   useEffect(() => {
     if (stage !== 'connected') {
