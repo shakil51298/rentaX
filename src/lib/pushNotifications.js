@@ -4,6 +4,8 @@ import Constants from 'expo-constants'
 import { supabase } from './supabase'
 import { isConversationMuted } from './chatPreferences'
 import {
+  BRIGHT_CHIME_SOUND_FILE,
+  CLASSIC_RING_SOUND_FILE,
   PHONE_DEFAULT_SOUND_ID,
   RENTALX_POP_SOUND_FILE,
   getConversationNotificationSoundId,
@@ -138,6 +140,15 @@ async function ensureAndroidChannel() {
       sound: RENTALX_POP_SOUND_FILE,
     },
     {
+      id: 'messages_bright_chime',
+      name: 'Messages - Bright chime',
+      description: 'Direct messages using the bright chime sound',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 180, 80, 180],
+      lightColor: '#34C759',
+      sound: BRIGHT_CHIME_SOUND_FILE,
+    },
+    {
       id: 'messages_silent',
       name: 'Messages - silent',
       description: 'Direct messages with no notification sound',
@@ -163,6 +174,15 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 320, 180, 320, 180, 320],
       lightColor: '#22c55e',
       sound: RENTALX_POP_SOUND_FILE,
+    },
+    {
+      id: 'calls_classic_ring',
+      name: 'Calls - Classic ring',
+      description: 'Incoming audio and video calls using the classic ring tone',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 360, 160, 360, 420, 360],
+      lightColor: '#22c55e',
+      sound: CLASSIC_RING_SOUND_FILE,
     },
     {
       id: 'calls_silent',

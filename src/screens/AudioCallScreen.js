@@ -9,7 +9,6 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { Audio } from 'expo-av'
 import {
   buildAgoraChannelName,
   clearActiveAgoraEngine,
@@ -32,6 +31,11 @@ import Avatar from '../components/common/Avatar'
 import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
 import { createRingtoneSound } from '../lib/sounds'
+import {
+  resetCallAudioRoute,
+  setCallAudioRoute,
+  setCallRingtoneAudioMode,
+} from '../lib/callAudioRoute'
 
 function formatCallDuration(totalSeconds) {
   const safeSeconds = Math.max(0, totalSeconds || 0)
@@ -196,6 +200,7 @@ export default function AudioCallScreen({ navigation, route }) {
 
     await stopRingtone()
     cleanupRtcEngine()
+    await resetCallAudioRoute().catch(() => null)
 
     const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
     const totalDurationSeconds = wasConnectedRef.current ? durationSecondsRef.current : 0
@@ -379,6 +384,7 @@ export default function AudioCallScreen({ navigation, route }) {
 
         engine.enableAudio()
         engine.setEnableSpeakerphone(true)
+        await setCallAudioRoute(true)
 
         setStage('joining')
 
@@ -428,6 +434,7 @@ export default function AudioCallScreen({ navigation, route }) {
       mountedRef.current = false
       stopRingtone()
       cleanupRtcEngine()
+      resetCallAudioRoute().catch(() => null)
     }
   }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endCall, joinRequested, navigation, participant?.id, route?.params?.callId, startedByMe, stopRingtone])
 
@@ -487,6 +494,7 @@ export default function AudioCallScreen({ navigation, route }) {
     if (!engine) return
 
     engine.setEnableSpeakerphone(speakerOn)
+    setCallAudioRoute(speakerOn).catch(() => null)
   }, [speakerOn])
 
   useEffect(() => {
@@ -520,13 +528,7 @@ export default function AudioCallScreen({ navigation, route }) {
       if (ringtoneRef.current) return
 
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        })
+        await setCallRingtoneAudioMode()
 
         const sound = await createRingtoneSound({
           conversationId,
@@ -555,280 +557,283 @@ export default function AudioCallScreen({ navigation, route }) {
     }
   }, [endingCall, stage, stopRingtone])
 
+  const statusText = endingCall
+    ? 'Saving call...'
+    : getStatusLabel(stage, durationSeconds, startedByMe, participantName)
+  const routeLabel = speakerOn ? 'Loud speaker' : 'Normal speaker'
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#0f172a' }}>
-      <View
-        style={{
-          flex: 1,
-          paddingHorizontal: 24,
-          paddingTop: 10,
-          paddingBottom: 24,
-        }}
-      >
-        <View style={{ alignItems: 'flex-end' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#050914' }}>
+      <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 22 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 9,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+            }}
+          >
+            <Ionicons name="call-outline" size={16} color="#93c5fd" />
+            <Text style={{ color: '#e0f2fe', fontSize: 12, fontWeight: '900' }}>Audio call</Text>
+          </View>
+
           <TouchableOpacity
             onPress={() => endCall()}
             style={{
               width: 42,
               height: 42,
               borderRadius: 21,
-              backgroundColor: 'rgba(255,255,255,0.12)',
+              backgroundColor: 'rgba(255,255,255,0.1)',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="close" size={22} color="#fff" />
+            <Ionicons name="close" size={21} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Avatar
-            profile={participant}
-            name={participantName}
-            size={116}
-            borderWidth={4}
-            borderColor="rgba(255,255,255,0.22)"
-            backgroundColor="#dbeafe"
-            textColor="#1d4ed8"
+        <View
+          style={{
+            flex: 1,
+            marginTop: 18,
+            borderRadius: 34,
+            backgroundColor: '#0f172a',
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: 'rgba(147,197,253,0.18)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 22,
+          }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              top: -110,
+              width: 260,
+              height: 260,
+              borderRadius: 130,
+              backgroundColor: 'rgba(59,130,246,0.22)',
+            }}
           />
+          <View
+            style={{
+              position: 'absolute',
+              bottom: -120,
+              right: -50,
+              width: 250,
+              height: 250,
+              borderRadius: 125,
+              backgroundColor: 'rgba(20,184,166,0.16)',
+            }}
+          />
+
+          <View
+            style={{
+              width: 176,
+              height: 176,
+              borderRadius: 88,
+              backgroundColor: 'rgba(255,255,255,0.07)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.13)',
+            }}
+          >
+            <Avatar
+              profile={participant}
+              name={participantName}
+              size={134}
+              borderWidth={5}
+              borderColor={remoteJoined ? '#22c55e' : '#60a5fa'}
+              backgroundColor="#dbeafe"
+              textColor="#1d4ed8"
+            />
+          </View>
 
           <Text
             style={{
               color: '#fff',
-              fontSize: 28,
+              fontSize: 30,
               fontWeight: '900',
-              marginTop: 18,
+              marginTop: 24,
               textAlign: 'center',
             }}
+            numberOfLines={2}
           >
             {participantName}
           </Text>
 
           <Text
             style={{
-              color: '#cbd5e1',
-              fontSize: 16,
-              marginTop: 8,
+              color: stage === 'connected' ? '#bbf7d0' : '#bfdbfe',
+              fontSize: stage === 'connected' ? 32 : 15,
+              fontWeight: stage === 'connected' ? '900' : '800',
+              marginTop: 10,
               textAlign: 'center',
+              fontVariant: ['tabular-nums'],
             }}
           >
-            {endingCall
-              ? 'Saving call...'
-              : getStatusLabel(stage, durationSeconds, startedByMe, participantName)}
+            {statusText}
           </Text>
 
-          {!startedByMe && stage === 'incoming' ? (
-            <Text
-              style={{
-                color: '#94a3b8',
-                fontSize: 13,
-                marginTop: 10,
-                textAlign: 'center',
-                lineHeight: 19,
-              }}
-            >
-              Tap join to answer this audio call or decline to dismiss it.
-            </Text>
-          ) : null}
-
-          {property?.title ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
             <View
               style={{
-                marginTop: 18,
-                backgroundColor: 'rgba(255,255,255,0.08)',
-                borderRadius: 16,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                width: '100%',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                backgroundColor: remoteJoined ? 'rgba(34,197,94,0.16)' : 'rgba(255,255,255,0.08)',
               }}
             >
-              <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '800' }}>
-                About this property
-              </Text>
-              <Text
-                style={{
-                  color: '#fff',
-                  fontWeight: '800',
-                  marginTop: 5,
-                }}
-                numberOfLines={2}
-              >
-                {property.title}
+              <Ionicons name={remoteJoined ? 'radio' : 'hourglass-outline'} size={15} color={remoteJoined ? '#86efac' : '#cbd5e1'} />
+              <Text style={{ color: remoteJoined ? '#bbf7d0' : '#e2e8f0', fontSize: 12, fontWeight: '900' }}>
+                {remoteJoined ? 'Connected' : 'Waiting'}
               </Text>
             </View>
-          ) : null}
 
-          <View
-            style={{
-              marginTop: 20,
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              borderRadius: 16,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              width: '100%',
-            }}
-          >
-            <Text style={{ color: '#e2e8f0', lineHeight: 20 }}>
-              {remoteJoined
-                ? 'You are live on a real Agora audio call now.'
-                : 'The call is live. We are waiting for the other person to join this channel.'}
-            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                backgroundColor: 'rgba(96,165,250,0.14)',
+              }}
+            >
+              <Ionicons name={speakerOn ? 'volume-high' : 'phone-portrait-outline'} size={15} color="#93c5fd" />
+              <Text style={{ color: '#dbeafe', fontSize: 12, fontWeight: '900' }}>{routeLabel}</Text>
+            </View>
           </View>
+
+          {property?.title ? (
+            <Text
+              style={{
+                color: '#cbd5e1',
+                fontSize: 13,
+                fontWeight: '700',
+                marginTop: 18,
+                textAlign: 'center',
+              }}
+              numberOfLines={2}
+            >
+              {property.title}
+            </Text>
+          ) : null}
         </View>
 
         {stage === 'incoming' ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 22,
-            }}
-          >
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 22 }}>
             <TouchableOpacity
               onPress={() => endCall()}
               disabled={endingCall}
               style={{
-                width: 74,
-                height: 74,
-                borderRadius: 37,
+                width: 78,
+                height: 78,
+                borderRadius: 39,
                 backgroundColor: '#ef4444',
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: endingCall ? 0.75 : 1,
               }}
             >
-              <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+              <Ionicons name="call" size={29} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={acceptIncomingCall}
               style={{
-                width: 74,
-                height: 74,
-                borderRadius: 37,
-                backgroundColor: '#16a34a',
+                width: 78,
+                height: 78,
+                borderRadius: 39,
+                backgroundColor: '#22c55e',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="call" size={28} color="#fff" />
+              <Ionicons name="call" size={29} color="#fff" />
             </TouchableOpacity>
           </View>
         ) : (
-          <>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 18,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => setMuted((current) => !current)}
-                style={{
-                  alignItems: 'center',
-                  flex: 1,
-                }}
-              >
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.12)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name={muted ? 'mic-off' : 'mic'}
-                    size={24}
-                    color={muted ? '#dc2626' : '#fff'}
-                  />
-                </View>
-                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-                  {muted ? 'Unmute' : 'Mute'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setSpeakerOn((current) => !current)}
-                style={{
-                  alignItems: 'center',
-                  flex: 1,
-                }}
-              >
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.12)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name={speakerOn ? 'volume-high' : 'volume-mute'}
-                    size={24}
-                    color={speakerOn ? '#2563eb' : '#fff'}
-                  />
-                </View>
-                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-                  {speakerOn ? 'Speaker' : 'Earpiece'}
-                </Text>
-              </TouchableOpacity>
-
+          <View
+            style={{
+              marginTop: 18,
+              paddingHorizontal: 12,
+              paddingVertical: 14,
+              borderRadius: 28,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.1)',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <TouchableOpacity onPress={() => setMuted((current) => !current)} style={{ alignItems: 'center', width: 72 }}>
               <View
                 style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 27,
+                  backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.1)',
                   alignItems: 'center',
-                  flex: 1,
+                  justifyContent: 'center',
                 }}
               >
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: remoteJoined ? '#dcfce7' : 'rgba(255,255,255,0.12)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name={remoteJoined ? 'radio' : 'hourglass-outline'}
-                    size={24}
-                    color={remoteJoined ? '#15803d' : '#fff'}
-                  />
-                </View>
-                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-                  {remoteJoined ? 'Connected' : 'Waiting'}
-                </Text>
+                <Ionicons name={muted ? 'mic-off' : 'mic'} size={23} color={muted ? '#dc2626' : '#fff'} />
               </View>
-            </View>
-
-            <TouchableOpacity
-              onPress={() => endCall()}
-              disabled={endingCall}
-              style={{
-                alignSelf: 'center',
-                width: 74,
-                height: 74,
-                borderRadius: 37,
-                backgroundColor: '#ef4444',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: endingCall ? 0.75 : 1,
-              }}
-            >
-              {endingCall ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-              )}
+              <Text style={{ color: '#cbd5e1', marginTop: 7, fontSize: 11, fontWeight: '800' }}>
+                {muted ? 'Unmute' : 'Mute'}
+              </Text>
             </TouchableOpacity>
-          </>
+
+            <TouchableOpacity onPress={() => endCall()} disabled={endingCall} style={{ alignItems: 'center' }}>
+              <View
+                style={{
+                  width: 76,
+                  height: 76,
+                  borderRadius: 38,
+                  backgroundColor: '#ef4444',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: endingCall ? 0.75 : 1,
+                }}
+              >
+                {endingCall ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Ionicons name="call" size={30} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setSpeakerOn((current) => !current)} style={{ alignItems: 'center', width: 72 }}>
+              <View
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 27,
+                  backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name={speakerOn ? 'volume-high' : 'phone-portrait-outline'} size={23} color={speakerOn ? '#2563eb' : '#fff'} />
+              </View>
+              <Text style={{ color: '#cbd5e1', marginTop: 7, fontSize: 11, fontWeight: '800' }}>
+                {speakerOn ? 'Speaker' : 'Normal'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </SafeAreaView>

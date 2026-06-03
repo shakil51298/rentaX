@@ -9,9 +9,15 @@ export const PHONE_DEFAULT_SOUND_ID = 'phone_default'
 export const SILENT_SOUND_ID = 'silent'
 export const RENTALX_POP_SOUND_ID = 'rentalx_pop'
 export const RENTALX_POP_SOUND_FILE = 'notification.mp3'
+export const BRIGHT_CHIME_SOUND_ID = 'bright_chime'
+export const BRIGHT_CHIME_SOUND_FILE = 'bright-chime.wav'
+export const CLASSIC_RING_SOUND_ID = 'classic_ring'
+export const CLASSIC_RING_SOUND_FILE = 'classic-ring.wav'
 
 const soundAssets = {
   [RENTALX_POP_SOUND_ID]: require('../../assets/sounds/notification.mp3'),
+  [BRIGHT_CHIME_SOUND_ID]: require('../../assets/sounds/bright-chime.wav'),
+  [CLASSIC_RING_SOUND_ID]: require('../../assets/sounds/classic-ring.wav'),
 }
 
 export const NOTIFICATION_SOUND_OPTIONS = [
@@ -31,6 +37,15 @@ export const NOTIFICATION_SOUND_OPTIONS = [
     channelId: 'messages_rentalx_pop',
     pushSound: RENTALX_POP_SOUND_FILE,
     asset: soundAssets[RENTALX_POP_SOUND_ID],
+  },
+  {
+    id: BRIGHT_CHIME_SOUND_ID,
+    label: 'Bright chime',
+    subtitle: 'Crisp modern message tone',
+    icon: 'sparkles-outline',
+    channelId: 'messages_bright_chime',
+    pushSound: BRIGHT_CHIME_SOUND_FILE,
+    asset: soundAssets[BRIGHT_CHIME_SOUND_ID],
   },
   {
     id: SILENT_SOUND_ID,
@@ -59,6 +74,15 @@ export const RINGTONE_SOUND_OPTIONS = [
     channelId: 'calls_rentalx_pop',
     pushSound: RENTALX_POP_SOUND_FILE,
     asset: soundAssets[RENTALX_POP_SOUND_ID],
+  },
+  {
+    id: CLASSIC_RING_SOUND_ID,
+    label: 'Classic ring',
+    subtitle: 'Clear ringing caller tone',
+    icon: 'radio-outline',
+    channelId: 'calls_classic_ring',
+    pushSound: CLASSIC_RING_SOUND_FILE,
+    asset: soundAssets[CLASSIC_RING_SOUND_ID],
   },
   {
     id: SILENT_SOUND_ID,
@@ -101,8 +125,8 @@ async function stopPreviewSound() {
   }
 }
 
-async function createBundledSound(soundId, playbackOptions = {}) {
-  const option = getOption(soundId, NOTIFICATION_SOUND_OPTIONS)
+async function createBundledSound(soundId, options, playbackOptions = {}) {
+  const option = getOption(soundId, options)
   const asset = option.asset || soundAssets[RENTALX_POP_SOUND_ID]
 
   return Audio.Sound.createAsync(asset, playbackOptions)
@@ -207,7 +231,7 @@ export async function previewSound(soundId, kind = 'notification') {
     return
   }
 
-  const { sound } = await createBundledSound(option.id, {
+  const { sound } = await createBundledSound(option.id, options, {
     shouldPlay: true,
     isLooping: false,
     volume: kind === 'ringtone' ? 0.7 : 0.85,

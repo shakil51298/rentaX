@@ -4,7 +4,8 @@ const MUTED_KEY = 'chat-preferences:muted-conversations'
 const PINNED_KEY = 'chat-preferences:pinned-conversations'
 const NOTIFICATION_SOUND_KEY = 'chat-preferences:notification-sounds'
 const RINGTONE_SOUND_KEY = 'chat-preferences:ringtone-sounds'
-const DEFAULT_SOUND_ID = 'phone_default'
+const DEFAULT_NOTIFICATION_SOUND_ID = 'bright_chime'
+const DEFAULT_RINGTONE_SOUND_ID = 'classic_ring'
 
 async function readIdSet(key) {
   try {
@@ -49,14 +50,14 @@ async function setConversationFlag(key, conversationId, enabled) {
   await writeIdSet(key, ids)
 }
 
-async function getConversationPreference(key, conversationId, fallbackValue = DEFAULT_SOUND_ID) {
+async function getConversationPreference(key, conversationId, fallbackValue) {
   if (!conversationId) return fallbackValue
 
   const values = await readPreferenceMap(key)
   return values[String(conversationId)] || fallbackValue
 }
 
-async function setConversationPreference(key, conversationId, value, fallbackValue = DEFAULT_SOUND_ID) {
+async function setConversationPreference(key, conversationId, value, fallbackValue) {
   if (!conversationId) return
 
   const values = await readPreferenceMap(key)
@@ -103,17 +104,17 @@ export async function setConversationPinned(conversationId, enabled) {
 }
 
 export async function getConversationNotificationSoundId(conversationId) {
-  return getConversationPreference(NOTIFICATION_SOUND_KEY, conversationId)
+  return getConversationPreference(NOTIFICATION_SOUND_KEY, conversationId, DEFAULT_NOTIFICATION_SOUND_ID)
 }
 
 export async function setConversationNotificationSoundId(conversationId, soundId) {
-  await setConversationPreference(NOTIFICATION_SOUND_KEY, conversationId, soundId)
+  await setConversationPreference(NOTIFICATION_SOUND_KEY, conversationId, soundId, DEFAULT_NOTIFICATION_SOUND_ID)
 }
 
 export async function getConversationRingtoneSoundId(conversationId) {
-  return getConversationPreference(RINGTONE_SOUND_KEY, conversationId)
+  return getConversationPreference(RINGTONE_SOUND_KEY, conversationId, DEFAULT_RINGTONE_SOUND_ID)
 }
 
 export async function setConversationRingtoneSoundId(conversationId, soundId) {
-  await setConversationPreference(RINGTONE_SOUND_KEY, conversationId, soundId)
+  await setConversationPreference(RINGTONE_SOUND_KEY, conversationId, soundId, DEFAULT_RINGTONE_SOUND_ID)
 }

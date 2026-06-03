@@ -44,7 +44,9 @@
         "expo-notifications",
         {
           "sounds": [
-            "./assets/sounds/notification.mp3"
+            "./assets/sounds/notification.mp3",
+            "./assets/sounds/bright-chime.wav",
+            "./assets/sounds/classic-ring.wav"
           ]
         }
       ],
@@ -57,7 +59,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Rental X to access your camera for ID verification and guided selfie capture."
+          "cameraPermission": "Allow Rental X to access your camera for video calls, taking photos, and ID verification."
         }
       ],
       [

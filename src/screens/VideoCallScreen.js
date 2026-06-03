@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { Audio } from 'expo-av'
+import { requestCameraPermissionsAsync } from 'expo-camera'
 import Avatar from '../components/common/Avatar'
 import {
   buildAgoraChannelName,
@@ -33,6 +33,11 @@ import {
 import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
 import { createRingtoneSound } from '../lib/sounds'
+import {
+  resetCallAudioRoute,
+  setCallAudioRoute,
+  setCallRingtoneAudioMode,
+} from '../lib/callAudioRoute'
 
 function formatCallDuration(totalSeconds) {
   const safeSeconds = Math.max(0, totalSeconds || 0)
@@ -77,9 +82,10 @@ export default function VideoCallScreen({ navigation, route }) {
   const [speakerOn, setSpeakerOn] = useState(true)
   const [endingCall, setEndingCall] = useState(false)
   const [remoteUid, setRemoteUid] = useState(null)
-  const [localUid, setLocalUid] = useState(0)
   const [agoraModule, setAgoraModule] = useState(null)
   const [joinRequested, setJoinRequested] = useState(startedByMe)
+  const [cameraPermissionError, setCameraPermissionError] = useState('')
+  const [localVideoReady, setLocalVideoReady] = useState(false)
   const AgoraSurfaceView = agoraModule?.RtcSurfaceView || null
 
   const rtcEngineRef = useRef(null)
@@ -196,6 +202,7 @@ export default function VideoCallScreen({ navigation, route }) {
 
     await stopRingtone()
     cleanupRtcEngine()
+    await resetCallAudioRoute().catch(() => null)
 
     const callStatus = wasConnectedRef.current ? 'completed' : 'cancelled'
     const totalDurationSeconds = wasConnectedRef.current ? durationSecondsRef.current : 0
@@ -291,9 +298,18 @@ export default function VideoCallScreen({ navigation, route }) {
           throw new Error('Agora is not configured yet. Add EXPO_PUBLIC_AGORA_APP_ID and rebuild the app.')
         }
 
+        const cameraPermission = await requestCameraPermissionsAsync()
+
+        if (cameraPermission.status !== 'granted') {
+          setCameraPermissionError('Camera permission is needed for video calls.')
+          setCameraOn(false)
+          throw new Error('Camera permission is needed for video calls.')
+        }
+
+        setCameraPermissionError('')
+
         currentUserIdRef.current = user.id
         const nextLocalUid = hashAgoraUid(user.id)
-        setLocalUid(nextLocalUid)
 
         const channelName =
           channelNameFromRoute ||
@@ -341,6 +357,11 @@ export default function VideoCallScreen({ navigation, route }) {
           Alert.alert('Agora error', message || 'The video call ran into a problem.')
         })
 
+        engine.addListener('onFirstLocalVideoFrame', () => {
+          if (!mountedRef.current) return
+          setLocalVideoReady(true)
+        })
+
         engine.addListener('onJoinChannelSuccess', () => {
           if (!mountedRef.current) return
           isJoiningRef.current = false
@@ -386,7 +407,9 @@ export default function VideoCallScreen({ navigation, route }) {
         })
 
         engine.setEnableSpeakerphone(true)
+        await setCallAudioRoute(true)
         engine.enableVideo()
+        engine.enableLocalVideo(true)
         engine.startPreview(VideoSourceType.VideoSourceCamera)
 
         setStage('joining')
@@ -438,6 +461,7 @@ export default function VideoCallScreen({ navigation, route }) {
       mountedRef.current = false
       stopRingtone()
       cleanupRtcEngine()
+      resetCallAudioRoute().catch(() => null)
     }
   }, [channelNameFromRoute, cleanupRtcEngine, conversationId, endCall, joinRequested, navigation, participant?.id, route?.params?.callId, startedByMe, stopRingtone])
 
@@ -497,6 +521,7 @@ export default function VideoCallScreen({ navigation, route }) {
     if (!engine) return
 
     engine.setEnableSpeakerphone(speakerOn)
+    setCallAudioRoute(speakerOn).catch(() => null)
   }, [speakerOn])
 
   useEffect(() => {
@@ -505,6 +530,7 @@ export default function VideoCallScreen({ navigation, route }) {
     if (!engine) return
 
     engine.muteLocalVideoStream(!cameraOn)
+    engine.enableLocalVideo(cameraOn)
   }, [cameraOn])
 
   useEffect(() => {
@@ -527,13 +553,7 @@ export default function VideoCallScreen({ navigation, route }) {
       if (ringtoneRef.current) return
 
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        })
+        await setCallRingtoneAudioMode()
 
         const sound = await createRingtoneSound({
           conversationId,
@@ -573,333 +593,360 @@ export default function VideoCallScreen({ navigation, route }) {
     }
   }, [endCall])
 
+  const statusText = endingCall
+    ? 'Saving call...'
+    : getStatusLabel(stage, durationSeconds, startedByMe, participantName)
+  const routeLabel = speakerOn ? 'Loud speaker' : 'Normal speaker'
+  const showLocalPreview = cameraOn && AgoraSurfaceView && !cameraPermissionError
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#020617' }}>
-      <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}>
-        <View style={{ alignItems: 'flex-end' }}>
-          <TouchableOpacity
-            onPress={() => endCall()}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              backgroundColor: 'rgba(255,255,255,0.12)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="close" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ flex: 1, justifyContent: 'center' }}>
-          <View
-            style={{
-              borderRadius: 26,
-              overflow: 'hidden',
-              backgroundColor: '#111827',
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.08)',
-              height: 320,
-            }}
-          >
-            <View
-              style={{
-                ...StyleSheet.absoluteFillObject,
-                backgroundColor: '#0f172a',
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#030712' }}>
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: '#020617' }}>
+          {remoteUid && AgoraSurfaceView ? (
+            <AgoraSurfaceView
+              style={StyleSheet.absoluteFill}
+              canvas={{
+                uid: remoteUid,
+                renderMode: agoraModule.RenderModeType.RenderModeHidden,
+                sourceType: agoraModule.VideoSourceType.VideoSourceRemote,
               }}
             />
+          ) : (
             <View
               style={{
-                position: 'absolute',
-                top: -30,
-                right: -10,
-                width: 190,
-                height: 190,
-                borderRadius: 999,
-                backgroundColor: 'rgba(37,99,235,0.26)',
-              }}
-            />
-
-            {remoteUid ? (
-              AgoraSurfaceView ? (
-                <AgoraSurfaceView
-                  style={StyleSheet.absoluteFill}
-                  canvas={{
-                    uid: remoteUid,
-                    renderMode: agoraModule.RenderModeType.RenderModeHidden,
-                  }}
-                />
-              ) : null
-            ) : (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingHorizontal: 22,
-                }}
-              >
-                <Avatar
-                  profile={participant}
-                  name={participantName}
-                  size={108}
-                  borderWidth={4}
-                  borderColor="rgba(255,255,255,0.22)"
-                  backgroundColor="#dbeafe"
-                  textColor="#1d4ed8"
-                />
-                <Text
-                  style={{
-                    color: '#fff',
-                    fontSize: 26,
-                    fontWeight: '900',
-                    marginTop: 18,
-                    textAlign: 'center',
-                  }}
-                >
-                  {participantName}
-                </Text>
-              </View>
-            )}
-
-            <View
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: 24,
+                flex: 1,
                 alignItems: 'center',
-                paddingHorizontal: 22,
+                justifyContent: 'center',
+                paddingHorizontal: 26,
               }}
             >
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -80,
+                  left: -50,
+                  width: 260,
+                  height: 260,
+                  borderRadius: 130,
+                  backgroundColor: 'rgba(37,99,235,0.22)',
+                }}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  bottom: -110,
+                  right: -60,
+                  width: 290,
+                  height: 290,
+                  borderRadius: 145,
+                  backgroundColor: 'rgba(20,184,166,0.16)',
+                }}
+              />
+              <Avatar
+                profile={participant}
+                name={participantName}
+                size={124}
+                borderWidth={5}
+                borderColor="rgba(255,255,255,0.26)"
+                backgroundColor="#dbeafe"
+                textColor="#1d4ed8"
+              />
               <Text
                 style={{
                   color: '#fff',
-                  fontSize: 16,
-                  fontWeight: '800',
+                  fontSize: 30,
+                  fontWeight: '900',
+                  marginTop: 20,
                   textAlign: 'center',
                 }}
+                numberOfLines={2}
               >
-                {endingCall
-                  ? 'Saving call...'
-                  : getStatusLabel(stage, durationSeconds, startedByMe, participantName)}
+                {participantName}
               </Text>
+            </View>
+          )}
 
-              {!startedByMe && stage === 'incoming' ? (
-                <Text
-                  style={{
-                    color: '#cbd5e1',
-                    fontSize: 13,
-                    marginTop: 10,
-                    textAlign: 'center',
-                    lineHeight: 19,
-                  }}
-                >
-                  Tap join to answer this video call or decline to dismiss it.
+          <View
+            style={{
+              ...StyleSheet.absoluteFillObject,
+              backgroundColor: remoteUid ? 'rgba(2,6,23,0.16)' : 'transparent',
+            }}
+            pointerEvents="none"
+          />
+
+          <View
+            style={{
+              position: 'absolute',
+              top: 14,
+              left: 16,
+              right: 16,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+            }}
+          >
+            <View
+              style={{
+                maxWidth: '76%',
+                borderRadius: 20,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                backgroundColor: 'rgba(2,6,23,0.58)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.12)',
+              }}
+            >
+              <Text style={{ color: '#bfdbfe', fontSize: 12, fontWeight: '900' }}>Video call</Text>
+              <Text
+                style={{
+                  color: stage === 'connected' ? '#bbf7d0' : '#fff',
+                  fontSize: stage === 'connected' ? 28 : 15,
+                  fontWeight: '900',
+                  marginTop: 4,
+                  fontVariant: ['tabular-nums'],
+                }}
+                numberOfLines={2}
+              >
+                {statusText}
+              </Text>
+              {property?.title ? (
+                <Text style={{ color: '#cbd5e1', fontSize: 12, fontWeight: '700', marginTop: 5 }} numberOfLines={1}>
+                  {property.title}
                 </Text>
               ) : null}
             </View>
 
-            <View
+            <TouchableOpacity
+              onPress={() => endCall()}
               style={{
-                position: 'absolute',
-                right: 16,
-                bottom: 16,
-                width: 108,
-                height: 148,
-                borderRadius: 20,
-                backgroundColor: cameraOn ? '#1e293b' : '#0f172a',
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.12)',
-                overflow: 'hidden',
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: 'rgba(2,6,23,0.58)',
                 alignItems: 'center',
                 justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.12)',
               }}
             >
-              {cameraOn ? (
-                AgoraSurfaceView ? (
-                  <AgoraSurfaceView
-                    style={{ width: '100%', height: '100%' }}
-                    zOrderMediaOverlay
-                    canvas={{
-                      uid: localUid || 0,
-                      renderMode: agoraModule.RenderModeType.RenderModeHidden,
-                      sourceType: agoraModule.VideoSourceType.VideoSourceCamera,
-                    }}
-                  />
-                ) : null
-              ) : (
-                <Ionicons name="videocam-off" size={28} color="#94a3b8" />
-              )}
-            </View>
+              <Ionicons name="close" size={22} color="#fff" />
+            </TouchableOpacity>
           </View>
 
-          {property?.title ? (
+          <View
+            style={{
+              position: 'absolute',
+              right: 16,
+              bottom: stage === 'incoming' ? 124 : 150,
+              width: 116,
+              height: 158,
+              borderRadius: 24,
+              backgroundColor: '#0f172a',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.18)',
+              overflow: 'hidden',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {showLocalPreview ? (
+              <>
+                <AgoraSurfaceView
+                  style={{ width: '100%', height: '100%' }}
+                  zOrderMediaOverlay
+                  canvas={{
+                    uid: 0,
+                    renderMode: agoraModule.RenderModeType.RenderModeHidden,
+                    sourceType: agoraModule.VideoSourceType.VideoSourceCamera,
+                  }}
+                />
+                {!localVideoReady ? (
+                  <View
+                    style={{
+                      ...StyleSheet.absoluteFillObject,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(15,23,42,0.58)',
+                    }}
+                  >
+                    <ActivityIndicator color="#fff" />
+                    <Text style={{ color: '#dbeafe', fontSize: 11, fontWeight: '800', marginTop: 7 }}>
+                      Camera
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <View style={{ alignItems: 'center', paddingHorizontal: 10 }}>
+                <Ionicons name="videocam-off" size={28} color="#cbd5e1" />
+                <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: '800', marginTop: 8, textAlign: 'center' }}>
+                  {cameraPermissionError || 'Camera off'}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View
+            style={{
+              position: 'absolute',
+              left: 16,
+              bottom: stage === 'incoming' ? 124 : 150,
+              flexDirection: 'row',
+              gap: 8,
+            }}
+          >
             <View
               style={{
-                marginTop: 14,
-                backgroundColor: 'rgba(255,255,255,0.08)',
-                borderRadius: 16,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                borderRadius: 999,
+                paddingHorizontal: 11,
+                paddingVertical: 7,
+                backgroundColor: 'rgba(2,6,23,0.62)',
               }}
             >
-              <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '800' }}>
-                About this property
-              </Text>
-              <Text style={{ color: '#fff', fontWeight: '800', marginTop: 5 }} numberOfLines={2}>
-                {property.title}
-              </Text>
+              <Ionicons name={speakerOn ? 'volume-high' : 'phone-portrait-outline'} size={15} color="#93c5fd" />
+              <Text style={{ color: '#dbeafe', fontSize: 12, fontWeight: '900' }}>{routeLabel}</Text>
             </View>
-          ) : null}
+          </View>
         </View>
 
         {stage === 'incoming' ? (
           <View
             style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 26,
               flexDirection: 'row',
               justifyContent: 'center',
-              gap: 22,
+              gap: 26,
             }}
           >
             <TouchableOpacity
               onPress={() => endCall()}
               disabled={endingCall}
               style={{
-                width: 74,
-                height: 74,
-                borderRadius: 37,
+                width: 80,
+                height: 80,
+                borderRadius: 40,
                 backgroundColor: '#ef4444',
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: endingCall ? 0.75 : 1,
               }}
             >
-              <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+              <Ionicons name="call" size={30} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={acceptIncomingCall}
               style={{
-                width: 74,
-                height: 74,
-                borderRadius: 37,
-                backgroundColor: '#16a34a',
+                width: 80,
+                height: 80,
+                borderRadius: 40,
+                backgroundColor: '#22c55e',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="videocam" size={28} color="#fff" />
+              <Ionicons name="videocam" size={30} color="#fff" />
             </TouchableOpacity>
           </View>
         ) : (
-          <>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 18,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => setMuted((current) => !current)}
-                style={{ alignItems: 'center', flex: 1 }}
+          <View
+            style={{
+              position: 'absolute',
+              left: 14,
+              right: 14,
+              bottom: 20,
+              paddingHorizontal: 12,
+              paddingVertical: 14,
+              borderRadius: 30,
+              backgroundColor: 'rgba(2,6,23,0.82)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.12)',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <TouchableOpacity onPress={() => setMuted((current) => !current)} style={{ alignItems: 'center', width: 66 }}>
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: muted ? '#fee2e2' : 'rgba(255,255,255,0.12)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name={muted ? 'mic-off' : 'mic'}
-                    size={24}
-                    color={muted ? '#dc2626' : '#fff'}
-                  />
-                </View>
-                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-                  {muted ? 'Unmute' : 'Mute'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setCameraOn((current) => !current)}
-                style={{ alignItems: 'center', flex: 1 }}
-              >
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: cameraOn ? 'rgba(255,255,255,0.12)' : '#fee2e2',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name={cameraOn ? 'videocam' : 'videocam-off'}
-                    size={24}
-                    color={cameraOn ? '#fff' : '#dc2626'}
-                  />
-                </View>
-                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-                  {cameraOn ? 'Camera' : 'Camera off'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setSpeakerOn((current) => !current)}
-                style={{ alignItems: 'center', flex: 1 }}
-              >
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.12)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name={speakerOn ? 'volume-high' : 'volume-mute'}
-                    size={24}
-                    color={speakerOn ? '#2563eb' : '#fff'}
-                  />
-                </View>
-                <Text style={{ color: '#cbd5e1', marginTop: 8, fontWeight: '700' }}>
-                  {speakerOn ? 'Speaker' : 'Earpiece'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              onPress={() => endCall()}
-              disabled={endingCall}
-              style={{
-                alignSelf: 'center',
-                width: 74,
-                height: 74,
-                borderRadius: 37,
-                backgroundColor: '#ef4444',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: endingCall ? 0.75 : 1,
-              }}
-            >
-              {endingCall ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-              )}
+                <Ionicons name={muted ? 'mic-off' : 'mic'} size={22} color={muted ? '#dc2626' : '#fff'} />
+              </View>
+              <Text style={{ color: '#cbd5e1', marginTop: 7, fontSize: 11, fontWeight: '800' }}>
+                {muted ? 'Unmute' : 'Mute'}
+              </Text>
             </TouchableOpacity>
-          </>
+
+            <TouchableOpacity onPress={() => setCameraOn((current) => !current)} style={{ alignItems: 'center', width: 66 }}>
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor: cameraOn ? 'rgba(255,255,255,0.1)' : '#fee2e2',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name={cameraOn ? 'videocam' : 'videocam-off'} size={22} color={cameraOn ? '#fff' : '#dc2626'} />
+              </View>
+              <Text style={{ color: '#cbd5e1', marginTop: 7, fontSize: 11, fontWeight: '800' }}>
+                {cameraOn ? 'Camera' : 'Off'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => endCall()} disabled={endingCall} style={{ alignItems: 'center' }}>
+              <View
+                style={{
+                  width: 74,
+                  height: 74,
+                  borderRadius: 37,
+                  backgroundColor: '#ef4444',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: endingCall ? 0.75 : 1,
+                }}
+              >
+                {endingCall ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Ionicons name="call" size={30} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setSpeakerOn((current) => !current)} style={{ alignItems: 'center', width: 66 }}>
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor: speakerOn ? '#dbeafe' : 'rgba(255,255,255,0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name={speakerOn ? 'volume-high' : 'phone-portrait-outline'} size={22} color={speakerOn ? '#2563eb' : '#fff'} />
+              </View>
+              <Text style={{ color: '#cbd5e1', marginTop: 7, fontSize: 11, fontWeight: '800' }}>
+                {speakerOn ? 'Speaker' : 'Normal'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </SafeAreaView>

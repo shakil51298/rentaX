@@ -16,6 +16,10 @@ const PHONE_DEFAULT_SOUND_ID = 'phone_default'
 const SILENT_SOUND_ID = 'silent'
 const RENTALX_POP_SOUND_ID = 'rentalx_pop'
 const RENTALX_POP_SOUND_FILE = 'notification.mp3'
+const BRIGHT_CHIME_SOUND_ID = 'bright_chime'
+const BRIGHT_CHIME_SOUND_FILE = 'bright-chime.wav'
+const CLASSIC_RING_SOUND_ID = 'classic_ring'
+const CLASSIC_RING_SOUND_FILE = 'classic-ring.wav'
 
 function getChannelId(type?: string, requestedChannelId?: string) {
   if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
@@ -50,7 +54,15 @@ function getChannelId(type?: string, requestedChannelId?: string) {
 }
 
 function getPreferredSoundConfig(type?: string, soundId?: string | null) {
-  const safeSoundId = soundId || PHONE_DEFAULT_SOUND_ID
+  const safeSoundId =
+    soundId
+    || (
+      type === 'incoming_audio_call' || type === 'incoming_video_call'
+        ? CLASSIC_RING_SOUND_ID
+        : type === 'chat_message'
+          ? BRIGHT_CHIME_SOUND_ID
+          : PHONE_DEFAULT_SOUND_ID
+    )
 
   if (type === 'incoming_audio_call' || type === 'incoming_video_call') {
     if (safeSoundId === SILENT_SOUND_ID) {
@@ -59,6 +71,10 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
 
     if (safeSoundId === RENTALX_POP_SOUND_ID) {
       return { channelId: 'calls_rentalx_pop', sound: RENTALX_POP_SOUND_FILE }
+    }
+
+    if (safeSoundId === CLASSIC_RING_SOUND_ID) {
+      return { channelId: 'calls_classic_ring', sound: CLASSIC_RING_SOUND_FILE }
     }
 
     return { channelId: 'calls', sound: 'default' }
@@ -71,6 +87,10 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
 
     if (safeSoundId === RENTALX_POP_SOUND_ID) {
       return { channelId: 'messages_rentalx_pop', sound: RENTALX_POP_SOUND_FILE }
+    }
+
+    if (safeSoundId === BRIGHT_CHIME_SOUND_ID) {
+      return { channelId: 'messages_bright_chime', sound: BRIGHT_CHIME_SOUND_FILE }
     }
 
     return { channelId: 'messages', sound: 'default' }
