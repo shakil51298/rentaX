@@ -916,6 +916,105 @@ function DocumentMessage({ message, isMine }) {
   )
 }
 
+function LinkPreviewCard({ preview, isMine }) {
+  if (!preview?.url) return null
+
+  async function openLink() {
+    try {
+      await Linking.openURL(preview.url)
+    } catch {
+      Alert.alert('Link unavailable', 'This link could not be opened right now.')
+    }
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={openLink}
+      activeOpacity={0.84}
+      style={{
+        marginTop: 9,
+        width: 232,
+        maxWidth: '100%',
+        borderRadius: 14,
+        overflow: 'hidden',
+        backgroundColor: isMine ? 'rgba(255,255,255,0.16)' : '#f1f5f9',
+        borderWidth: 1,
+        borderColor: isMine ? 'rgba(255,255,255,0.18)' : '#e2e8f0',
+      }}
+    >
+      {preview.image ? (
+        <Image
+          source={{ uri: preview.image }}
+          style={{
+            width: '100%',
+            height: 108,
+            backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
+          }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            height: 58,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : '#dbeafe',
+          }}
+        >
+          <Ionicons name="link" size={24} color={isMine ? '#fff' : '#1877F2'} />
+        </View>
+      )}
+
+      <View style={{ paddingHorizontal: 10, paddingVertical: 9 }}>
+        <Text
+          numberOfLines={2}
+          style={{
+            color: isMine ? '#fff' : '#0f172a',
+            fontSize: 13,
+            lineHeight: 18,
+            fontWeight: '900',
+          }}
+        >
+          {preview.loading ? 'Loading preview...' : preview.title || preview.siteName || 'Link'}
+        </Text>
+        {preview.description ? (
+          <Text
+            numberOfLines={2}
+            style={{
+              color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
+              fontSize: 11,
+              lineHeight: 15,
+              marginTop: 4,
+              fontWeight: '700',
+            }}
+          >
+            {preview.description}
+          </Text>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+          <Ionicons
+            name="open-outline"
+            size={13}
+            color={isMine ? 'rgba(255,255,255,0.78)' : '#1877F2'}
+          />
+          <Text
+            numberOfLines={1}
+            style={{
+              color: isMine ? 'rgba(255,255,255,0.78)' : '#1877F2',
+              fontSize: 10,
+              fontWeight: '900',
+              marginLeft: 4,
+              textTransform: 'uppercase',
+            }}
+          >
+            {preview.siteName || preview.url}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 function renderMessageContent(
   item,
   isMine,
@@ -923,7 +1022,8 @@ function renderMessageContent(
   redPacket,
   onOpenRedPacket,
   openingRedPacketId,
-  onOpenContactCard
+  onOpenContactCard,
+  linkPreview
 ) {
   if (item.deleted_for_everyone_at) {
     return (
@@ -997,17 +1097,22 @@ function renderMessageContent(
   }
 
   return (
-    <Text
-      selectable
-      selectionColor={isMine ? 'rgba(255,255,255,0.45)' : '#93c5fd'}
-      style={{
-        color: isMine ? '#fff' : '#111827',
-        fontSize: 15,
-        lineHeight: 21,
-      }}
-    >
-      {item.body}
-    </Text>
+    <View>
+      <Text
+        selectable
+        selectionColor={isMine ? 'rgba(255,255,255,0.45)' : '#93c5fd'}
+        style={{
+          color: isMine ? '#fff' : '#111827',
+          fontSize: 15,
+          lineHeight: 21,
+        }}
+      >
+        {item.body}
+      </Text>
+      {linkPreview ? (
+        <LinkPreviewCard preview={linkPreview} isMine={isMine} />
+      ) : null}
+    </View>
   )
 }
 
@@ -1031,6 +1136,7 @@ export default function MessageBubble({
   onOpenRedPacket,
   openingRedPacketId,
   onOpenContactCard,
+  linkPreview,
   outgoingBubbleColor = '#1877F2',
   highlighted = false,
 }) {
@@ -1394,7 +1500,8 @@ export default function MessageBubble({
               redPacket,
               onOpenRedPacket,
               openingRedPacketId,
-              onOpenContactCard
+              onOpenContactCard,
+              linkPreview
             )}
 
             <View

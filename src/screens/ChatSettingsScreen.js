@@ -15,10 +15,12 @@ import Avatar from '../components/common/Avatar'
 import { supabase } from '../lib/supabase'
 import { useAppSettings } from '../lib/appSettings'
 import {
+  getConversationLinkPreviewEnabled,
   isConversationMuted,
   isConversationPinned,
   getConversationNotificationSoundId,
   getConversationRingtoneSoundId,
+  setConversationLinkPreviewEnabled,
   setConversationMuted,
   setConversationNotificationSoundId,
   setConversationPinned,
@@ -345,10 +347,12 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const { theme } = useAppSettings()
   const [muted, setMuted] = useState(false)
   const [pinned, setPinned] = useState(false)
+  const [linkPreviewsEnabled, setLinkPreviewsEnabled] = useState(true)
   const [groupMembers, setGroupMembers] = useState(route?.params?.groupMembers || [])
   const [currentUserId, setCurrentUserId] = useState(null)
   const [savingMute, setSavingMute] = useState(false)
   const [savingPinned, setSavingPinned] = useState(false)
+  const [savingLinkPreview, setSavingLinkPreview] = useState(false)
   const [savingSound, setSavingSound] = useState(false)
   const [notificationSoundId, setNotificationSoundId] = useState(IPHONE_NOTIFICATION_SOUND_ID)
   const [ringtoneSoundId, setRingtoneSoundId] = useState(BEST_LOVE_SOUND_ID)
@@ -361,6 +365,7 @@ export default function ChatSettingsScreen({ route, navigation }) {
     const [
       nextMuted,
       nextPinned,
+      nextLinkPreviewsEnabled,
       nextNotificationSoundId,
       nextRingtoneSoundId,
       {
@@ -369,6 +374,7 @@ export default function ChatSettingsScreen({ route, navigation }) {
     ] = await Promise.all([
       isConversationMuted(conversationId),
       isConversationPinned(conversationId),
+      getConversationLinkPreviewEnabled(conversationId),
       getConversationNotificationSoundId(conversationId),
       getConversationRingtoneSoundId(conversationId),
       supabase.auth.getUser(),
@@ -376,6 +382,7 @@ export default function ChatSettingsScreen({ route, navigation }) {
 
     setMuted(nextMuted)
     setPinned(nextPinned)
+    setLinkPreviewsEnabled(nextLinkPreviewsEnabled)
     setNotificationSoundId(nextNotificationSoundId)
     setRingtoneSoundId(nextRingtoneSoundId)
     setCurrentUserId(user?.id || null)
@@ -432,6 +439,22 @@ export default function ChatSettingsScreen({ route, navigation }) {
       Alert.alert('Sticky failed', error?.message || 'Could not update this chat.')
     } finally {
       setSavingPinned(false)
+    }
+  }
+
+  async function toggleLinkPreview(nextValue) {
+    if (!conversationId || savingLinkPreview) return
+
+    setLinkPreviewsEnabled(nextValue)
+    setSavingLinkPreview(true)
+
+    try {
+      await setConversationLinkPreviewEnabled(conversationId, nextValue)
+    } catch (error) {
+      setLinkPreviewsEnabled(!nextValue)
+      Alert.alert('Link preview failed', error?.message || 'Could not update link previews.')
+    } finally {
+      setSavingLinkPreview(false)
     }
   }
 
@@ -690,6 +713,19 @@ export default function ChatSettingsScreen({ route, navigation }) {
                 disabled={!conversationId || savingMute}
                 trackColor={{ false: theme.border, true: theme.accentSoft }}
                 thumbColor={muted ? theme.accent : theme.surfaceMuted}
+              />
+            )}
+          />
+          <SettingsRow
+            icon="link-outline"
+            label="Link previews"
+            right={(
+              <Switch
+                value={linkPreviewsEnabled}
+                onValueChange={toggleLinkPreview}
+                disabled={!conversationId || savingLinkPreview}
+                trackColor={{ false: theme.border, true: theme.accentSoft }}
+                thumbColor={linkPreviewsEnabled ? theme.accent : theme.surfaceMuted}
               />
             )}
           />

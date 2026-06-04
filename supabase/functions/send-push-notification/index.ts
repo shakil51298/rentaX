@@ -22,8 +22,10 @@ const CLASSIC_RING_SOUND_ID = 'classic_ring'
 const CLASSIC_RING_SOUND_FILE = 'classic_ring.wav'
 const IPHONE_NOTIFICATION_SOUND_ID = 'iphone_notification'
 const IPHONE_NOTIFICATION_SOUND_FILE = 'iphone_notification.mp3'
+const IPHONE_NOTIFICATION_CHANNEL_ID = 'messages_iphone_notification_v2'
 const BEST_LOVE_SOUND_ID = 'best_love'
 const BEST_LOVE_SOUND_FILE = 'best_love.mp3'
+const BEST_LOVE_CALL_CHANNEL_ID = 'calls_best_love_v2'
 
 function getChannelId(type?: string, requestedChannelId?: string) {
   if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
@@ -82,7 +84,7 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
     }
 
     if (safeSoundId === BEST_LOVE_SOUND_ID) {
-      return { channelId: 'calls_best_love', sound: BEST_LOVE_SOUND_FILE }
+      return { channelId: BEST_LOVE_CALL_CHANNEL_ID, sound: BEST_LOVE_SOUND_FILE }
     }
 
     return { channelId: 'calls', sound: 'default' }
@@ -102,7 +104,7 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
     }
 
     if (safeSoundId === IPHONE_NOTIFICATION_SOUND_ID) {
-      return { channelId: 'messages_iphone_notification', sound: IPHONE_NOTIFICATION_SOUND_FILE }
+      return { channelId: IPHONE_NOTIFICATION_CHANNEL_ID, sound: IPHONE_NOTIFICATION_SOUND_FILE }
     }
 
     return { channelId: 'messages', sound: 'default' }
@@ -240,6 +242,12 @@ Deno.serve(async (request) => {
       typeof payload.data?.channelId === 'string' ? payload.data.channelId : undefined
     )
 
+  const type = typeof payload.data?.type === 'string' ? payload.data.type : undefined
+  const isCall = type === 'incoming_audio_call' || type === 'incoming_video_call'
+  const callNotificationKey = isCall
+    ? String(payload.data?.callId || payload.data?.channelName || `${payload.recipientId}-call`)
+    : null
+
   const messages = pushTokens.map((item) => {
     const message: Record<string, unknown> = {
       to: item.expo_push_token,
@@ -248,6 +256,13 @@ Deno.serve(async (request) => {
       data: payload.data || {},
       channelId,
       priority: 'high',
+    }
+
+    if (isCall) {
+      message.ttl = 45
+      message.expiration = Math.floor(Date.now() / 1000) + 45
+      message.collapseId = callNotificationKey
+      message.tag = callNotificationKey
     }
 
     const sound = soundConfig ? soundConfig.sound : 'default'

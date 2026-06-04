@@ -87,11 +87,21 @@ import {
 } from '../lib/agoraCall'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
 import { getLocationSelectionFromCoords } from '../lib/location'
-import { getMutedConversationIds, getPinnedConversationIds } from '../lib/chatPreferences'
+import {
+  getConversationLinkPreviewEnabled,
+  getMutedConversationIds,
+  getPinnedConversationIds,
+} from '../lib/chatPreferences'
 import { fetchConnections } from '../lib/social'
+import {
+  extractFirstLink,
+  fetchLinkPreview,
+  getLinkHost,
+} from '../lib/linkPreviews'
 
 const EMPTY_ROUTE_PARAMS = {}
 const RED_PACKET_MAX_AMOUNT = 200
+const FORWARD_MAX_RECIPIENTS = 30
 const COMPOSER_INPUT_MIN_HEIGHT = 42
 const COMPOSER_INPUT_MAX_HEIGHT = 116
 const MESSAGE_SETTINGS_STORAGE_KEY = 'rentalx.message_settings.v1'
@@ -347,6 +357,41 @@ function getReplySnippet(message) {
   return message.body || 'Message'
 }
 
+function canForwardMessage(message) {
+  if (!message || message.deleted_for_everyone_at) return false
+  if (message.message_type === 'call') return false
+  if (isRedPacketMessage(message)) return false
+  return Boolean(
+    String(message.body || '').trim() ||
+    message.media_url ||
+    isLocationMessage(message) ||
+    isContactCardMessage(message)
+  )
+}
+
+function buildForwardMessagePayload(message) {
+  if (!canForwardMessage(message)) return null
+
+  return {
+    body: message.body || null,
+    message_type: message.message_type || 'text',
+    media_url: message.media_url || null,
+    media_mime_type: message.media_mime_type || null,
+    media_name: message.media_name || null,
+    audio_duration_ms: message.audio_duration_ms || null,
+  }
+}
+
+function getForwardNotificationBody(message) {
+  if (isLocationMessage(message)) return 'Forwarded a location'
+  if (isContactCardMessage(message)) return 'Forwarded a contact card'
+  if (message.message_type === 'image') return 'Forwarded a photo'
+  if (message.message_type === 'video') return 'Forwarded a video'
+  if (message.message_type === 'voice') return 'Forwarded a voice message'
+  if (message.message_type === 'file') return `Forwarded ${message.media_name || 'a file'}`
+  return String(message.body || '').trim().slice(0, 120) || 'Forwarded a message'
+}
+
 function getConversationSummaryFromMessage(message) {
   if (!message || message.deleted_for_everyone_at) {
     return {
@@ -550,6 +595,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [loadingContactPicker, setLoadingContactPicker] = useState(false)
   const [sendingContactCard, setSendingContactCard] = useState(false)
   const [contactPickerActionLoadingId, setContactPickerActionLoadingId] = useState(null)
+  const [forwardTargetMessage, setForwardTargetMessage] = useState(null)
+  const [selectedForwardContactIds, setSelectedForwardContactIds] = useState([])
+  const [forwardingMessage, setForwardingMessage] = useState(false)
   const [pendingVoiceNote, setPendingVoiceNote] = useState(null)
   const [recordingWaveform, setRecordingWaveform] = useState([])
   const [composerInputHeight, setComposerInputHeight] = useState(COMPOSER_INPUT_MIN_HEIGHT)
@@ -566,7 +614,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   })
   const [selectedMediaAssets, setSelectedMediaAssets] = useState([])
   const [chatAppearance, setChatAppearance] = useState(null)
+  const [linkPreviewsEnabled, setLinkPreviewsEnabled] = useState(true)
+  const [linkPreviewsByUrl, setLinkPreviewsByUrl] = useState({})
   const typingTimeoutRef = useRef(null)
+  const linkPreviewRequestsRef = useRef(new Set())
   const voicePreviewPlayer = useAudioPlayer(pendingVoiceNote?.uri || null, {
     updateInterval: 250,
   })
@@ -1406,6 +1457,84 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }, [])
 
+  useFocusEffect(
+    useCallback(() => {
+      if (mode !== 'chat' || !conversation?.id) return undefined
+
+      let isMounted = true
+
+      getConversationLinkPreviewEnabled(conversation.id)
+        .then((enabled) => {
+          if (isMounted) {
+            setLinkPreviewsEnabled(enabled)
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setLinkPreviewsEnabled(true)
+          }
+        })
+
+      return () => {
+        isMounted = false
+      }
+    }, [conversation?.id, mode])
+  )
+
+  useEffect(() => {
+    if (!linkPreviewsEnabled) return
+
+    const urls = [
+      ...new Set(
+        messages
+          .filter((message) => message.message_type === 'text' && !message.deleted_for_everyone_at)
+          .map((message) => extractFirstLink(message.body))
+          .filter(Boolean)
+      ),
+    ]
+
+    urls.forEach((url) => {
+      if (linkPreviewsByUrl[url] || linkPreviewRequestsRef.current.has(url)) return
+
+      linkPreviewRequestsRef.current.add(url)
+      setLinkPreviewsByUrl((current) => ({
+        ...current,
+        [url]: {
+          url,
+          title: getLinkHost(url),
+          description: url,
+          image: null,
+          siteName: getLinkHost(url),
+          loading: true,
+        },
+      }))
+
+      fetchLinkPreview(url)
+        .then((preview) => {
+          setLinkPreviewsByUrl((current) => ({
+            ...current,
+            [url]: {
+              ...(preview || current[url]),
+              loading: false,
+            },
+          }))
+        })
+        .catch(() => {
+          setLinkPreviewsByUrl((current) => ({
+            ...current,
+            [url]: {
+              url,
+              title: getLinkHost(url),
+              description: url,
+              image: null,
+              siteName: getLinkHost(url),
+              loading: false,
+            },
+          }))
+        })
+    })
+  }, [linkPreviewsByUrl, linkPreviewsEnabled, messages])
+
   useEffect(() => {
     if (!currentUser?.id || !scannedRentalXId) return
 
@@ -1889,20 +2018,36 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     setLoadingContactPicker(true)
 
     try {
-      const [followers, following] = await Promise.all([
+      const [followers, following, directConversationResult] = await Promise.all([
         fetchConnections({ userId: currentUser.id, kind: 'followers', currentUserId: currentUser.id }),
         fetchConnections({ userId: currentUser.id, kind: 'following', currentUserId: currentUser.id }),
+        supabase
+          .from('chat_conversations')
+          .select('participant_one_id, participant_two_id, conversation_type')
+          .or(`participant_one_id.eq.${currentUser.id},participant_two_id.eq.${currentUser.id}`),
       ])
+      const directContactIds = directConversationResult.error
+        ? []
+        : (directConversationResult.data || [])
+          .filter((item) => !isGroupConversation(item))
+          .map((item) =>
+            item.participant_one_id === currentUser.id
+              ? item.participant_two_id
+              : item.participant_one_id
+          )
       const contactIds = [
         ...followers.map((item) => item.related_user_id),
         ...following.map((item) => item.related_user_id),
+        ...directContactIds,
         ...conversationRows.map((row) => row.other_user_id),
+        otherUser?.id || otherUser?.user_id,
       ].filter((id) => id && id !== currentUser.id)
-      const profilesById = await fetchProfiles(contactIds)
+      const uniqueContactIds = [...new Set(contactIds)]
+      const profilesById = await fetchProfiles(uniqueContactIds)
       const followingIds = new Set(following.map((item) => item.related_user_id).filter(Boolean))
       const contactsById = {}
 
-      contactIds.forEach((id) => {
+      uniqueContactIds.forEach((id) => {
         const profile = profilesById[id]
 
         if (profile?.user_id || profile?.id) {
@@ -2000,6 +2145,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }
 
   async function handleContactPickerSelect(contact) {
+    if (contactPickerPurpose === 'forward-message') {
+      toggleForwardContact(contact)
+      return
+    }
+
     if (contactPickerPurpose === 'share') {
       await sendContactCard(contact)
       return
@@ -2059,6 +2209,159 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       Alert.alert('Share failed', error?.message || 'Could not share this contact.')
     } finally {
       setSendingContactCard(false)
+    }
+  }
+
+  function toggleForwardContact(contact) {
+    const contactId = contact?.id || contact?.user_id
+
+    if (!contactId || forwardingMessage) return
+
+    setSelectedForwardContactIds((current) => {
+      if (current.includes(contactId)) {
+        return current.filter((id) => id !== contactId)
+      }
+
+      if (current.length >= FORWARD_MAX_RECIPIENTS) {
+        Alert.alert('Limit reached', `You can forward to up to ${FORWARD_MAX_RECIPIENTS} people at a time.`)
+        return current
+      }
+
+      return [...current, contactId]
+    })
+  }
+
+  function closeContactPicker() {
+    if (sendingContactCard || forwardingMessage || contactPickerActionLoadingId) return
+
+    setContactPickerVisible(false)
+    setContactPickerSearchQuery('')
+    setSelectedForwardContactIds([])
+    setForwardTargetMessage(null)
+  }
+
+  async function openForwardMessagePicker(message) {
+    if (!canForwardMessage(message)) {
+      Alert.alert('Forward unavailable', 'This message cannot be forwarded.')
+      return
+    }
+
+    setMessageActionTarget(null)
+    setForwardTargetMessage(message)
+    setSelectedForwardContactIds([])
+    await openMessageContactPicker('forward-message')
+  }
+
+  async function sendForwardedMessage() {
+    if (!currentUser?.id || !forwardTargetMessage || forwardingMessage) return
+
+    const forwardPayload = buildForwardMessagePayload(forwardTargetMessage)
+
+    if (!forwardPayload) {
+      Alert.alert('Forward unavailable', 'This message cannot be forwarded.')
+      return
+    }
+
+    const targetContacts = contactPickerContacts.filter((contact) =>
+      selectedForwardContactIds.includes(contact.id || contact.user_id)
+    )
+
+    if (!targetContacts.length) {
+      Alert.alert('Choose contacts', 'Select at least one person to forward this message.')
+      return
+    }
+
+    if (targetContacts.length > FORWARD_MAX_RECIPIENTS) {
+      Alert.alert('Too many people', `Select up to ${FORWARD_MAX_RECIPIENTS} people at a time.`)
+      return
+    }
+
+    setForwardingMessage(true)
+
+    try {
+      const baseTime = Date.now()
+      const forwardedConversationIds = []
+
+      for (let index = 0; index < targetContacts.length; index += 1) {
+        const contact = targetContacts[index]
+        const targetUserId = contact.id || contact.user_id
+
+        if (!targetUserId || targetUserId === currentUser.id) continue
+
+        const targetProfile = {
+          id: targetUserId,
+          user_id: targetUserId,
+          ...contact,
+        }
+        const targetConversation = await getOrCreateConversation(currentUser, targetProfile, null)
+
+        if (!targetConversation?.id) continue
+
+        const createdAt = new Date(baseTime + index * 700).toISOString()
+        const { data: insertedMessage, error: insertError } = await supabase
+          .from('chat_messages')
+          .insert({
+            conversation_id: targetConversation.id,
+            sender_id: currentUser.id,
+            receiver_id: targetUserId,
+            ...forwardPayload,
+            reply_to_message_id: null,
+            created_at: createdAt,
+            updated_at: createdAt,
+          })
+          .select('*')
+          .single()
+
+        if (insertError) throw insertError
+
+        const summary = getConversationSummaryFromMessage({
+          ...insertedMessage,
+          created_at: createdAt,
+          sender_id: currentUser.id,
+        })
+        const deletionField = getConversationDeletionField(targetConversation, currentUser.id)
+
+        await supabase
+          .from('chat_conversations')
+          .update({
+            ...summary,
+            updated_at: createdAt,
+            ...(deletionField ? { [deletionField]: null } : {}),
+          })
+          .eq('id', targetConversation.id)
+
+        forwardedConversationIds.push(targetConversation.id)
+
+        await sendPushToUser({
+          recipientId: targetUserId,
+          title: currentUserName,
+          body: getForwardNotificationBody(forwardTargetMessage),
+          data: {
+            type: 'chat_message',
+            actorId: currentUser.id,
+            actorName: currentUserName,
+            actorAvatarUrl: getUserAvatarUrl(currentUser),
+            conversationId: targetConversation.id,
+            messageType: forwardPayload.message_type,
+            createdAt,
+          },
+        })
+      }
+
+      if (conversation?.id && forwardedConversationIds.includes(conversation.id)) {
+        await loadMessages(conversation.id, currentUser.id, false, conversation)
+      }
+
+      await loadConversationList(currentUser)
+      setContactPickerVisible(false)
+      setContactPickerSearchQuery('')
+      setSelectedForwardContactIds([])
+      setForwardTargetMessage(null)
+      Alert.alert('Forwarded', `Sent to ${targetContacts.length} ${targetContacts.length === 1 ? 'person' : 'people'}.`)
+    } catch (error) {
+      Alert.alert('Forward failed', error?.message || 'Could not forward this message.')
+    } finally {
+      setForwardingMessage(false)
     }
   }
 
@@ -3377,6 +3680,15 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       })
     }
 
+    if (canForwardMessage(messageActionTarget)) {
+      actions.push({
+        icon: 'share-social-outline',
+        title: 'Forward',
+        subtitle: 'Send this message to multiple people.',
+        onPress: () => openForwardMessagePicker(messageActionTarget),
+      })
+    }
+
     actions.push({
       icon: 'trash-outline',
       title: 'Delete for me',
@@ -3496,14 +3808,18 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const isScanContactPreview = contactPickerPurpose === 'scan-preview'
   const contactPickerModalTitle = isScanContactPreview
     ? 'Contact preview'
-    : contactPickerPurpose === 'add-contact'
-      ? 'Add contacts'
-      : 'New chat'
+    : contactPickerPurpose === 'forward-message'
+      ? 'Forward to'
+      : contactPickerPurpose === 'add-contact'
+        ? 'Add contacts'
+        : 'New chat'
   const contactPickerModalIcon = isScanContactPreview
     ? 'qr-code-outline'
-    : contactPickerPurpose === 'add-contact'
-      ? 'person-add-outline'
-      : 'chatbubble-ellipses-outline'
+    : contactPickerPurpose === 'forward-message'
+      ? 'return-down-forward-outline'
+      : contactPickerPurpose === 'add-contact'
+        ? 'person-add-outline'
+        : 'chatbubble-ellipses-outline'
 
   const activeConversationRows = useMemo(
     () =>
@@ -4034,16 +4350,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             transparent
             animationType="slide"
             onRequestClose={() => {
-              if (!contactPickerActionLoadingId) {
-                setContactPickerVisible(false)
-              }
+              closeContactPicker()
             }}
           >
             <Pressable
               onPress={() => {
-                if (!contactPickerActionLoadingId) {
-                  setContactPickerVisible(false)
-                }
+                closeContactPicker()
               }}
               style={{
                 flex: 1,
@@ -4094,19 +4406,26 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       color={theme.accent}
                     />
                   </View>
-                  <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '900' }}>
-                    {contactPickerModalTitle}
-                  </Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }} numberOfLines={1}>
+                      {contactPickerModalTitle}
+                    </Text>
+                    {contactPickerPurpose === 'forward-message' ? (
+                      <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginTop: 2 }}>
+                        Select friends to forward. {selectedForwardContactIds.length}/{FORWARD_MAX_RECIPIENTS}
+                      </Text>
+                    ) : null}
+                  </View>
                   <TouchableOpacity
-                    onPress={() => setContactPickerVisible(false)}
-                    disabled={Boolean(contactPickerActionLoadingId)}
+                    onPress={closeContactPicker}
+                    disabled={Boolean(contactPickerActionLoadingId) || forwardingMessage}
                     style={{
                       width: 34,
                       height: 34,
                       borderRadius: 17,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      opacity: contactPickerActionLoadingId ? 0.5 : 1,
+                      opacity: contactPickerActionLoadingId || forwardingMessage ? 0.5 : 1,
                     }}
                   >
                     <Ionicons name="close" size={20} color={theme.mutedText} />
@@ -4185,27 +4504,37 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       const loadingContact = contactPickerActionLoadingId === payload.userId
                       const contactIsAdded = Boolean(contact.is_following)
                       const isAdded = contactPickerPurpose === 'add-contact' && contactIsAdded
+                      const isForwardSelected = selectedForwardContactIds.includes(payload.userId)
+                      const forwardLimitReached =
+                        contactPickerPurpose === 'forward-message' &&
+                        selectedForwardContactIds.length >= FORWARD_MAX_RECIPIENTS &&
+                        !isForwardSelected
                       const contactPickerActionIcon = isScanContactPreview
                         ? (contactIsAdded ? 'chatbubble-ellipses-outline' : 'person-add-outline')
-                        : contactPickerPurpose === 'add-contact'
-                          ? (isAdded ? 'checkmark-circle' : 'person-add-outline')
-                          : 'chatbubble-ellipses-outline'
+                        : contactPickerPurpose === 'forward-message'
+                          ? (isForwardSelected ? 'checkmark-circle' : 'ellipse-outline')
+                          : contactPickerPurpose === 'add-contact'
+                            ? (isAdded ? 'checkmark-circle' : 'person-add-outline')
+                            : 'chatbubble-ellipses-outline'
 
                       return (
                         <TouchableOpacity
                           key={`message-contact-${payload.userId}`}
                           onPress={() => handleContactPickerSelect(contact)}
-                          disabled={Boolean(contactPickerActionLoadingId) || isAdded}
+                          disabled={Boolean(contactPickerActionLoadingId) || isAdded || forwardingMessage}
                           activeOpacity={0.84}
                           style={{
                             borderRadius: 16,
                             borderWidth: 1,
-                            borderColor: theme.border,
-                            backgroundColor: theme.surfaceMuted,
+                            borderColor: isForwardSelected ? theme.accent : theme.border,
+                            backgroundColor: isForwardSelected ? theme.accentSoft : theme.surfaceMuted,
                             padding: 11,
                             flexDirection: 'row',
                             alignItems: 'center',
-                            opacity: contactPickerActionLoadingId && !loadingContact ? 0.55 : 1,
+                            opacity:
+                              (contactPickerActionLoadingId && !loadingContact) || forwardingMessage || forwardLimitReached
+                                ? 0.55
+                                : 1,
                           }}
                         >
                           <Avatar profile={contact} name={payload.displayName} size={44} />
@@ -4236,6 +4565,25 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
                           {loadingContact ? (
                             <ActivityIndicator size="small" color={theme.accent} />
+                          ) : contactPickerPurpose === 'forward-message' ? (
+                            <View
+                              style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 14,
+                                backgroundColor: isForwardSelected ? theme.accent : theme.surface,
+                                borderWidth: 1,
+                                borderColor: isForwardSelected ? theme.accent : theme.border,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Ionicons
+                                name={contactPickerActionIcon}
+                                size={17}
+                                color={isForwardSelected ? '#fff' : theme.mutedText}
+                              />
+                            </View>
                           ) : isScanContactPreview && !contactIsAdded ? (
                             <View
                               style={{
@@ -4277,6 +4625,58 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     ) : null}
                   </ScrollView>
                 )}
+
+                {contactPickerPurpose === 'forward-message' ? (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: 10,
+                      paddingTop: 12,
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={closeContactPicker}
+                      disabled={forwardingMessage}
+                      style={{
+                        flex: 1,
+                        height: 46,
+                        borderRadius: 15,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: forwardingMessage ? 0.6 : 1,
+                      }}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900' }}>
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={sendForwardedMessage}
+                      disabled={forwardingMessage || selectedForwardContactIds.length === 0}
+                      style={{
+                        flex: 1,
+                        height: 46,
+                        borderRadius: 15,
+                        backgroundColor: theme.accent,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: forwardingMessage || selectedForwardContactIds.length === 0 ? 0.55 : 1,
+                      }}
+                    >
+                      {forwardingMessage ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>
+                          Send {selectedForwardContactIds.length ? `(${selectedForwardContactIds.length}/${FORWARD_MAX_RECIPIENTS})` : ''}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </Pressable>
             </Pressable>
           </Modal>
@@ -4626,6 +5026,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 onOpenRedPacket={openRedPacket}
                 openingRedPacketId={openingRedPacketId}
                 onOpenContactCard={openContactCard}
+                linkPreview={
+                  linkPreviewsEnabled
+                    ? linkPreviewsByUrl[extractFirstLink(item.body)]
+                    : null
+                }
                 outgoingBubbleColor={activeColorPreset.bubble}
                 highlighted={highlightedMessageId === item.id}
               />
@@ -5341,20 +5746,16 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       </KeyboardAvoidingView>
 
       <Modal
-        visible={contactPickerVisible && contactPickerPurpose === 'share'}
+        visible={contactPickerVisible && ['share', 'forward-message'].includes(contactPickerPurpose)}
         transparent
         animationType="slide"
         onRequestClose={() => {
-          if (!sendingContactCard) {
-            setContactPickerVisible(false)
-          }
+          closeContactPicker()
         }}
       >
         <Pressable
           onPress={() => {
-            if (!sendingContactCard) {
-              setContactPickerVisible(false)
-            }
+            closeContactPicker()
           }}
           style={{
             flex: 1,
@@ -5399,25 +5800,32 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   marginRight: 10,
                 }}
               >
-                <Ionicons name="id-card-outline" size={21} color={theme.accent} />
+                <Ionicons
+                  name={contactPickerPurpose === 'forward-message' ? 'return-down-forward-outline' : 'id-card-outline'}
+                  size={21}
+                  color={theme.accent}
+                />
               </View>
-              <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '900' }}>
-                {contactPickerPurpose === 'new-chat'
-                  ? 'New chat'
-                  : contactPickerPurpose === 'add-contact'
-                    ? 'Add contacts'
-                    : 'Share contact'}
-              </Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }} numberOfLines={1}>
+                  {contactPickerPurpose === 'forward-message' ? 'Forward to' : 'Share contact'}
+                </Text>
+                {contactPickerPurpose === 'forward-message' ? (
+                  <Text style={{ color: theme.mutedText, fontSize: 11, fontWeight: '800', marginTop: 2 }}>
+                    Select people. {selectedForwardContactIds.length}/{FORWARD_MAX_RECIPIENTS}
+                  </Text>
+                ) : null}
+              </View>
               <TouchableOpacity
-                onPress={() => setContactPickerVisible(false)}
-                disabled={sendingContactCard}
+                onPress={closeContactPicker}
+                disabled={sendingContactCard || forwardingMessage}
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: 17,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  opacity: sendingContactCard ? 0.5 : 1,
+                  opacity: sendingContactCard || forwardingMessage ? 0.5 : 1,
                 }}
               >
                 <Ionicons name="close" size={20} color={theme.mutedText} />
@@ -5493,22 +5901,39 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   const payload = buildContactCardPayload(contact)
                   const isMe = payload.userId === currentUser?.id
                   const initial = payload.displayName.charAt(0).toUpperCase()
+                  const isForwardMode = contactPickerPurpose === 'forward-message'
+                  const isForwardSelected = selectedForwardContactIds.includes(payload.userId)
+                  const forwardLimitReached =
+                    isForwardMode &&
+                    selectedForwardContactIds.length >= FORWARD_MAX_RECIPIENTS &&
+                    !isForwardSelected
 
                   return (
                     <TouchableOpacity
-                      key={`contact-share-${payload.userId}`}
+                      key={`contact-share-${contactPickerPurpose}-${payload.userId}`}
                       onPress={() => handleContactPickerSelect(contact)}
-                      disabled={sendingContactCard || Boolean(contactPickerActionLoadingId)}
+                      disabled={
+                        sendingContactCard ||
+                        forwardingMessage ||
+                        Boolean(contactPickerActionLoadingId) ||
+                        forwardLimitReached
+                      }
                       activeOpacity={0.84}
                       style={{
                         borderRadius: 16,
                         borderWidth: 1,
-                        borderColor: theme.border,
-                        backgroundColor: theme.surfaceMuted,
+                        borderColor: isForwardSelected ? theme.accent : theme.border,
+                        backgroundColor: isForwardSelected ? theme.accentSoft : theme.surfaceMuted,
                         padding: 11,
                         flexDirection: 'row',
                         alignItems: 'center',
-                        opacity: sendingContactCard || contactPickerActionLoadingId ? 0.65 : 1,
+                        opacity:
+                          sendingContactCard ||
+                          forwardingMessage ||
+                          contactPickerActionLoadingId ||
+                          forwardLimitReached
+                            ? 0.65
+                            : 1,
                       }}
                     >
                       {payload.avatarUrl ? (
@@ -5565,6 +5990,25 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
                       {sendingContactCard || contactPickerActionLoadingId === payload.userId ? (
                         <ActivityIndicator size="small" color={theme.accent} />
+                      ) : isForwardMode ? (
+                        <View
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 14,
+                            backgroundColor: isForwardSelected ? theme.accent : theme.surface,
+                            borderWidth: 1,
+                            borderColor: isForwardSelected ? theme.accent : theme.border,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons
+                            name={isForwardSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={17}
+                            color={isForwardSelected ? '#fff' : theme.mutedText}
+                          />
+                        </View>
                       ) : (
                         <Ionicons
                           name={
@@ -5595,6 +6039,59 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 ) : null}
               </ScrollView>
             )}
+
+            {contactPickerPurpose === 'forward-message' ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                  paddingTop: 12,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={closeContactPicker}
+                  disabled={forwardingMessage}
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    borderRadius: 15,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: forwardingMessage ? 0.55 : 1,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={sendForwardedMessage}
+                  disabled={forwardingMessage || selectedForwardContactIds.length === 0}
+                  style={{
+                    flex: 1.4,
+                    minHeight: 44,
+                    borderRadius: 15,
+                    backgroundColor: theme.accent,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 7,
+                    opacity: forwardingMessage || selectedForwardContactIds.length === 0 ? 0.55 : 1,
+                  }}
+                >
+                  {forwardingMessage ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="return-down-forward-outline" size={17} color="#fff" />
+                  )}
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>
+                    Send {selectedForwardContactIds.length ? `(${selectedForwardContactIds.length}/${FORWARD_MAX_RECIPIENTS})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>

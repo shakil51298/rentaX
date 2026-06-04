@@ -57,7 +57,17 @@ import {
 } from '../lib/pushNotifications'
 import { useAppSettings } from '../lib/appSettings'
 import { isConversationMuted } from '../lib/chatPreferences'
-import { playNotificationSound } from '../lib/sounds'
+import { createRingtoneSound, playNotificationSound } from '../lib/sounds'
+import {
+  buildCallSignalKey,
+  sendCallSignal,
+  subscribeToCallSignals,
+  unsubscribeCallSignals,
+} from '../lib/callSignaling'
+import {
+  resetCallAudioRoute,
+  setCallRingtoneAudioMode,
+} from '../lib/callAudioRoute'
 
 const LIVE_ALERT_NOTIFICATION_TYPES = new Set([
   'saved_search_match',
@@ -379,14 +389,18 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
 
   if (!notification) return null
 
+  const notificationType = notification?.data?.type
+  const isCall = isCallNotificationType(notificationType)
+  const isVideoCall = notificationType === 'incoming_video_call'
+
   return (
     <Animated.View
       pointerEvents="box-none"
       style={{
         position: 'absolute',
-        top: insets.top + 8,
-        left: 12,
-        right: 12,
+        top: insets.top + (isCall ? 14 : 8),
+        left: isCall ? 10 : 12,
+        right: isCall ? 10 : 12,
         zIndex: 9999,
         opacity,
         transform: [{ translateY }],
@@ -395,13 +409,13 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
       <Pressable
         onPress={() => onPress(notification)}
         style={({ pressed }) => ({
-          minHeight: 72,
-          borderRadius: 18,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          backgroundColor: theme.surface,
+          minHeight: isCall ? 104 : 72,
+          borderRadius: isCall ? 24 : 18,
+          paddingHorizontal: isCall ? 14 : 12,
+          paddingVertical: isCall ? 14 : 10,
+          backgroundColor: isCall ? '#06111f' : theme.surface,
           borderWidth: 1,
-          borderColor: theme.border,
+          borderColor: isCall ? 'rgba(34,197,94,0.35)' : theme.border,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
@@ -415,28 +429,41 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
       >
         <View
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: 21,
-            backgroundColor: theme.accentSoft,
+            width: isCall ? 52 : 42,
+            height: isCall ? 52 : 42,
+            borderRadius: isCall ? 26 : 21,
+            backgroundColor: isCall ? 'rgba(34,197,94,0.18)' : theme.accentSoft,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           <Ionicons
-            name={getInAppNotificationIcon(notification?.data?.type)}
-            size={21}
-            color={theme.accent}
+            name={isCall ? (isVideoCall ? 'videocam' : 'call') : getInAppNotificationIcon(notificationType)}
+            size={isCall ? 25 : 21}
+            color={isCall ? '#86efac' : theme.accent}
           />
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>
+          {isCall ? (
+            <Text
+              style={{
+                color: '#86efac',
+                fontSize: 11,
+                fontWeight: '900',
+                textTransform: 'uppercase',
+              }}
+            >
+              Incoming {isVideoCall ? 'video' : 'audio'} call
+            </Text>
+          ) : null}
           <Text
             numberOfLines={1}
             style={{
-              color: theme.text,
-              fontSize: 14,
+              color: isCall ? '#fff' : theme.text,
+              fontSize: isCall ? 16 : 14,
               fontWeight: '900',
+              marginTop: isCall ? 3 : 0,
             }}
           >
             {notification.title || 'Rental X'}
@@ -445,7 +472,7 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
             numberOfLines={2}
             style={{
               marginTop: 2,
-              color: theme.mutedText,
+              color: isCall ? '#bfdbfe' : theme.mutedText,
               fontSize: 12,
               lineHeight: 17,
               fontWeight: '600',
@@ -455,20 +482,54 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={onDismiss}
-          activeOpacity={0.8}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: theme.accentSoft,
-          }}
-        >
-          <Ionicons name="close" size={18} color={theme.accent} />
-        </TouchableOpacity>
+        {isCall ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+            <TouchableOpacity
+              onPress={() => onDismiss(notification)}
+              activeOpacity={0.84}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: '#ef4444',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="call" size={21} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => onPress(notification)}
+              activeOpacity={0.84}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: '#22c55e',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name={isVideoCall ? 'videocam' : 'call'} size={21} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={() => onDismiss(notification)}
+            activeOpacity={0.8}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: theme.accentSoft,
+            }}
+          >
+            <Ionicons name="close" size={18} color={theme.accent} />
+          </TouchableOpacity>
+        )}
       </Pressable>
     </Animated.View>
   )
@@ -477,10 +538,66 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
 const InAppNotificationHost = forwardRef(function InAppNotificationHost({
   theme,
   onOpenNotification,
+  onDeclineNotification,
 }, ref) {
   const bannerDismissTimerRef = useRef(null)
+  const callRingtoneRef = useRef(null)
+  const callRingtoneVersionRef = useRef(0)
   const recentlyShownBannerKeysRef = useRef(new Map())
   const [inAppNotification, setInAppNotification] = useState(null)
+
+  const stopInAppCallRingtone = useCallback(async () => {
+    callRingtoneVersionRef.current += 1
+
+    const sound = callRingtoneRef.current
+    callRingtoneRef.current = null
+
+    if (!sound) return
+
+    try {
+      await sound.stopAsync()
+    } catch (_error) {
+      // ignore stop errors during fast notification transitions
+    }
+
+    try {
+      await sound.unloadAsync()
+    } catch (_error) {
+      // ignore unload errors during fast notification transitions
+    }
+
+    resetCallAudioRoute().catch(() => null)
+  }, [])
+
+  const startInAppCallRingtone = useCallback(async (notification) => {
+    await stopInAppCallRingtone()
+
+    if (notification?.playSound === false) return
+
+    const version = callRingtoneVersionRef.current
+
+    try {
+      await setCallRingtoneAudioMode()
+
+      const sound = await createRingtoneSound({
+        conversationId: notification?.data?.conversationId,
+        shouldPlay: true,
+        isLooping: true,
+        volume: 0.74,
+      })
+
+      if (!sound) return
+
+      if (callRingtoneVersionRef.current !== version) {
+        await sound.unloadAsync().catch(() => null)
+        return
+      }
+
+      callRingtoneRef.current = sound
+    } catch (error) {
+      console.warn('Incoming call ringtone failed:', error?.message || error)
+    }
+  }, [stopInAppCallRingtone])
 
   const dismissInAppNotification = useCallback(() => {
     if (bannerDismissTimerRef.current) {
@@ -488,8 +605,9 @@ const InAppNotificationHost = forwardRef(function InAppNotificationHost({
       bannerDismissTimerRef.current = null
     }
 
+    stopInAppCallRingtone().catch(() => null)
     setInAppNotification(null)
-  }, [])
+  }, [stopInAppCallRingtone])
 
   const showInAppNotification = useCallback((nextNotification) => {
     if (!nextNotification) return
@@ -509,12 +627,20 @@ const InAppNotificationHost = forwardRef(function InAppNotificationHost({
       }
     })
 
-    if (nextNotification.playSound !== false && !isCallNotificationType(nextNotification?.data?.type)) {
+    const isCallNotification = isCallNotificationType(nextNotification?.data?.type)
+
+    if (isCallNotification) {
+      startInAppCallRingtone(nextNotification)
+    } else {
       const conversationId = nextNotification?.data?.conversationId
-      playNotificationSound({
-        conversationId,
-        playPhoneDefaultFallback: !conversationId,
-      })
+      stopInAppCallRingtone().catch(() => null)
+
+      if (nextNotification.playSound !== false) {
+        playNotificationSound({
+          conversationId,
+          playPhoneDefaultFallback: !conversationId,
+        })
+      }
     }
 
     if (bannerDismissTimerRef.current) {
@@ -528,15 +654,24 @@ const InAppNotificationHost = forwardRef(function InAppNotificationHost({
     })
 
     bannerDismissTimerRef.current = setTimeout(() => {
+      stopInAppCallRingtone().catch(() => null)
       setInAppNotification(null)
       bannerDismissTimerRef.current = null
-    }, 4800)
-  }, [])
+    }, isCallNotification ? 32000 : 4800)
+  }, [startInAppCallRingtone, stopInAppCallRingtone])
 
   const handlePressInAppNotification = useCallback((notification) => {
     dismissInAppNotification()
     onOpenNotification(notification?.data || {})
   }, [dismissInAppNotification, onOpenNotification])
+
+  const handleDismissInAppNotification = useCallback((notification) => {
+    if (isCallNotificationType(notification?.data?.type)) {
+      onDeclineNotification?.(notification?.data || {})
+    }
+
+    dismissInAppNotification()
+  }, [dismissInAppNotification, onDeclineNotification])
 
   useImperativeHandle(ref, () => ({
     show: showInAppNotification,
@@ -547,14 +682,16 @@ const InAppNotificationHost = forwardRef(function InAppNotificationHost({
     if (bannerDismissTimerRef.current) {
       clearTimeout(bannerDismissTimerRef.current)
     }
-  }, [])
+
+    stopInAppCallRingtone().catch(() => null)
+  }, [stopInAppCallRingtone])
 
   return (
     <InAppNotificationBanner
       notification={inAppNotification}
       theme={theme}
       onPress={handlePressInAppNotification}
-      onDismiss={dismissInAppNotification}
+      onDismiss={handleDismissInAppNotification}
     />
   )
 })
@@ -867,6 +1004,33 @@ export default function AppNavigator() {
     pendingNotificationPayload.current = payload
   }, [])
 
+  const handleDeclineNotification = useCallback(async (payload) => {
+    if (!payload || !isCallNotificationType(payload.type)) return
+
+    const kind = payload.type === 'incoming_video_call' ? 'video' : 'audio'
+    const callSignalKey = buildCallSignalKey(kind, {
+      callId: payload.callId,
+      channelName: payload.channelName,
+    })
+    const { channel, ready } = subscribeToCallSignals(callSignalKey, () => {})
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      await ready
+      await sendCallSignal(channel, {
+        type: 'declined',
+        senderId: user?.id || null,
+      })
+    } catch (error) {
+      console.warn('Incoming call decline failed:', error?.message || error)
+    } finally {
+      unsubscribeCallSignals(channel)
+    }
+  }, [])
+
   const showInAppNotification = useCallback((nextNotification) => {
     notificationBannerRef.current?.show(nextNotification)
   }, [])
@@ -1133,6 +1297,7 @@ export default function AppNavigator() {
         ref={notificationBannerRef}
         theme={theme}
         onOpenNotification={handleOpenNotification}
+        onDeclineNotification={handleDeclineNotification}
       />
     </View>
   )

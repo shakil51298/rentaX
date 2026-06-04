@@ -15,8 +15,10 @@ export const CLASSIC_RING_SOUND_ID = 'classic_ring'
 export const CLASSIC_RING_SOUND_FILE = 'classic_ring.wav'
 export const IPHONE_NOTIFICATION_SOUND_ID = 'iphone_notification'
 export const IPHONE_NOTIFICATION_SOUND_FILE = 'iphone_notification.mp3'
+export const IPHONE_NOTIFICATION_CHANNEL_ID = 'messages_iphone_notification_v2'
 export const BEST_LOVE_SOUND_ID = 'best_love'
 export const BEST_LOVE_SOUND_FILE = 'best_love.mp3'
+export const BEST_LOVE_CALL_CHANNEL_ID = 'calls_best_love_v2'
 
 const soundAssets = {
   [RENTALX_POP_SOUND_ID]: require('../../assets/sounds/notification.mp3'),
@@ -58,7 +60,7 @@ export const NOTIFICATION_SOUND_OPTIONS = [
     label: 'iPhone notification',
     subtitle: 'Message tone from your uploaded file',
     icon: 'notifications-outline',
-    channelId: 'messages_iphone_notification',
+    channelId: IPHONE_NOTIFICATION_CHANNEL_ID,
     pushSound: IPHONE_NOTIFICATION_SOUND_FILE,
     asset: soundAssets[IPHONE_NOTIFICATION_SOUND_ID],
   },
@@ -104,7 +106,7 @@ export const RINGTONE_SOUND_OPTIONS = [
     label: 'Best Love',
     subtitle: 'Caller tone from your uploaded file',
     icon: 'musical-notes-outline',
-    channelId: 'calls_best_love',
+    channelId: BEST_LOVE_CALL_CHANNEL_ID,
     pushSound: BEST_LOVE_SOUND_FILE,
     asset: soundAssets[BEST_LOVE_SOUND_ID],
   },

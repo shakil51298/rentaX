@@ -4,6 +4,7 @@ const MUTED_KEY = 'chat-preferences:muted-conversations'
 const PINNED_KEY = 'chat-preferences:pinned-conversations'
 const NOTIFICATION_SOUND_KEY = 'chat-preferences:notification-sounds'
 const RINGTONE_SOUND_KEY = 'chat-preferences:ringtone-sounds'
+const LINK_PREVIEW_KEY = 'chat-preferences:link-previews'
 const DEFAULT_NOTIFICATION_SOUND_ID = 'iphone_notification'
 const DEFAULT_RINGTONE_SOUND_ID = 'best_love'
 
@@ -101,6 +102,23 @@ export async function isConversationPinned(conversationId) {
 
 export async function setConversationPinned(conversationId, enabled) {
   await setConversationFlag(PINNED_KEY, conversationId, enabled)
+}
+
+export async function getConversationLinkPreviewEnabled(conversationId) {
+  if (!conversationId) return true
+
+  const values = await readPreferenceMap(LINK_PREVIEW_KEY)
+  const savedValue = values[String(conversationId)]
+
+  return typeof savedValue === 'boolean' ? savedValue : true
+}
+
+export async function setConversationLinkPreviewEnabled(conversationId, enabled) {
+  if (!conversationId) return
+
+  const values = await readPreferenceMap(LINK_PREVIEW_KEY)
+  values[String(conversationId)] = Boolean(enabled)
+  await writePreferenceMap(LINK_PREVIEW_KEY, values)
 }
 
 export async function getConversationNotificationSoundId(conversationId) {

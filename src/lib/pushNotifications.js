@@ -4,12 +4,15 @@ import Constants from 'expo-constants'
 import { supabase } from './supabase'
 import { isConversationMuted } from './chatPreferences'
 import {
+  BEST_LOVE_CALL_CHANNEL_ID,
   BEST_LOVE_SOUND_FILE,
   BRIGHT_CHIME_SOUND_FILE,
   CLASSIC_RING_SOUND_FILE,
+  IPHONE_NOTIFICATION_CHANNEL_ID,
   IPHONE_NOTIFICATION_SOUND_FILE,
   PHONE_DEFAULT_SOUND_ID,
   RENTALX_POP_SOUND_FILE,
+  SILENT_SOUND_ID,
   getConversationNotificationSoundId,
   getConversationRingtoneSoundId,
 } from './sounds'
@@ -83,26 +86,36 @@ Notifications.setNotificationHandler({
       isCallNotification
         ? await getConversationRingtoneSoundId(conversationId)
         : null
+    const isSilentCall = isCallNotification && ringtoneSoundId === SILENT_SOUND_ID
 
     return {
       shouldPlaySound:
         (type === 'chat_message' && messageSoundId === PHONE_DEFAULT_SOUND_ID)
-        || (isCallNotification && ringtoneSoundId === PHONE_DEFAULT_SOUND_ID)
+        || (isCallNotification && !isSilentCall && ringtoneSoundId === PHONE_DEFAULT_SOUND_ID)
         || type === 'sound_preview'
         || type === 'ringtone_preview',
       shouldSetBadge: true,
       shouldShowBanner: false,
       shouldShowList: true,
       priority:
-        channelId === 'messages' || channelId === 'admin'
+        channelId === 'messages' || channelId === 'admin' || isCallNotification
           ? Notifications.AndroidNotificationPriority.MAX
           : Notifications.AndroidNotificationPriority.DEFAULT,
     }
   },
 })
 
-async function ensureAndroidChannel() {
+export async function ensureAndroidNotificationChannels() {
   if (Platform.OS !== 'android') return
+
+  const messageAudioAttributes = {
+    usage: Notifications.AndroidAudioUsage.NOTIFICATION_COMMUNICATION_INSTANT,
+    contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+  }
+  const callAudioAttributes = {
+    usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+    contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+  }
 
   const channels = [
     {
@@ -131,6 +144,7 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 250, 200, 250],
       lightColor: '#34C759',
       sound: 'default',
+      audioAttributes: messageAudioAttributes,
     },
     {
       id: 'messages_rentalx_pop',
@@ -140,6 +154,7 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 250, 200, 250],
       lightColor: '#34C759',
       sound: RENTALX_POP_SOUND_FILE,
+      audioAttributes: messageAudioAttributes,
     },
     {
       id: 'messages_bright_chime',
@@ -149,15 +164,17 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 180, 80, 180],
       lightColor: '#34C759',
       sound: BRIGHT_CHIME_SOUND_FILE,
+      audioAttributes: messageAudioAttributes,
     },
     {
-      id: 'messages_iphone_notification',
+      id: IPHONE_NOTIFICATION_CHANNEL_ID,
       name: 'Messages - iPhone notification',
       description: 'Direct messages using the uploaded iPhone notification sound',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 180, 80, 180],
       lightColor: '#34C759',
       sound: IPHONE_NOTIFICATION_SOUND_FILE,
+      audioAttributes: messageAudioAttributes,
     },
     {
       id: 'messages_silent',
@@ -176,6 +193,7 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 320, 180, 320, 180, 320],
       lightColor: '#22c55e',
       sound: 'default',
+      audioAttributes: callAudioAttributes,
     },
     {
       id: 'calls_rentalx_pop',
@@ -185,6 +203,7 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 320, 180, 320, 180, 320],
       lightColor: '#22c55e',
       sound: RENTALX_POP_SOUND_FILE,
+      audioAttributes: callAudioAttributes,
     },
     {
       id: 'calls_classic_ring',
@@ -194,15 +213,17 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 360, 160, 360, 420, 360],
       lightColor: '#22c55e',
       sound: CLASSIC_RING_SOUND_FILE,
+      audioAttributes: callAudioAttributes,
     },
     {
-      id: 'calls_best_love',
+      id: BEST_LOVE_CALL_CHANNEL_ID,
       name: 'Calls - Best Love',
       description: 'Incoming audio and video calls using the uploaded Best Love ringtone',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 360, 160, 360, 420, 360],
       lightColor: '#22c55e',
       sound: BEST_LOVE_SOUND_FILE,
+      audioAttributes: callAudioAttributes,
     },
     {
       id: 'calls_silent',
@@ -212,6 +233,7 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 320, 180],
       lightColor: '#22c55e',
       sound: null,
+      audioAttributes: callAudioAttributes,
     },
     {
       id: 'offers',
@@ -234,8 +256,8 @@ async function ensureAndroidChannel() {
   ]
 
   await Promise.all(
-    channels.map((channel) =>
-      Notifications.setNotificationChannelAsync(channel.id, {
+    channels.map((channel) => {
+      const channelConfig = {
         name: channel.name,
         description: channel.description,
         importance: channel.importance,
@@ -246,8 +268,14 @@ async function ensureAndroidChannel() {
         enableVibrate: true,
         showBadge: true,
         sound: channel.sound,
-      })
-    )
+      }
+
+      if (channel.audioAttributes) {
+        channelConfig.audioAttributes = channel.audioAttributes
+      }
+
+      return Notifications.setNotificationChannelAsync(channel.id, channelConfig)
+    })
   )
 }
 
@@ -274,7 +302,7 @@ async function getCurrentExpoPushToken() {
     return null
   }
 
-  await ensureAndroidChannel()
+  await ensureAndroidNotificationChannels()
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync()
   let finalStatus = existingStatus
