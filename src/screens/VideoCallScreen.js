@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   BackHandler,
+  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -60,7 +63,59 @@ function getStatusLabel(stage, durationSeconds, startedByMe, participantName) {
   return 'Connecting video...'
 }
 
+const LOCAL_PREVIEW_WIDTH = 116
+const LOCAL_PREVIEW_HEIGHT = 158
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function getLocalPreviewDragBounds({ width, height, stage }) {
+  const baseBottom = stage === 'incoming' ? 124 : 150
+  const baseLeft = width - LOCAL_PREVIEW_WIDTH - 16
+  const baseTop = height - LOCAL_PREVIEW_HEIGHT - baseBottom
+
+  return {
+    minX: 16 - baseLeft,
+    maxX: 0,
+    minY: 72 - baseTop,
+    maxY: 0,
+  }
+}
+
+function applyAutoPolishFace(engine, agoraModule) {
+  if (!engine) return
+
+  try {
+    if (typeof engine.setBeautyEffectOptions === 'function') {
+      engine.setBeautyEffectOptions(true, {
+        lighteningContrastLevel:
+          agoraModule?.LighteningContrastLevel?.LighteningContrastNormal ?? 1,
+        lighteningLevel: 0.28,
+        smoothnessLevel: 0.42,
+        rednessLevel: 0.16,
+        sharpnessLevel: 0.18,
+      })
+    }
+
+    if (typeof engine.setCameraAutoFocusFaceModeEnabled === 'function') {
+      engine.setCameraAutoFocusFaceModeEnabled(true)
+    }
+
+    if (typeof engine.setCameraAutoExposureFaceModeEnabled === 'function') {
+      engine.setCameraAutoExposureFaceModeEnabled(true)
+    }
+
+    if (typeof engine.enableFaceDetection === 'function') {
+      engine.enableFaceDetection(true)
+    }
+  } catch (error) {
+    console.warn('Auto polish face effect failed:', error?.message || error)
+  }
+}
+
 export default function VideoCallScreen({ navigation, route }) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const participant = route?.params?.participant || null
   const property = route?.params?.property || null
   const conversationId = route?.params?.conversationId || null
@@ -106,10 +161,90 @@ export default function VideoCallScreen({ navigation, route }) {
   const isJoiningRef = useRef(false)
   const isInChannelRef = useRef(false)
   const joinRequestedRef = useRef(joinRequested)
+  const localPreviewPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
+  const localPreviewDragRef = useRef({ x: 0, y: 0 })
+
+  const localPreviewPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          Math.abs(gestureState.dx) > 3 || Math.abs(gestureState.dy) > 3,
+        onPanResponderGrant: () => {
+          localPreviewPan.stopAnimation((value) => {
+            localPreviewDragRef.current = value
+            localPreviewPan.setOffset(value)
+            localPreviewPan.setValue({ x: 0, y: 0 })
+          })
+        },
+        onPanResponderMove: Animated.event(
+          [null, { dx: localPreviewPan.x, dy: localPreviewPan.y }],
+          { useNativeDriver: false }
+        ),
+        onPanResponderRelease: () => {
+          localPreviewPan.flattenOffset()
+          const bounds = getLocalPreviewDragBounds({
+            width: windowWidth,
+            height: windowHeight,
+            stage,
+          })
+          const current = localPreviewDragRef.current
+          const nextValue = {
+            x: clamp(current.x, bounds.minX, bounds.maxX),
+            y: clamp(current.y, bounds.minY, bounds.maxY),
+          }
+
+          localPreviewDragRef.current = nextValue
+          Animated.spring(localPreviewPan, {
+            toValue: nextValue,
+            useNativeDriver: false,
+            friction: 8,
+            tension: 95,
+          }).start()
+        },
+        onPanResponderTerminate: () => {
+          localPreviewPan.flattenOffset()
+        },
+      }),
+    [localPreviewPan, stage, windowHeight, windowWidth]
+  )
 
   useEffect(() => {
     endCallRef.current = endCall
   })
+
+  useEffect(() => {
+    const listenerId = localPreviewPan.addListener((value) => {
+      localPreviewDragRef.current = value
+    })
+
+    return () => {
+      localPreviewPan.removeListener(listenerId)
+    }
+  }, [localPreviewPan])
+
+  useEffect(() => {
+    const bounds = getLocalPreviewDragBounds({
+      width: windowWidth,
+      height: windowHeight,
+      stage,
+    })
+    const current = localPreviewDragRef.current
+    const nextValue = {
+      x: clamp(current.x, bounds.minX, bounds.maxX),
+      y: clamp(current.y, bounds.minY, bounds.maxY),
+    }
+
+    if (nextValue.x === current.x && nextValue.y === current.y) return
+
+    localPreviewDragRef.current = nextValue
+    Animated.spring(localPreviewPan, {
+      toValue: nextValue,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 95,
+    }).start()
+  }, [localPreviewPan, stage, windowHeight, windowWidth])
 
   useEffect(() => {
     endingCallRef.current = endingCall
@@ -416,6 +551,7 @@ export default function VideoCallScreen({ navigation, route }) {
         await setCallAudioRoute(true)
         engine.enableVideo()
         engine.enableLocalVideo(true)
+        applyAutoPolishFace(engine, loadedAgoraModule)
         engine.startPreview(VideoSourceType.VideoSourceCamera)
 
         setStage('joining')
@@ -740,13 +876,14 @@ export default function VideoCallScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          <View
+          <Animated.View
+            {...localPreviewPanResponder.panHandlers}
             style={{
               position: 'absolute',
               right: 16,
               bottom: stage === 'incoming' ? 124 : 150,
-              width: 116,
-              height: 158,
+              width: LOCAL_PREVIEW_WIDTH,
+              height: LOCAL_PREVIEW_HEIGHT,
               borderRadius: 24,
               backgroundColor: '#0f172a',
               borderWidth: 1,
@@ -754,6 +891,7 @@ export default function VideoCallScreen({ navigation, route }) {
               overflow: 'hidden',
               alignItems: 'center',
               justifyContent: 'center',
+              transform: localPreviewPan.getTranslateTransform(),
             }}
           >
             {showLocalPreview ? (
@@ -782,6 +920,50 @@ export default function VideoCallScreen({ navigation, route }) {
                     </Text>
                   </View>
                 ) : null}
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    left: 8,
+                    right: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      borderRadius: 999,
+                      paddingHorizontal: 7,
+                      paddingVertical: 4,
+                      backgroundColor: 'rgba(2,6,23,0.52)',
+                    }}
+                  >
+                    <Ionicons name="sparkles" size={11} color="#fde68a" />
+                    <Text style={{ color: '#fff7ed', fontSize: 9, fontWeight: '900' }}>
+                      Polish
+                    </Text>
+                  </View>
+                  <Ionicons name="move-outline" size={15} color="rgba(255,255,255,0.86)" />
+                </View>
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    top: 42,
+                    alignSelf: 'center',
+                    width: 54,
+                    height: 70,
+                    borderRadius: 30,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.2)',
+                    backgroundColor: 'rgba(255,255,255,0.045)',
+                  }}
+                />
               </>
             ) : (
               <View style={{ alignItems: 'center', paddingHorizontal: 10 }}>
@@ -791,7 +973,7 @@ export default function VideoCallScreen({ navigation, route }) {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
 
           <View
             style={{
@@ -823,43 +1005,94 @@ export default function VideoCallScreen({ navigation, route }) {
           <View
             style={{
               position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 26,
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 26,
+              left: 16,
+              right: 16,
+              bottom: 20,
+              borderRadius: 30,
+              padding: 14,
+              backgroundColor: 'rgba(2,6,23,0.86)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.14)',
             }}
           >
-            <TouchableOpacity
-              onPress={() => endCall()}
-              disabled={endingCall}
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
-                backgroundColor: '#ef4444',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: endingCall ? 0.75 : 1,
-              }}
-            >
-              <Ionicons name="call" size={30} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: 'rgba(59,130,246,0.18)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="videocam" size={21} color="#93c5fd" />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: '#bfdbfe', fontSize: 12, fontWeight: '900' }}>
+                  Incoming video call
+                </Text>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', marginTop: 2 }} numberOfLines={1}>
+                  {participantName}
+                </Text>
+              </View>
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 9,
+                  paddingVertical: 5,
+                  backgroundColor: 'rgba(34,197,94,0.14)',
+                }}
+              >
+                <Text style={{ color: '#bbf7d0', fontSize: 11, fontWeight: '900' }}>
+                  Ringing
+                </Text>
+              </View>
+            </View>
 
-            <TouchableOpacity
-              onPress={acceptIncomingCall}
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
-                backgroundColor: '#22c55e',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="videocam" size={30} color="#fff" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => endCall()}
+                disabled={endingCall}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  height: 62,
+                  borderRadius: 22,
+                  backgroundColor: 'rgba(239,68,68,0.95)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 8,
+                  opacity: endingCall ? 0.75 : 1,
+                }}
+              >
+                <Ionicons name="call" size={24} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>
+                  Decline
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={acceptIncomingCall}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  height: 62,
+                  borderRadius: 22,
+                  backgroundColor: '#22c55e',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="videocam" size={24} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>
+                  Answer
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View

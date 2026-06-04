@@ -732,36 +732,94 @@ export default function AudioCallScreen({ navigation, route }) {
         </View>
 
         {stage === 'incoming' ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 22 }}>
-            <TouchableOpacity
-              onPress={() => endCall()}
-              disabled={endingCall}
-              style={{
-                width: 78,
-                height: 78,
-                borderRadius: 39,
-                backgroundColor: '#ef4444',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: endingCall ? 0.75 : 1,
-              }}
-            >
-              <Ionicons name="call" size={29} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-            </TouchableOpacity>
+          <View
+            style={{
+              marginTop: 18,
+              borderRadius: 30,
+              padding: 14,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.12)',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: 'rgba(59,130,246,0.18)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="call" size={21} color="#93c5fd" />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: '#bfdbfe', fontSize: 12, fontWeight: '900' }}>
+                  Incoming audio call
+                </Text>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900', marginTop: 2 }} numberOfLines={1}>
+                  {participantName}
+                </Text>
+              </View>
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 9,
+                  paddingVertical: 5,
+                  backgroundColor: 'rgba(34,197,94,0.14)',
+                }}
+              >
+                <Text style={{ color: '#bbf7d0', fontSize: 11, fontWeight: '900' }}>
+                  Ringing
+                </Text>
+              </View>
+            </View>
 
-            <TouchableOpacity
-              onPress={acceptIncomingCall}
-              style={{
-                width: 78,
-                height: 78,
-                borderRadius: 39,
-                backgroundColor: '#22c55e',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="call" size={29} color="#fff" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => endCall()}
+                disabled={endingCall}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  height: 62,
+                  borderRadius: 22,
+                  backgroundColor: 'rgba(239,68,68,0.95)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 8,
+                  opacity: endingCall ? 0.75 : 1,
+                }}
+              >
+                <Ionicons name="call" size={24} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>
+                  Decline
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={acceptIncomingCall}
+                activeOpacity={0.84}
+                style={{
+                  flex: 1,
+                  height: 62,
+                  borderRadius: 22,
+                  backgroundColor: '#22c55e',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="call" size={24} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>
+                  Answer
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View
