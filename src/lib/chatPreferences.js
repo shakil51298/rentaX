@@ -4,8 +4,8 @@ const MUTED_KEY = 'chat-preferences:muted-conversations'
 const PINNED_KEY = 'chat-preferences:pinned-conversations'
 const NOTIFICATION_SOUND_KEY = 'chat-preferences:notification-sounds'
 const RINGTONE_SOUND_KEY = 'chat-preferences:ringtone-sounds'
-const DEFAULT_NOTIFICATION_SOUND_ID = 'bright_chime'
-const DEFAULT_RINGTONE_SOUND_ID = 'classic_ring'
+const DEFAULT_NOTIFICATION_SOUND_ID = 'iphone_notification'
+const DEFAULT_RINGTONE_SOUND_ID = 'best_love'
 
 async function readIdSet(key) {
   try {

@@ -10,14 +10,20 @@ export const SILENT_SOUND_ID = 'silent'
 export const RENTALX_POP_SOUND_ID = 'rentalx_pop'
 export const RENTALX_POP_SOUND_FILE = 'notification.mp3'
 export const BRIGHT_CHIME_SOUND_ID = 'bright_chime'
-export const BRIGHT_CHIME_SOUND_FILE = 'bright-chime.wav'
+export const BRIGHT_CHIME_SOUND_FILE = 'bright_chime.wav'
 export const CLASSIC_RING_SOUND_ID = 'classic_ring'
-export const CLASSIC_RING_SOUND_FILE = 'classic-ring.wav'
+export const CLASSIC_RING_SOUND_FILE = 'classic_ring.wav'
+export const IPHONE_NOTIFICATION_SOUND_ID = 'iphone_notification'
+export const IPHONE_NOTIFICATION_SOUND_FILE = 'iphone_notification.mp3'
+export const BEST_LOVE_SOUND_ID = 'best_love'
+export const BEST_LOVE_SOUND_FILE = 'best_love.mp3'
 
 const soundAssets = {
   [RENTALX_POP_SOUND_ID]: require('../../assets/sounds/notification.mp3'),
-  [BRIGHT_CHIME_SOUND_ID]: require('../../assets/sounds/bright-chime.wav'),
-  [CLASSIC_RING_SOUND_ID]: require('../../assets/sounds/classic-ring.wav'),
+  [BRIGHT_CHIME_SOUND_ID]: require('../../assets/sounds/bright_chime.wav'),
+  [CLASSIC_RING_SOUND_ID]: require('../../assets/sounds/classic_ring.wav'),
+  [IPHONE_NOTIFICATION_SOUND_ID]: require('../../assets/sounds/iphone_notification.mp3'),
+  [BEST_LOVE_SOUND_ID]: require('../../assets/sounds/best_love.mp3'),
 }
 
 export const NOTIFICATION_SOUND_OPTIONS = [
@@ -46,6 +52,15 @@ export const NOTIFICATION_SOUND_OPTIONS = [
     channelId: 'messages_bright_chime',
     pushSound: BRIGHT_CHIME_SOUND_FILE,
     asset: soundAssets[BRIGHT_CHIME_SOUND_ID],
+  },
+  {
+    id: IPHONE_NOTIFICATION_SOUND_ID,
+    label: 'iPhone notification',
+    subtitle: 'Message tone from your uploaded file',
+    icon: 'notifications-outline',
+    channelId: 'messages_iphone_notification',
+    pushSound: IPHONE_NOTIFICATION_SOUND_FILE,
+    asset: soundAssets[IPHONE_NOTIFICATION_SOUND_ID],
   },
   {
     id: SILENT_SOUND_ID,
@@ -83,6 +98,15 @@ export const RINGTONE_SOUND_OPTIONS = [
     channelId: 'calls_classic_ring',
     pushSound: CLASSIC_RING_SOUND_FILE,
     asset: soundAssets[CLASSIC_RING_SOUND_ID],
+  },
+  {
+    id: BEST_LOVE_SOUND_ID,
+    label: 'Best Love',
+    subtitle: 'Caller tone from your uploaded file',
+    icon: 'musical-notes-outline',
+    channelId: 'calls_best_love',
+    pushSound: BEST_LOVE_SOUND_FILE,
+    asset: soundAssets[BEST_LOVE_SOUND_ID],
   },
   {
     id: SILENT_SOUND_ID,

@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { requestCameraPermissionsAsync } from 'expo-camera'
+import { Camera } from 'expo-camera'
 import Avatar from '../components/common/Avatar'
 import {
   buildAgoraChannelName,
@@ -298,7 +298,13 @@ export default function VideoCallScreen({ navigation, route }) {
           throw new Error('Agora is not configured yet. Add EXPO_PUBLIC_AGORA_APP_ID and rebuild the app.')
         }
 
-        const cameraPermission = await requestCameraPermissionsAsync()
+        const requestCameraPermission = Camera?.requestCameraPermissionsAsync
+
+        if (typeof requestCameraPermission !== 'function') {
+          throw new Error('Camera permission is not available in this build. Please install the latest APK and try again.')
+        }
+
+        const cameraPermission = await requestCameraPermission()
 
         if (cameraPermission.status !== 'granted') {
           setCameraPermissionError('Camera permission is needed for video calls.')

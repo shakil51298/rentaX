@@ -17,9 +17,13 @@ const SILENT_SOUND_ID = 'silent'
 const RENTALX_POP_SOUND_ID = 'rentalx_pop'
 const RENTALX_POP_SOUND_FILE = 'notification.mp3'
 const BRIGHT_CHIME_SOUND_ID = 'bright_chime'
-const BRIGHT_CHIME_SOUND_FILE = 'bright-chime.wav'
+const BRIGHT_CHIME_SOUND_FILE = 'bright_chime.wav'
 const CLASSIC_RING_SOUND_ID = 'classic_ring'
-const CLASSIC_RING_SOUND_FILE = 'classic-ring.wav'
+const CLASSIC_RING_SOUND_FILE = 'classic_ring.wav'
+const IPHONE_NOTIFICATION_SOUND_ID = 'iphone_notification'
+const IPHONE_NOTIFICATION_SOUND_FILE = 'iphone_notification.mp3'
+const BEST_LOVE_SOUND_ID = 'best_love'
+const BEST_LOVE_SOUND_FILE = 'best_love.mp3'
 
 function getChannelId(type?: string, requestedChannelId?: string) {
   if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
@@ -58,9 +62,9 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
     soundId
     || (
       type === 'incoming_audio_call' || type === 'incoming_video_call'
-        ? CLASSIC_RING_SOUND_ID
+        ? BEST_LOVE_SOUND_ID
         : type === 'chat_message'
-          ? BRIGHT_CHIME_SOUND_ID
+          ? IPHONE_NOTIFICATION_SOUND_ID
           : PHONE_DEFAULT_SOUND_ID
     )
 
@@ -77,6 +81,10 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
       return { channelId: 'calls_classic_ring', sound: CLASSIC_RING_SOUND_FILE }
     }
 
+    if (safeSoundId === BEST_LOVE_SOUND_ID) {
+      return { channelId: 'calls_best_love', sound: BEST_LOVE_SOUND_FILE }
+    }
+
     return { channelId: 'calls', sound: 'default' }
   }
 
@@ -91,6 +99,10 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
 
     if (safeSoundId === BRIGHT_CHIME_SOUND_ID) {
       return { channelId: 'messages_bright_chime', sound: BRIGHT_CHIME_SOUND_FILE }
+    }
+
+    if (safeSoundId === IPHONE_NOTIFICATION_SOUND_ID) {
+      return { channelId: 'messages_iphone_notification', sound: IPHONE_NOTIFICATION_SOUND_FILE }
     }
 
     return { channelId: 'messages', sound: 'default' }

@@ -31,8 +31,8 @@ import {
   isGroupConversation,
 } from '../lib/chatGroups'
 import {
-  BRIGHT_CHIME_SOUND_ID,
-  CLASSIC_RING_SOUND_ID,
+  BEST_LOVE_SOUND_ID,
+  IPHONE_NOTIFICATION_SOUND_ID,
   NOTIFICATION_SOUND_OPTIONS,
   RINGTONE_SOUND_OPTIONS,
   getNotificationSoundOption,
@@ -350,8 +350,8 @@ export default function ChatSettingsScreen({ route, navigation }) {
   const [savingMute, setSavingMute] = useState(false)
   const [savingPinned, setSavingPinned] = useState(false)
   const [savingSound, setSavingSound] = useState(false)
-  const [notificationSoundId, setNotificationSoundId] = useState(BRIGHT_CHIME_SOUND_ID)
-  const [ringtoneSoundId, setRingtoneSoundId] = useState(CLASSIC_RING_SOUND_ID)
+  const [notificationSoundId, setNotificationSoundId] = useState(IPHONE_NOTIFICATION_SOUND_ID)
+  const [ringtoneSoundId, setRingtoneSoundId] = useState(BEST_LOVE_SOUND_ID)
   const [soundPickerKind, setSoundPickerKind] = useState(null)
   const [clearing, setClearing] = useState(false)
 

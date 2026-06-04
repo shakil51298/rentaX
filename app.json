@@ -45,8 +45,10 @@
         {
           "sounds": [
             "./assets/sounds/notification.mp3",
-            "./assets/sounds/bright-chime.wav",
-            "./assets/sounds/classic-ring.wav"
+            "./assets/sounds/bright_chime.wav",
+            "./assets/sounds/classic_ring.wav",
+            "./assets/sounds/iphone_notification.mp3",
+            "./assets/sounds/best_love.mp3"
           ]
         }
       ],

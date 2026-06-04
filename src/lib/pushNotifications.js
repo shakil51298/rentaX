@@ -4,8 +4,10 @@ import Constants from 'expo-constants'
 import { supabase } from './supabase'
 import { isConversationMuted } from './chatPreferences'
 import {
+  BEST_LOVE_SOUND_FILE,
   BRIGHT_CHIME_SOUND_FILE,
   CLASSIC_RING_SOUND_FILE,
+  IPHONE_NOTIFICATION_SOUND_FILE,
   PHONE_DEFAULT_SOUND_ID,
   RENTALX_POP_SOUND_FILE,
   getConversationNotificationSoundId,
@@ -149,6 +151,15 @@ async function ensureAndroidChannel() {
       sound: BRIGHT_CHIME_SOUND_FILE,
     },
     {
+      id: 'messages_iphone_notification',
+      name: 'Messages - iPhone notification',
+      description: 'Direct messages using the uploaded iPhone notification sound',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 180, 80, 180],
+      lightColor: '#34C759',
+      sound: IPHONE_NOTIFICATION_SOUND_FILE,
+    },
+    {
       id: 'messages_silent',
       name: 'Messages - silent',
       description: 'Direct messages with no notification sound',
@@ -183,6 +194,15 @@ async function ensureAndroidChannel() {
       vibrationPattern: [0, 360, 160, 360, 420, 360],
       lightColor: '#22c55e',
       sound: CLASSIC_RING_SOUND_FILE,
+    },
+    {
+      id: 'calls_best_love',
+      name: 'Calls - Best Love',
+      description: 'Incoming audio and video calls using the uploaded Best Love ringtone',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 360, 160, 360, 420, 360],
+      lightColor: '#22c55e',
+      sound: BEST_LOVE_SOUND_FILE,
     },
     {
       id: 'calls_silent',
