@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  Platform,
   Text,
+  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -32,6 +34,7 @@ import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
 import { createRingtoneSound } from '../lib/sounds'
 import {
+  requestCallMicrophonePermission,
   resetCallAudioRoute,
   setCallAudioRoute,
   setCallRingtoneAudioMode,
@@ -73,6 +76,10 @@ export default function AudioCallScreen({ navigation, route }) {
     () => buildCallSignalKey('audio', { callId: route?.params?.callId, channelName: channelNameFromRoute }),
     [channelNameFromRoute, route?.params?.callId]
   )
+  const screenCallKey = useMemo(() => {
+    const key = route?.params?.callId || channelNameFromRoute
+    return key ? `audio:${key}` : null
+  }, [channelNameFromRoute, route?.params?.callId])
 
   const [stage, setStage] = useState(startedByMe ? 'preparing' : 'incoming')
   const [durationSeconds, setDurationSeconds] = useState(0)
@@ -101,6 +108,19 @@ export default function AudioCallScreen({ navigation, route }) {
   const isInChannelRef = useRef(false)
   const stageRef = useRef(stage)
   const joinRequestedRef = useRef(joinRequested)
+  const backPressHintAtRef = useRef(0)
+
+  const showBackPressHint = useCallback(() => {
+    const now = Date.now()
+
+    if (now - backPressHintAtRef.current < 1800) return
+
+    backPressHintAtRef.current = now
+
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Call is still active. Tap the red button to end.', ToastAndroid.SHORT)
+    }
+  }, [])
 
   useEffect(() => {
     endCallRef.current = endCall
@@ -121,6 +141,19 @@ export default function AudioCallScreen({ navigation, route }) {
   useEffect(() => {
     joinRequestedRef.current = joinRequested
   }, [joinRequested])
+
+  useEffect(() => {
+    if (!screenCallKey) return undefined
+
+    if (!reserveActiveAgoraCall(screenCallKey)) {
+      Alert.alert('Line busy', 'End the current call before opening another one.')
+      navigation.goBack()
+      return undefined
+    }
+
+    callKeyRef.current = screenCallKey
+    return undefined
+  }, [navigation, screenCallKey])
 
   const cleanupRtcEngine = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -238,6 +271,13 @@ export default function AudioCallScreen({ navigation, route }) {
         return
       }
 
+      if (payload?.type === 'busy' && startedByMe) {
+        if (endingCallRef.current) return
+        Alert.alert('Line busy', `${participantName} is already on another call.`)
+        endCallRef.current?.({ remoteEnded: true })
+        return
+      }
+
       if (payload?.type === 'ended' || payload?.type === 'declined') {
         if (endingCallRef.current) return
         endCallRef.current?.({ remoteEnded: true })
@@ -252,7 +292,7 @@ export default function AudioCallScreen({ navigation, route }) {
       signalChannelRef.current = null
       signalReadyRef.current = Promise.resolve(null)
     }
-  }, [callSignalKey, startedByMe, stopRingtone])
+  }, [callSignalKey, participantName, startedByMe, stopRingtone])
 
   useEffect(() => {
     mountedRef.current = true
@@ -292,6 +332,8 @@ export default function AudioCallScreen({ navigation, route }) {
         if (!appId) {
           throw new Error('Agora is not configured yet. Add EXPO_PUBLIC_AGORA_APP_ID and rebuild the app.')
         }
+
+        await requestCallMicrophonePermission()
 
         currentUserIdRef.current = user.id
         const localUid = hashAgoraUid(user.id)
@@ -383,6 +425,11 @@ export default function AudioCallScreen({ navigation, route }) {
         })
 
         engine.enableAudio()
+        engine.enableLocalAudio?.(true)
+        engine.muteLocalAudioStream(false)
+        engine.muteAllRemoteAudioStreams?.(false)
+        engine.adjustRecordingSignalVolume?.(100)
+        engine.adjustPlaybackSignalVolume?.(100)
         engine.setEnableSpeakerphone(true)
         await setCallAudioRoute(true)
 
@@ -499,14 +546,14 @@ export default function AudioCallScreen({ navigation, route }) {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      endCall()
+      showBackPressHint()
       return true
     })
 
     return () => {
       subscription.remove()
     }
-  }, [endCall])
+  }, [showBackPressHint])
 
   useEffect(() => {
     let cancelled = false

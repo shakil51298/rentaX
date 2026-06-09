@@ -51,6 +51,9 @@ import BottomNavBar from '../components/navigation/BottomNavBar'
 import { supabase } from '../lib/supabase'
 import { clearGuestMode, isGuestModeEnabled } from '../lib/guestSession'
 import {
+  CALL_NOTIFICATION_ANSWER_ACTION_ID,
+  CALL_NOTIFICATION_DECLINE_ACTION_ID,
+  CALL_NOTIFICATION_MUTE_ACTION_ID,
   deactivateDevicePushToken,
   registerDevicePushToken,
   routeFromNotificationData,
@@ -64,6 +67,7 @@ import {
   subscribeToCallSignals,
   unsubscribeCallSignals,
 } from '../lib/callSignaling'
+import { hasActiveAgoraCall } from '../lib/agoraCall'
 import {
   resetCallAudioRoute,
   setCallRingtoneAudioMode,
@@ -331,6 +335,48 @@ function getInAppNotificationIcon(type) {
 
 function isCallNotificationType(type) {
   return type === 'incoming_audio_call' || type === 'incoming_video_call'
+}
+
+function getCallReservationKeyFromNotification(payload = {}) {
+  if (!isCallNotificationType(payload?.type)) return null
+
+  const kind = payload.type === 'incoming_video_call' ? 'video' : 'audio'
+  return `${kind}:${payload.callId || payload.channelName || 'unknown'}`
+}
+
+async function sendIncomingCallResponse(payload, responseType) {
+  if (!payload || !isCallNotificationType(payload.type)) return
+
+  const kind = payload.type === 'incoming_video_call' ? 'video' : 'audio'
+  const callSignalKey = buildCallSignalKey(kind, {
+    callId: payload.callId,
+    channelName: payload.channelName,
+  })
+  const { channel, ready } = subscribeToCallSignals(callSignalKey, () => {})
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    await ready
+    await sendCallSignal(channel, {
+      type: responseType,
+      senderId: user?.id || null,
+    })
+  } finally {
+    unsubscribeCallSignals(channel)
+  }
+}
+
+async function sendIncomingCallBusyResponse(payload) {
+  await sendIncomingCallResponse(payload, 'busy')
+
+  setTimeout(() => {
+    sendIncomingCallResponse(payload, 'busy').catch((error) => {
+      console.warn('Incoming call busy retry failed:', error?.message || error)
+    })
+  }, 800)
 }
 
 function buildInAppNotificationKey(item) {
@@ -696,7 +742,13 @@ const InAppNotificationHost = forwardRef(function InAppNotificationHost({
   )
 })
 
-function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanner }) {
+function NotificationCoordinator({
+  enabled,
+  onBusyNotification,
+  onDeclineNotification,
+  onOpenNotification,
+  onShowInAppBanner,
+}) {
   const handledResponseIds = useRef(new Set())
   const activeNotificationKeys = useRef(new Set())
   const appStateRef = useRef(AppState.currentState)
@@ -746,6 +798,15 @@ function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanne
       const data = content.data || {}
       const conversationId = data.conversationId
 
+      if (isCallNotificationType(data.type)) {
+        const callKey = getCallReservationKeyFromNotification(data)
+
+        if (hasActiveAgoraCall(callKey)) {
+          onBusyNotification?.(data)
+          return
+        }
+      }
+
       Promise.resolve(
         data.type === 'chat_message' && conversationId
           ? isConversationMuted(conversationId)
@@ -768,7 +829,7 @@ function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanne
     return () => {
       receivedListener.remove()
     }
-  }, [enabled, onShowInAppBanner])
+  }, [enabled, onBusyNotification, onShowInAppBanner])
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -855,6 +916,8 @@ function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanne
 
     function openResponse(response) {
       const identifier = response?.notification?.request?.identifier
+      const actionIdentifier = response?.actionIdentifier
+      const data = response?.notification?.request?.content?.data || {}
 
       if (identifier && handledResponseIds.current.has(identifier)) {
         return
@@ -864,7 +927,28 @@ function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanne
         handledResponseIds.current.add(identifier)
       }
 
-      onOpenNotification(response?.notification?.request?.content?.data || {})
+      if (actionIdentifier === CALL_NOTIFICATION_MUTE_ACTION_ID) {
+        if (identifier) {
+          Notifications.dismissNotificationAsync(identifier).catch(() => null)
+        }
+        return
+      }
+
+      if (actionIdentifier === CALL_NOTIFICATION_DECLINE_ACTION_ID) {
+        if (identifier) {
+          Notifications.dismissNotificationAsync(identifier).catch(() => null)
+        }
+        onDeclineNotification?.(data)
+        return
+      }
+
+      if (
+        !actionIdentifier
+        || actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER
+        || actionIdentifier === CALL_NOTIFICATION_ANSWER_ACTION_ID
+      ) {
+        onOpenNotification(data)
+      }
     }
 
     Notifications.getLastNotificationResponseAsync().then((response) => {
@@ -878,7 +962,7 @@ function NotificationCoordinator({ enabled, onOpenNotification, onShowInAppBanne
     return () => {
       responseListener.remove()
     }
-  }, [enabled, onOpenNotification])
+  }, [enabled, onDeclineNotification, onOpenNotification])
 
   return null
 }
@@ -988,6 +1072,15 @@ export default function AppNavigator() {
       && (payload.type === 'incoming_audio_call' || payload.type === 'incoming_video_call')
     ) {
       const callKey = `${payload.type}:${payload.callId || payload.channelName || payload.actorId || 'unknown'}`
+      const reservationKey = getCallReservationKeyFromNotification(payload)
+
+      if (hasActiveAgoraCall(reservationKey)) {
+        sendIncomingCallBusyResponse(payload).catch((error) => {
+          console.warn('Incoming call busy response failed:', error?.message || error)
+        })
+        Alert.alert('Line busy', 'You are already in another call.')
+        return
+      }
 
       if (lastOpenedCallKeyRef.current === callKey) {
         return
@@ -1007,27 +1100,20 @@ export default function AppNavigator() {
   const handleDeclineNotification = useCallback(async (payload) => {
     if (!payload || !isCallNotificationType(payload.type)) return
 
-    const kind = payload.type === 'incoming_video_call' ? 'video' : 'audio'
-    const callSignalKey = buildCallSignalKey(kind, {
-      callId: payload.callId,
-      channelName: payload.channelName,
-    })
-    const { channel, ready } = subscribeToCallSignals(callSignalKey, () => {})
-
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      await ready
-      await sendCallSignal(channel, {
-        type: 'declined',
-        senderId: user?.id || null,
-      })
+      await sendIncomingCallResponse(payload, 'declined')
     } catch (error) {
       console.warn('Incoming call decline failed:', error?.message || error)
-    } finally {
-      unsubscribeCallSignals(channel)
+    }
+  }, [])
+
+  const handleBusyNotification = useCallback(async (payload) => {
+    if (!payload || !isCallNotificationType(payload.type)) return
+
+    try {
+      await sendIncomingCallBusyResponse(payload)
+    } catch (error) {
+      console.warn('Incoming call busy response failed:', error?.message || error)
     }
   }, [])
 
@@ -1087,6 +1173,8 @@ export default function AppNavigator() {
     <View style={{ flex: 1 }}>
       <NotificationCoordinator
         enabled={Boolean(session)}
+        onBusyNotification={handleBusyNotification}
+        onDeclineNotification={handleDeclineNotification}
         onOpenNotification={handleOpenNotification}
         onShowInAppBanner={showInAppNotification}
       />

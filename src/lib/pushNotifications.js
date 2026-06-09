@@ -19,6 +19,11 @@ import {
 
 let warnedAboutExpoGo = false
 
+export const CALL_NOTIFICATION_CATEGORY_ID = 'rentalx_call_actions'
+export const CALL_NOTIFICATION_MUTE_ACTION_ID = 'rentalx_call_mute'
+export const CALL_NOTIFICATION_DECLINE_ACTION_ID = 'rentalx_call_decline'
+export const CALL_NOTIFICATION_ANSWER_ACTION_ID = 'rentalx_call_answer'
+
 const CHAT_NOTIFICATION_TYPES = new Set(['chat_message'])
 const CALL_NOTIFICATION_TYPES = new Set([
   'incoming_audio_call',
@@ -107,6 +112,31 @@ Notifications.setNotificationHandler({
 
 export async function ensureAndroidNotificationChannels() {
   if (Platform.OS !== 'android') return
+
+  await Notifications.setNotificationCategoryAsync(CALL_NOTIFICATION_CATEGORY_ID, [
+    {
+      identifier: CALL_NOTIFICATION_MUTE_ACTION_ID,
+      buttonTitle: 'Mute',
+      options: {
+        opensAppToForeground: true,
+      },
+    },
+    {
+      identifier: CALL_NOTIFICATION_DECLINE_ACTION_ID,
+      buttonTitle: 'Decline',
+      options: {
+        isDestructive: true,
+        opensAppToForeground: true,
+      },
+    },
+    {
+      identifier: CALL_NOTIFICATION_ANSWER_ACTION_ID,
+      buttonTitle: 'Answer',
+      options: {
+        opensAppToForeground: true,
+      },
+    },
+  ])
 
   const messageAudioAttributes = {
     usage: Notifications.AndroidAudioUsage.NOTIFICATION_COMMUNICATION_INSTANT,

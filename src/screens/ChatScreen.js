@@ -83,6 +83,8 @@ import {
   buildAgoraChannelName,
   canUseAgoraNativeModule,
   createAgoraCallId,
+  hasActiveAgoraCall,
+  reserveActiveAgoraCall,
   sendAgoraCallInvite,
 } from '../lib/agoraCall'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
@@ -3025,6 +3027,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   async function startVoiceCall() {
     if (!currentUser?.id || (!isActiveGroupChat && !otherUser?.id)) return
 
+    if (hasActiveAgoraCall()) {
+      Alert.alert('Line busy', 'End the current call before starting another one.')
+      return
+    }
+
     if (!canUseAgoraNativeModule()) {
       Alert.alert(
         'Call needs a native build',
@@ -3053,6 +3060,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       recipientId: primaryRecipientId,
       kind: 'audio',
     })
+    const callKey = `audio:${callId || channelName}`
+
+    if (!reserveActiveAgoraCall(callKey)) {
+      Alert.alert('Line busy', 'End the current call before starting another one.')
+      return
+    }
+
     const recipients = isActiveGroupChat ? groupRecipientIds : [otherUser.id]
 
     Promise.all(recipients.map((recipientId) =>
@@ -3084,6 +3098,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   async function startVideoCall() {
     if (!currentUser?.id || (!isActiveGroupChat && !otherUser?.id)) return
 
+    if (hasActiveAgoraCall()) {
+      Alert.alert('Line busy', 'End the current call before starting another one.')
+      return
+    }
+
     if (!canUseAgoraNativeModule()) {
       Alert.alert(
         'Call needs a native build',
@@ -3112,6 +3131,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       recipientId: primaryRecipientId,
       kind: 'video',
     })
+    const callKey = `video:${callId || channelName}`
+
+    if (!reserveActiveAgoraCall(callKey)) {
+      Alert.alert('Line busy', 'End the current call before starting another one.')
+      return
+    }
+
     const recipients = isActiveGroupChat ? groupRecipientIds : [otherUser.id]
 
     Promise.all(recipients.map((recipientId) =>

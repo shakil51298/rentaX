@@ -63,10 +63,21 @@ export function clearActiveAgoraEngine(engine) {
   }
 }
 
-export function reserveActiveAgoraCall(callKey) {
+export function getActiveAgoraCallKey() {
+  return activeAgoraCallKey
+}
+
+export function hasActiveAgoraCall(callKey = null) {
+  if (!activeAgoraCallKey) return false
   if (!callKey) return true
 
-  if (activeAgoraCallKey && activeAgoraCallKey === callKey) {
+  return activeAgoraCallKey !== callKey
+}
+
+export function reserveActiveAgoraCall(callKey) {
+  if (!callKey) return !activeAgoraCallKey
+
+  if (activeAgoraCallKey && activeAgoraCallKey !== callKey) {
     return false
   }
 

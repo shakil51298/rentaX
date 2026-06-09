@@ -5,8 +5,10 @@ import {
   Animated,
   BackHandler,
   PanResponder,
+  Platform,
   StyleSheet,
   Text,
+  ToastAndroid,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -37,6 +39,7 @@ import { getProfileName } from '../lib/userDisplay'
 import { supabase } from '../lib/supabase'
 import { createRingtoneSound } from '../lib/sounds'
 import {
+  requestCallMicrophonePermission,
   resetCallAudioRoute,
   setCallAudioRoute,
   setCallRingtoneAudioMode,
@@ -129,6 +132,10 @@ export default function VideoCallScreen({ navigation, route }) {
     () => buildCallSignalKey('video', { callId: route?.params?.callId, channelName: channelNameFromRoute }),
     [channelNameFromRoute, route?.params?.callId]
   )
+  const screenCallKey = useMemo(() => {
+    const key = route?.params?.callId || channelNameFromRoute
+    return key ? `video:${key}` : null
+  }, [channelNameFromRoute, route?.params?.callId])
 
   const [stage, setStage] = useState(startedByMe ? 'preparing' : 'incoming')
   const [durationSeconds, setDurationSeconds] = useState(0)
@@ -163,6 +170,19 @@ export default function VideoCallScreen({ navigation, route }) {
   const joinRequestedRef = useRef(joinRequested)
   const localPreviewPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
   const localPreviewDragRef = useRef({ x: 0, y: 0 })
+  const backPressHintAtRef = useRef(0)
+
+  const showBackPressHint = useCallback(() => {
+    const now = Date.now()
+
+    if (now - backPressHintAtRef.current < 1800) return
+
+    backPressHintAtRef.current = now
+
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Call is still active. Tap the red button to end.', ToastAndroid.SHORT)
+    }
+  }, [])
 
   const localPreviewPanResponder = useMemo(
     () =>
@@ -257,6 +277,19 @@ export default function VideoCallScreen({ navigation, route }) {
   useEffect(() => {
     joinRequestedRef.current = joinRequested
   }, [joinRequested])
+
+  useEffect(() => {
+    if (!screenCallKey) return undefined
+
+    if (!reserveActiveAgoraCall(screenCallKey)) {
+      Alert.alert('Line busy', 'End the current call before opening another one.')
+      navigation.goBack()
+      return undefined
+    }
+
+    callKeyRef.current = screenCallKey
+    return undefined
+  }, [navigation, screenCallKey])
 
   const cleanupRtcEngine = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -375,6 +408,13 @@ export default function VideoCallScreen({ navigation, route }) {
         return
       }
 
+      if (payload?.type === 'busy' && startedByMe) {
+        if (endingCallRef.current) return
+        Alert.alert('Line busy', `${participantName} is already on another call.`)
+        endCallRef.current?.({ remoteEnded: true })
+        return
+      }
+
       if (payload?.type === 'ended' || payload?.type === 'declined') {
         if (endingCallRef.current) return
         endCallRef.current?.({ remoteEnded: true })
@@ -389,7 +429,7 @@ export default function VideoCallScreen({ navigation, route }) {
       signalChannelRef.current = null
       signalReadyRef.current = Promise.resolve(null)
     }
-  }, [callSignalKey, startedByMe, stopRingtone])
+  }, [callSignalKey, participantName, startedByMe, stopRingtone])
 
   useEffect(() => {
     mountedRef.current = true
@@ -432,6 +472,8 @@ export default function VideoCallScreen({ navigation, route }) {
         if (!appId) {
           throw new Error('Agora is not configured yet. Add EXPO_PUBLIC_AGORA_APP_ID and rebuild the app.')
         }
+
+        await requestCallMicrophonePermission()
 
         const requestCameraPermission = Camera?.requestCameraPermissionsAsync
 
@@ -547,6 +589,12 @@ export default function VideoCallScreen({ navigation, route }) {
           }
         })
 
+        engine.enableAudio()
+        engine.enableLocalAudio?.(true)
+        engine.muteLocalAudioStream(false)
+        engine.muteAllRemoteAudioStreams?.(false)
+        engine.adjustRecordingSignalVolume?.(100)
+        engine.adjustPlaybackSignalVolume?.(100)
         engine.setEnableSpeakerphone(true)
         await setCallAudioRoute(true)
         engine.enableVideo()
@@ -726,14 +774,14 @@ export default function VideoCallScreen({ navigation, route }) {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      endCall()
+      showBackPressHint()
       return true
     })
 
     return () => {
       subscription.remove()
     }
-  }, [endCall])
+  }, [showBackPressHint])
 
   const statusText = endingCall
     ? 'Saving call...'

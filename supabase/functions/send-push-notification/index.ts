@@ -26,6 +26,7 @@ const IPHONE_NOTIFICATION_CHANNEL_ID = 'messages_iphone_notification_v2'
 const BEST_LOVE_SOUND_ID = 'best_love'
 const BEST_LOVE_SOUND_FILE = 'best_love.mp3'
 const BEST_LOVE_CALL_CHANNEL_ID = 'calls_best_love_v2'
+const CALL_NOTIFICATION_CATEGORY_ID = 'rentalx_call_actions'
 
 function getChannelId(type?: string, requestedChannelId?: string) {
   if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
@@ -263,6 +264,15 @@ Deno.serve(async (request) => {
       message.expiration = Math.floor(Date.now() / 1000) + 45
       message.collapseId = callNotificationKey
       message.tag = callNotificationKey
+      message.categoryIdentifier = CALL_NOTIFICATION_CATEGORY_ID
+      message.sticky = true
+      message.autoDismiss = false
+      message.data = {
+        ...(payload.data || {}),
+        categoryId: CALL_NOTIFICATION_CATEGORY_ID,
+        sticky: 'true',
+        autoDismiss: 'false',
+      }
     }
 
     const sound = soundConfig ? soundConfig.sound : 'default'
