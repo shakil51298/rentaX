@@ -1,5 +1,9 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
+import {
+  CommonActions,
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import * as Notifications from 'expo-notifications'
@@ -49,6 +53,10 @@ import RecentlyViewedScreen from '../screens/RecentlyViewedScreen'
 import ComparePropertiesScreen from '../screens/ComparePropertiesScreen'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import { supabase } from '../lib/supabase'
+import {
+  getCachedAuthUser,
+  setCachedAuthSession,
+} from '../lib/authSession'
 import { clearGuestMode, isGuestModeEnabled } from '../lib/guestSession'
 import {
   CALL_NOTIFICATION_ANSWER_ACTION_ID,
@@ -67,7 +75,12 @@ import {
   subscribeToCallSignals,
   unsubscribeCallSignals,
 } from '../lib/callSignaling'
-import { hasActiveAgoraCall } from '../lib/agoraCall'
+import {
+  clearMinimizedAgoraCall,
+  getMinimizedAgoraCall,
+  hasActiveAgoraCall,
+  subscribeToMinimizedAgoraCall,
+} from '../lib/agoraCall'
 import {
   resetCallAudioRoute,
   setCallRingtoneAudioMode,
@@ -188,9 +201,7 @@ function MainTabsNavigator({ guestMode = false }) {
         return
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getCachedAuthUser()
 
       if (!isMounted) return
 
@@ -581,6 +592,149 @@ function InAppNotificationBanner({ notification, theme, onPress, onDismiss }) {
   )
 }
 
+function MinimizedCallHost({ theme }) {
+  const insets = useSafeAreaInsets()
+  const [call, setCall] = useState(getMinimizedAgoraCall)
+
+  useEffect(() => subscribeToMinimizedAgoraCall(setCall), [])
+
+  const restoreCall = useCallback(() => {
+    if (!call || !navigationRef.isReady()) return
+
+    navigationRef.dispatch((state) => {
+      const routeIndex = state.routes.findIndex((item) => item.key === call.routeKey)
+
+      if (routeIndex < 0) {
+        clearMinimizedAgoraCall(call.callKey)
+        return CommonActions.reset(state)
+      }
+
+      const callRoute = state.routes[routeIndex]
+      const routes = [
+        ...state.routes.filter((item) => item.key !== call.routeKey),
+        callRoute,
+      ]
+
+      return CommonActions.reset({
+        ...state,
+        routes,
+        index: routes.length - 1,
+      })
+    })
+  }, [call])
+
+  const endMinimizedCall = useCallback(() => {
+    call?.onEnd?.()
+  }, [call])
+
+  if (!call) return null
+
+  const isVideo = call.kind === 'video'
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        left: 10,
+        right: 10,
+        bottom: insets.bottom + 76,
+        zIndex: 9998,
+      }}
+    >
+      <View
+        style={{
+          minHeight: 62,
+          borderRadius: 18,
+          padding: 8,
+          backgroundColor: theme.surface,
+          borderWidth: 1,
+          borderColor: theme.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          shadowColor: '#000',
+          shadowOpacity: 0.18,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 7 },
+          elevation: 12,
+        }}
+      >
+        <TouchableOpacity
+          accessibilityLabel="Return to active call"
+          activeOpacity={0.82}
+          onPress={restoreCall}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#16a34a',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name={isVideo ? 'videocam' : 'call'} size={21} color="#fff" />
+          </View>
+
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                color: theme.text,
+                fontSize: 14,
+                fontWeight: '900',
+              }}
+            >
+              {call.participantName || 'Active call'}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: 2,
+                color: theme.mutedText,
+                fontSize: 11,
+                fontWeight: '700',
+              }}
+            >
+              {call.statusText || 'Call in progress'} · Tap to return
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          accessibilityLabel="End active call"
+          activeOpacity={0.82}
+          onPress={endMinimizedCall}
+          style={{
+            width: 42,
+            height: 42,
+            marginLeft: 8,
+            borderRadius: 21,
+            backgroundColor: '#ef4444',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons
+            name="call"
+            size={20}
+            color="#fff"
+            style={{ transform: [{ rotate: '135deg' }] }}
+          />
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
+
 const InAppNotificationHost = forwardRef(function InAppNotificationHost({
   theme,
   onOpenNotification,
@@ -756,13 +910,25 @@ function NotificationCoordinator({
   useEffect(() => {
     if (!enabled) return undefined
 
-    async function syncPushToken() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    let currentUserId = null
+    const retryTimers = new Set()
 
-      if (user?.id) {
-        await registerDevicePushToken(user.id)
+    async function syncPushToken(attempt = 0) {
+      const user = await getCachedAuthUser()
+
+      currentUserId = user?.id || null
+
+      if (!currentUserId) return
+
+      const token = await registerDevicePushToken(currentUserId)
+
+      if (!token && attempt < 2) {
+        const timer = setTimeout(() => {
+          retryTimers.delete(timer)
+          syncPushToken(attempt + 1)
+        }, attempt === 0 ? 4000 : 12000)
+
+        retryTimers.add(timer)
       }
     }
 
@@ -772,7 +938,7 @@ function NotificationCoordinator({
       appStateRef.current = state
 
       if (state === 'active') {
-        syncPushToken()
+        syncPushToken(0)
       }
     })
 
@@ -780,13 +946,25 @@ function NotificationCoordinator({
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user?.id) {
-        await registerDevicePushToken(session.user.id)
+        currentUserId = session.user.id
+        await syncPushToken(0)
+      } else {
+        currentUserId = null
+      }
+    })
+
+    const pushTokenSubscription = Notifications.addPushTokenListener?.(() => {
+      if (currentUserId) {
+        syncPushToken(0)
       }
     })
 
     return () => {
+      retryTimers.forEach((timer) => clearTimeout(timer))
+      retryTimers.clear()
       appStateSubscription.remove()
       subscription.unsubscribe()
+      pushTokenSubscription?.remove?.()
     }
   }, [enabled])
 
@@ -1130,11 +1308,13 @@ export default function AppNavigator() {
       if (!isMounted) return
 
       if (error) {
+        setCachedAuthSession(null)
         setSession(null)
         setGuestMode(await isGuestModeEnabled())
         return
       }
 
+      setCachedAuthSession(data.session || null)
       setSession(data.session || null)
       setGuestMode(!data.session && await isGuestModeEnabled())
     }
@@ -1145,6 +1325,7 @@ export default function AppNavigator() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       if (isMounted) {
+        setCachedAuthSession(nextSession || null)
         setSession(nextSession || null)
         if (nextSession) {
           setGuestMode(false)
@@ -1381,6 +1562,7 @@ export default function AppNavigator() {
         />
       </Stack.Navigator>
       </NavigationContainer>
+      <MinimizedCallHost theme={theme} />
       <InAppNotificationHost
         ref={notificationBannerRef}
         theme={theme}

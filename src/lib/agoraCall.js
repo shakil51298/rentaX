@@ -9,6 +9,8 @@ import { supabaseAnonKey } from './supabase'
 let cachedAgoraModule = undefined
 let activeAgoraEngine = null
 let activeAgoraCallKey = null
+let minimizedAgoraCall = null
+const minimizedAgoraCallListeners = new Set()
 
 function getExpoExtra() {
   return Constants?.expoConfig?.extra || {}
@@ -63,6 +65,49 @@ export function clearActiveAgoraEngine(engine) {
   }
 }
 
+function notifyMinimizedAgoraCallListeners() {
+  minimizedAgoraCallListeners.forEach((listener) => {
+    listener(minimizedAgoraCall)
+  })
+}
+
+export function getMinimizedAgoraCall() {
+  return minimizedAgoraCall
+}
+
+export function setMinimizedAgoraCall(nextCall) {
+  minimizedAgoraCall = nextCall || null
+  notifyMinimizedAgoraCallListeners()
+}
+
+export function updateMinimizedAgoraCall(callKey, updates) {
+  if (!minimizedAgoraCall || minimizedAgoraCall.callKey !== callKey) return
+
+  minimizedAgoraCall = {
+    ...minimizedAgoraCall,
+    ...(updates || {}),
+  }
+  notifyMinimizedAgoraCallListeners()
+}
+
+export function clearMinimizedAgoraCall(callKey = null) {
+  if (callKey && minimizedAgoraCall?.callKey !== callKey) return
+
+  minimizedAgoraCall = null
+  notifyMinimizedAgoraCallListeners()
+}
+
+export function subscribeToMinimizedAgoraCall(listener) {
+  if (typeof listener !== 'function') return () => {}
+
+  minimizedAgoraCallListeners.add(listener)
+  listener(minimizedAgoraCall)
+
+  return () => {
+    minimizedAgoraCallListeners.delete(listener)
+  }
+}
+
 export function getActiveAgoraCallKey() {
   return activeAgoraCallKey
 }
@@ -90,6 +135,7 @@ export function releaseActiveAgoraCall(callKey) {
 
   if (activeAgoraCallKey === callKey) {
     activeAgoraCallKey = null
+    clearMinimizedAgoraCall(callKey)
   }
 }
 

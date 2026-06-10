@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../../lib/supabase'
+import { getCachedAuthUser } from '../../lib/authSession'
 import { getUnreadNotificationCount } from '../../lib/notifications'
 import { playNotificationSound } from '../../lib/sounds'
 import { navigateToMainTab } from './tabNavigation'
@@ -88,10 +89,8 @@ export default function BottomNavBar({
     let notificationChannel = null
     let messageChannel = null
 
-    async function refreshCounts() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    async function refreshCounts(userId = null) {
+      const user = userId ? { id: userId } : await getCachedAuthUser()
 
       if (!user?.id || !isMounted) {
         if (isMounted) {
@@ -121,13 +120,11 @@ export default function BottomNavBar({
     }
 
     async function bootstrap() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getCachedAuthUser()
 
       if (!isMounted) return
 
-      await refreshCounts()
+      await refreshCounts(user?.id)
 
       if (!user?.id) return
 

@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { isPrimaryAdmin } from '../lib/admin'
 import {
   fetchAdminReportQueue,
@@ -278,9 +279,7 @@ export default function AdminReportsScreen({ navigation }) {
   const loadQueue = useCallback(async () => {
     setLoading(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setAdminUser(user || null)
     const allowed = isPrimaryAdmin(user)

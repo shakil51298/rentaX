@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { getUnreadNotificationCount } from '../lib/notifications'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
@@ -175,9 +176,7 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
       setLoading(true)
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setCurrentUser(user)
 
@@ -209,35 +208,32 @@ export default function NotificationsScreen({ navigation, embeddedTabShell = fal
     const propertyIds = [
       ...new Set((data || []).map((item) => item.property_id).filter(Boolean).map(String)),
     ]
-    let profilesById = {}
-    let propertiesById = {}
-
-    if (actorIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from('user_profiles')
-        .select('user_id, display_name, avatar_url, is_verified')
-        .in('user_id', actorIds)
-
-      profilesById = (profiles || []).reduce((itemsById, profile) => {
-        itemsById[profile.user_id] = profile
-        return itemsById
-      }, {})
-    }
-
-    if (propertyIds.length > 0) {
-      const { data: properties } = await supabase
-        .from('properties')
-        .select('*')
-        .in('id', propertyIds)
-
-      propertiesById = (properties || []).reduce((itemsById, property) => {
-        itemsById[String(property.id)] = property
-        return itemsById
-      }, {})
-    }
+    const [profilesResponse, propertiesResponse, nextUnreadCount] = await Promise.all([
+      actorIds.length > 0
+        ? supabase
+            .from('user_profiles')
+            .select('user_id, display_name, avatar_url, is_verified')
+            .in('user_id', actorIds)
+        : Promise.resolve({ data: [] }),
+      propertyIds.length > 0
+        ? supabase
+            .from('properties')
+            .select('*')
+            .in('id', propertyIds)
+        : Promise.resolve({ data: [] }),
+      getUnreadNotificationCount(user.id),
+    ])
+    const profilesById = (profilesResponse.data || []).reduce((itemsById, profile) => {
+      itemsById[profile.user_id] = profile
+      return itemsById
+    }, {})
+    const propertiesById = (propertiesResponse.data || []).reduce((itemsById, property) => {
+      itemsById[String(property.id)] = property
+      return itemsById
+    }, {})
 
     setNotifications(enrichNotifications(data || [], profilesById, propertiesById))
-    setUnreadCount(await getUnreadNotificationCount(user.id))
+    setUnreadCount(nextUnreadCount)
     setLoading(false)
   }, [])
 

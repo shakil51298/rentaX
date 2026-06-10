@@ -5,21 +5,21 @@ import {
   Animated,
   BackHandler,
   PanResponder,
-  Platform,
   StyleSheet,
   Text,
-  ToastAndroid,
   TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { CommonActions, useFocusEffect } from '@react-navigation/native'
 import { Camera } from 'expo-camera'
 import Avatar from '../components/common/Avatar'
 import {
   buildAgoraChannelName,
   clearActiveAgoraEngine,
+  clearMinimizedAgoraCall,
   getAgoraRuntimeConfig,
   hashAgoraUid,
   loadAgoraModule,
@@ -28,6 +28,8 @@ import {
   reserveActiveAgoraCall,
   resolveAgoraToken,
   saveAgoraCallHistory,
+  setMinimizedAgoraCall,
+  updateMinimizedAgoraCall,
 } from '../lib/agoraCall'
 import {
   buildCallSignalKey,
@@ -167,22 +169,52 @@ export default function VideoCallScreen({ navigation, route }) {
   const durationSecondsRef = useRef(0)
   const isJoiningRef = useRef(false)
   const isInChannelRef = useRef(false)
+  const stageRef = useRef(stage)
   const joinRequestedRef = useRef(joinRequested)
   const localPreviewPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
   const localPreviewDragRef = useRef({ x: 0, y: 0 })
-  const backPressHintAtRef = useRef(0)
+  const isMinimizedRef = useRef(false)
 
-  const showBackPressHint = useCallback(() => {
-    const now = Date.now()
+  const minimizeCall = useCallback(() => {
+    if (endingCallRef.current || isMinimizedRef.current || !screenCallKey) return
 
-    if (now - backPressHintAtRef.current < 1800) return
+    isMinimizedRef.current = true
+    setMinimizedAgoraCall({
+      callKey: screenCallKey,
+      routeKey: route.key,
+      kind: 'video',
+      participantName,
+      statusText: getStatusLabel(
+        stageRef.current,
+        durationSecondsRef.current,
+        startedByMe,
+        participantName
+      ),
+      onEnd: () => endCallRef.current?.(),
+    })
 
-    backPressHintAtRef.current = now
+    navigation.dispatch((state) => {
+      const routeIndex = state.routes.findIndex((item) => item.key === route.key)
 
-    if (Platform.OS === 'android') {
-      ToastAndroid.show('Call is still active. Tap the red button to end.', ToastAndroid.SHORT)
-    }
-  }, [])
+      if (routeIndex <= 0) {
+        isMinimizedRef.current = false
+        clearMinimizedAgoraCall(screenCallKey)
+        return CommonActions.reset(state)
+      }
+
+      const callRoute = state.routes[routeIndex]
+      const routes = [
+        callRoute,
+        ...state.routes.filter((item) => item.key !== route.key),
+      ]
+
+      return CommonActions.reset({
+        ...state,
+        routes,
+        index: routes.length - 1,
+      })
+    })
+  }, [navigation, participantName, route.key, screenCallKey, startedByMe])
 
   const localPreviewPanResponder = useMemo(
     () =>
@@ -273,6 +305,10 @@ export default function VideoCallScreen({ navigation, route }) {
   useEffect(() => {
     durationSecondsRef.current = durationSeconds
   }, [durationSeconds])
+
+  useEffect(() => {
+    stageRef.current = stage
+  }, [stage])
 
   useEffect(() => {
     joinRequestedRef.current = joinRequested
@@ -393,9 +429,29 @@ export default function VideoCallScreen({ navigation, route }) {
         )
       }
     } finally {
+      const callKey = callKeyRef.current || screenCallKey
+      clearMinimizedAgoraCall(callKey)
+
+      if (isMinimizedRef.current) {
+        navigation.dispatch((state) => {
+          const routes = state.routes.filter((item) => item.key !== route.key)
+
+          if (!routes.length) {
+            return CommonActions.goBack()
+          }
+
+          return CommonActions.reset({
+            ...state,
+            routes,
+            index: Math.min(state.index, routes.length - 1),
+          })
+        })
+        return
+      }
+
       navigation.goBack()
     }
-  }, [cleanupRtcEngine, conversationId, navigation, participant?.id, startedByMe, stopRingtone])
+  }, [cleanupRtcEngine, conversationId, navigation, participant?.id, route.key, screenCallKey, startedByMe, stopRingtone])
 
   useEffect(() => {
     const { channel, ready } = subscribeToCallSignals(callSignalKey, (payload) => {
@@ -772,16 +828,37 @@ export default function VideoCallScreen({ navigation, route }) {
     }
   }, [endingCall, stage, stopRingtone])
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      showBackPressHint()
+      minimizeCall()
       return true
     })
 
     return () => {
       subscription.remove()
     }
-  }, [showBackPressHint])
+  }, [minimizeCall]))
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (!isMinimizedRef.current) return
+
+      isMinimizedRef.current = false
+      clearMinimizedAgoraCall(screenCallKey)
+    })
+
+    return unsubscribe
+  }, [navigation, screenCallKey])
+
+  useEffect(() => {
+    if (!isMinimizedRef.current || !screenCallKey) return
+
+    updateMinimizedAgoraCall(screenCallKey, {
+      statusText: endingCall
+        ? 'Ending call...'
+        : getStatusLabel(stage, durationSeconds, startedByMe, participantName),
+    })
+  }, [durationSeconds, endingCall, participantName, screenCallKey, stage, startedByMe])
 
   const statusText = endingCall
     ? 'Saving call...'
@@ -908,7 +985,8 @@ export default function VideoCallScreen({ navigation, route }) {
             </View>
 
             <TouchableOpacity
-              onPress={() => endCall()}
+              accessibilityLabel="Minimize call"
+              onPress={minimizeCall}
               style={{
                 width: 44,
                 height: 44,
@@ -920,7 +998,7 @@ export default function VideoCallScreen({ navigation, route }) {
                 borderColor: 'rgba(255,255,255,0.12)',
               }}
             >
-              <Ionicons name="close" size={22} color="#fff" />
+              <Ionicons name="chevron-down" size={23} color="#fff" />
             </TouchableOpacity>
           </View>
 

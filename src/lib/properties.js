@@ -1,7 +1,48 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from './supabase'
 import { fetchPropertyViewCounts } from './propertyViews'
 import { fetchHiddenContentState } from './reporting'
 import { sortPropertiesForFeed } from './propertyLifecycle'
+
+const PROPERTY_FEED_CACHE_VERSION = 1
+const PROPERTY_FEED_CACHE_MAX_AGE_MS = 15 * 60 * 1000
+
+function getPropertyFeedCacheKey(userId) {
+  return `@rentalx/property-feed-v${PROPERTY_FEED_CACHE_VERSION}/${userId || 'guest'}`
+}
+
+export async function loadCachedPropertyFeed(userId) {
+  try {
+    const rawValue = await AsyncStorage.getItem(getPropertyFeedCacheKey(userId))
+    const cached = rawValue ? JSON.parse(rawValue) : null
+
+    if (
+      !cached?.savedAt
+      || !Array.isArray(cached.items)
+      || Date.now() - cached.savedAt > PROPERTY_FEED_CACHE_MAX_AGE_MS
+    ) {
+      return []
+    }
+
+    return cached.items
+  } catch (_error) {
+    return []
+  }
+}
+
+export async function saveCachedPropertyFeed(userId, items) {
+  try {
+    await AsyncStorage.setItem(
+      getPropertyFeedCacheKey(userId),
+      JSON.stringify({
+        savedAt: Date.now(),
+        items: Array.isArray(items) ? items : [],
+      })
+    )
+  } catch (_error) {
+    // A cache write must never block the live feed.
+  }
+}
 
 export async function fetchPropertiesWithProfiles({
   ownerId,
@@ -28,13 +69,18 @@ export async function fetchPropertiesWithProfiles({
     query = query.limit(limit)
   }
 
-  const { data, error } = await query
+  const [propertiesResponse, hiddenState] = await Promise.all([
+    query,
+    currentUserId
+      ? fetchHiddenContentState(currentUserId)
+      : Promise.resolve(null),
+  ])
+  const { data, error } = propertiesResponse
 
   if (error) {
     throw error
   }
 
-  const hiddenState = currentUserId ? await fetchHiddenContentState(currentUserId) : null
   const posts = (data || []).filter((post) => {
     if (!includeBanned && post.admin_is_banned) {
       return false

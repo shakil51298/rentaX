@@ -6,10 +6,13 @@ const corsHeaders = {
 }
 
 type PushRequest = {
+  action?: 'send' | 'register_device' | 'deactivate_device'
   recipientId?: string
   title?: string
   body?: string
   data?: Record<string, unknown>
+  expoPushToken?: string
+  platform?: string
 }
 
 const PHONE_DEFAULT_SOUND_ID = 'phone_default'
@@ -27,6 +30,71 @@ const BEST_LOVE_SOUND_ID = 'best_love'
 const BEST_LOVE_SOUND_FILE = 'best_love.mp3'
 const BEST_LOVE_CALL_CHANNEL_ID = 'calls_best_love_v2'
 const CALL_NOTIFICATION_CATEGORY_ID = 'rentalx_call_actions'
+const EXPO_PUSH_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts'
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  })
+}
+
+function isValidExpoPushToken(value?: string) {
+  return typeof value === 'string'
+    && /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/.test(value.trim())
+}
+
+async function deactivateTokensFromReceipts(
+  adminClient: any,
+  receiptTargets: Array<{ receiptId: string; tokenId: string }>,
+) {
+  if (!receiptTargets.length) return
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 10000))
+
+    const response = await fetch(EXPO_PUSH_RECEIPTS_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ids: receiptTargets.map((item) => item.receiptId),
+      }),
+    })
+
+    if (!response.ok) {
+      console.warn(`Expo push receipt request failed (${response.status}).`)
+      return
+    }
+
+    const result = await response.json()
+    const receiptMap = result?.data || {}
+    const inactiveTokenIds = receiptTargets
+      .filter((item) => receiptMap[item.receiptId]?.details?.error === 'DeviceNotRegistered')
+      .map((item) => item.tokenId)
+
+    if (!inactiveTokenIds.length) return
+
+    const { error } = await adminClient
+      .from('user_push_tokens')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', inactiveTokenIds)
+
+    if (error) {
+      console.warn('Push receipt cleanup failed:', error.message)
+    }
+  } catch (error) {
+    console.warn('Push receipt processing failed:', error instanceof Error ? error.message : error)
+  }
+}
 
 function getChannelId(type?: string, requestedChannelId?: string) {
   if (typeof requestedChannelId === 'string' && requestedChannelId.trim()) {
@@ -153,13 +221,7 @@ Deno.serve(async (request) => {
   const authHeader = request.headers.get('Authorization') || ''
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-    return new Response(JSON.stringify({ error: 'Supabase environment variables are missing.' }), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    })
+    return jsonResponse({ success: false, error: 'Supabase environment variables are missing.' }, 500)
   }
 
   const authClient = createClient(supabaseUrl, anonKey, {
@@ -176,13 +238,7 @@ Deno.serve(async (request) => {
   } = await authClient.auth.getUser()
 
   if (userError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    })
+    return jsonResponse({ success: false, error: 'Unauthorized' }, 401)
   }
 
   let payload: PushRequest
@@ -190,26 +246,63 @@ Deno.serve(async (request) => {
   try {
     payload = await request.json()
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid request body.' }), {
-      status: 400,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    })
-  }
-
-  if (!payload.recipientId || !payload.title || !payload.body) {
-    return new Response(JSON.stringify({ error: 'recipientId, title, and body are required.' }), {
-      status: 400,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    })
+    return jsonResponse({ success: false, error: 'Invalid request body.' }, 400)
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
+
+  if (payload.action === 'register_device') {
+    if (!isValidExpoPushToken(payload.expoPushToken)) {
+      return jsonResponse({ success: false, error: 'A valid Expo push token is required.' }, 400)
+    }
+
+    const timestamp = new Date().toISOString()
+    const { error } = await adminClient
+      .from('user_push_tokens')
+      .upsert(
+        {
+          user_id: user.id,
+          expo_push_token: payload.expoPushToken?.trim(),
+          platform: payload.platform === 'ios' ? 'ios' : 'android',
+          is_active: true,
+          last_registered_at: timestamp,
+          updated_at: timestamp,
+        },
+        { onConflict: 'expo_push_token' },
+      )
+
+    if (error) {
+      return jsonResponse({ success: false, error: error.message }, 400)
+    }
+
+    return jsonResponse({ success: true, registered: true })
+  }
+
+  if (payload.action === 'deactivate_device') {
+    if (!isValidExpoPushToken(payload.expoPushToken)) {
+      return jsonResponse({ success: false, error: 'A valid Expo push token is required.' }, 400)
+    }
+
+    const { error } = await adminClient
+      .from('user_push_tokens')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', user.id)
+      .eq('expo_push_token', payload.expoPushToken?.trim())
+
+    if (error) {
+      return jsonResponse({ success: false, error: error.message }, 400)
+    }
+
+    return jsonResponse({ success: true, deactivated: true })
+  }
+
+  if (!payload.recipientId || !payload.title || !payload.body) {
+    return jsonResponse({ success: false, error: 'recipientId, title, and body are required.' }, 400)
+  }
+
   const { data: pushTokens, error: tokenError } = await adminClient
     .from('user_push_tokens')
     .select('id, expo_push_token')
@@ -217,21 +310,14 @@ Deno.serve(async (request) => {
     .eq('is_active', true)
 
   if (tokenError) {
-    return new Response(JSON.stringify({ error: tokenError.message }), {
-      status: 400,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    })
+    return jsonResponse({ success: false, error: tokenError.message }, 400)
   }
 
   if (!pushTokens?.length) {
-    return new Response(JSON.stringify({ success: true, delivered: 0 }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
+    return jsonResponse({
+      success: true,
+      delivered: 0,
+      warning: 'The recipient has no active push-enabled device.',
     })
   }
 
@@ -294,13 +380,33 @@ Deno.serve(async (request) => {
     body: JSON.stringify(messages),
   })
 
-  const expoResult = await expoResponse.json()
+  const expoResult = await expoResponse.json().catch(() => ({}))
+
+  if (!expoResponse.ok) {
+    return jsonResponse({
+      success: false,
+      delivered: 0,
+      error:
+        expoResult?.errors?.[0]?.message
+        || `Expo push service failed (${expoResponse.status}).`,
+      expoResult,
+    }, 502)
+  }
+
   const inactiveTokenIds: string[] = []
+  const receiptTargets: Array<{ receiptId: string; tokenId: string }> = []
 
   if (Array.isArray(expoResult?.data)) {
-    expoResult.data.forEach((item: { status?: string; details?: { error?: string } }, index: number) => {
+    expoResult.data.forEach((item: { id?: string; status?: string; details?: { error?: string } }, index: number) => {
       if (item?.status === 'error' && item?.details?.error === 'DeviceNotRegistered') {
         inactiveTokenIds.push(pushTokens[index].id)
+      }
+
+      if (item?.status === 'ok' && item?.id) {
+        receiptTargets.push({
+          receiptId: item.id,
+          tokenId: pushTokens[index].id,
+        })
       }
     })
   }
@@ -315,10 +421,22 @@ Deno.serve(async (request) => {
       .in('id', inactiveTokenIds)
   }
 
-  return new Response(JSON.stringify({ success: true, delivered: messages.length, expoResult }), {
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-    },
-  })
+  if (receiptTargets.length) {
+    EdgeRuntime.waitUntil(deactivateTokensFromReceipts(adminClient, receiptTargets))
+  }
+
+  const acceptedCount = Array.isArray(expoResult?.data)
+    ? expoResult.data.filter((item: { status?: string }) => item?.status === 'ok').length
+    : 0
+
+  return jsonResponse({
+    success: acceptedCount > 0,
+    delivered: acceptedCount,
+    attempted: messages.length,
+    error:
+      acceptedCount > 0
+        ? null
+        : expoResult?.data?.[0]?.message || 'Expo rejected every push notification.',
+    expoResult,
+  }, acceptedCount > 0 ? 200 : 502)
 })

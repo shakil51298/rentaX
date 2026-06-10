@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { PROFILE_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import { useAppSettings } from '../lib/appSettings'
 import {
@@ -437,9 +438,7 @@ export default function SettingsScreen({ navigation, route }) {
     setLoading(true)
     const routeSelectedLocation = route?.params?.selectedLocation
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setUser(user)
 

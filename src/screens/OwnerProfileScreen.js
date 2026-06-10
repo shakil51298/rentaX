@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { createNotification } from '../lib/notifications'
 import { blockUser, fetchUserSocialCounts } from '../lib/social'
 import {
@@ -236,9 +237,7 @@ export default function OwnerProfileScreen({ route, navigation }) {
   const loadOwnerProfile = useCallback(async () => {
     setLoading(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setCurrentUser(user)
 
@@ -247,55 +246,64 @@ export default function OwnerProfileScreen({ route, navigation }) {
       return
     }
 
-    const { data: profileData } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('user_id', ownerId)
-      .maybeSingle()
-
-    const { data: postData } = await supabase
-      .from('properties')
-      .select(`
-        *,
-        property_comments(id),
-        property_favorites(id)
-      `)
-      .eq('owner_id', ownerId)
-      .order('created_at', { ascending: false })
-
-    const { count: followersCount } = await supabase
-      .from('user_follows')
-      .select('*', { count: 'exact', head: true })
-      .eq('following_id', ownerId)
-
-    if (user && user.id !== ownerId) {
-      const { data: followData } = await supabase
+    const [
+      profileResponse,
+      postsResponse,
+      followersResponse,
+      followResponse,
+      counts,
+      quality,
+      reviews,
+    ] = await Promise.all([
+      supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', ownerId)
+        .maybeSingle(),
+      supabase
+        .from('properties')
+        .select(`
+          *,
+          property_comments(id),
+          property_favorites(id)
+        `)
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false }),
+      supabase
         .from('user_follows')
-        .select('id')
-        .eq('follower_id', user.id)
-        .eq('following_id', ownerId)
-        .maybeSingle()
+        .select('id', { count: 'exact', head: true })
+        .eq('following_id', ownerId),
+      user && user.id !== ownerId
+        ? supabase
+            .from('user_follows')
+            .select('id')
+            .eq('follower_id', user.id)
+            .eq('following_id', ownerId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      fetchUserSocialCounts(ownerId),
+      fetchOwnerResponseQuality(ownerId).catch(() =>
+        getEmptyOwnerResponseQuality()
+      ),
+      fetchUserReviewState({
+        revieweeId: ownerId,
+        reviewerId: user?.id,
+      }).catch(() => ({
+        reviews: [],
+        summary: getReviewSummary([]),
+        eligibility: { eligible: false, sources: [], primarySource: null },
+        myReview: null,
+        setupNeeded: true,
+      })),
+    ])
+    const profileData = profileResponse.data
+    const postData = postsResponse.data
+    const followersCount = followersResponse.count
 
-      setIsFollowing(Boolean(followData))
-    }
+    setIsFollowing(Boolean(followResponse.data))
 
     setProfile(profileData || null)
     setPosts((postData || []).filter((item) => !item.admin_is_banned && item.status !== 'paused'))
-    const counts = await fetchUserSocialCounts(ownerId)
-    const quality = await fetchOwnerResponseQuality(ownerId).catch(() =>
-      getEmptyOwnerResponseQuality()
-    )
-    const reviews = await fetchUserReviewState({
-      revieweeId: ownerId,
-      reviewerId: user?.id,
-    }).catch(() => ({
-      reviews: [],
-      summary: getReviewSummary([]),
-      eligibility: { eligible: false, sources: [], primarySource: null },
-      myReview: null,
-      setupNeeded: true,
-    }))
-
     setFollowers(followersCount || counts.followers || 0)
     setFollowing(counts.following || 0)
     setResponseQuality(quality)

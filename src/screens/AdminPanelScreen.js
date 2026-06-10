@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { isPrimaryAdmin } from '../lib/admin'
 import { fetchAdminReportCounts } from '../lib/reporting'
 import { fetchPendingWalletTopupRequestCount } from '../lib/wallet'
@@ -149,9 +150,7 @@ export default function AdminPanelScreen({ navigation }) {
   const loadAdminHub = useCallback(async () => {
     setLoading(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     const allowed = isPrimaryAdmin(user)
     setAuthorized(allowed)

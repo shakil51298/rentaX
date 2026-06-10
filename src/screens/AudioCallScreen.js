@@ -3,17 +3,17 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
-  Platform,
   Text,
-  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { CommonActions, useFocusEffect } from '@react-navigation/native'
 import {
   buildAgoraChannelName,
   clearActiveAgoraEngine,
+  clearMinimizedAgoraCall,
   getAgoraRuntimeConfig,
   hashAgoraUid,
   loadAgoraModule,
@@ -22,6 +22,8 @@ import {
   reserveActiveAgoraCall,
   resolveAgoraToken,
   saveAgoraCallHistory,
+  setMinimizedAgoraCall,
+  updateMinimizedAgoraCall,
 } from '../lib/agoraCall'
 import {
   buildCallSignalKey,
@@ -108,19 +110,48 @@ export default function AudioCallScreen({ navigation, route }) {
   const isInChannelRef = useRef(false)
   const stageRef = useRef(stage)
   const joinRequestedRef = useRef(joinRequested)
-  const backPressHintAtRef = useRef(0)
+  const isMinimizedRef = useRef(false)
 
-  const showBackPressHint = useCallback(() => {
-    const now = Date.now()
+  const minimizeCall = useCallback(() => {
+    if (endingCallRef.current || isMinimizedRef.current || !screenCallKey) return
 
-    if (now - backPressHintAtRef.current < 1800) return
+    isMinimizedRef.current = true
+    setMinimizedAgoraCall({
+      callKey: screenCallKey,
+      routeKey: route.key,
+      kind: 'audio',
+      participantName,
+      statusText: getStatusLabel(
+        stageRef.current,
+        durationSecondsRef.current,
+        startedByMe,
+        participantName
+      ),
+      onEnd: () => endCallRef.current?.(),
+    })
 
-    backPressHintAtRef.current = now
+    navigation.dispatch((state) => {
+      const routeIndex = state.routes.findIndex((item) => item.key === route.key)
 
-    if (Platform.OS === 'android') {
-      ToastAndroid.show('Call is still active. Tap the red button to end.', ToastAndroid.SHORT)
-    }
-  }, [])
+      if (routeIndex <= 0) {
+        isMinimizedRef.current = false
+        clearMinimizedAgoraCall(screenCallKey)
+        return CommonActions.reset(state)
+      }
+
+      const callRoute = state.routes[routeIndex]
+      const routes = [
+        callRoute,
+        ...state.routes.filter((item) => item.key !== route.key),
+      ]
+
+      return CommonActions.reset({
+        ...state,
+        routes,
+        index: routes.length - 1,
+      })
+    })
+  }, [navigation, participantName, route.key, screenCallKey, startedByMe])
 
   useEffect(() => {
     endCallRef.current = endCall
@@ -256,9 +287,29 @@ export default function AudioCallScreen({ navigation, route }) {
         )
       }
     } finally {
+      const callKey = callKeyRef.current || screenCallKey
+      clearMinimizedAgoraCall(callKey)
+
+      if (isMinimizedRef.current) {
+        navigation.dispatch((state) => {
+          const routes = state.routes.filter((item) => item.key !== route.key)
+
+          if (!routes.length) {
+            return CommonActions.goBack()
+          }
+
+          return CommonActions.reset({
+            ...state,
+            routes,
+            index: Math.min(state.index, routes.length - 1),
+          })
+        })
+        return
+      }
+
       navigation.goBack()
     }
-  }, [cleanupRtcEngine, conversationId, navigation, participant?.id, startedByMe, stopRingtone])
+  }, [cleanupRtcEngine, conversationId, navigation, participant?.id, route.key, screenCallKey, startedByMe, stopRingtone])
 
   useEffect(() => {
     const { channel, ready } = subscribeToCallSignals(callSignalKey, (payload) => {
@@ -544,16 +595,37 @@ export default function AudioCallScreen({ navigation, route }) {
     setCallAudioRoute(speakerOn).catch(() => null)
   }, [speakerOn])
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      showBackPressHint()
+      minimizeCall()
       return true
     })
 
     return () => {
       subscription.remove()
     }
-  }, [showBackPressHint])
+  }, [minimizeCall]))
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (!isMinimizedRef.current) return
+
+      isMinimizedRef.current = false
+      clearMinimizedAgoraCall(screenCallKey)
+    })
+
+    return unsubscribe
+  }, [navigation, screenCallKey])
+
+  useEffect(() => {
+    if (!isMinimizedRef.current || !screenCallKey) return
+
+    updateMinimizedAgoraCall(screenCallKey, {
+      statusText: endingCall
+        ? 'Ending call...'
+        : getStatusLabel(stage, durationSeconds, startedByMe, participantName),
+    })
+  }, [durationSeconds, endingCall, participantName, screenCallKey, stage, startedByMe])
 
   useEffect(() => {
     let cancelled = false
@@ -629,7 +701,8 @@ export default function AudioCallScreen({ navigation, route }) {
           </View>
 
           <TouchableOpacity
-            onPress={() => endCall()}
+            accessibilityLabel="Minimize call"
+            onPress={minimizeCall}
             style={{
               width: 42,
               height: 42,
@@ -639,7 +712,7 @@ export default function AudioCallScreen({ navigation, route }) {
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="close" size={21} color="#fff" />
+            <Ionicons name="chevron-down" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
 

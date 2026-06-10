@@ -8,6 +8,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchHiddenContentState } from '../lib/reporting'
@@ -25,19 +26,26 @@ export default function FavoriteScreen({ navigation, embeddedTabShell = false })
   async function loadFavorites() {
     setLoading(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    const hiddenState = await fetchHiddenContentState(user?.id)
+    const user = await getCachedAuthUser()
 
-    const { data, error } = await supabase
-      .from('property_favorites')
-      .select(`
-        id,
-        properties (*)
-      `)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    if (!user?.id) {
+      setFavorites([])
+      setLoading(false)
+      return
+    }
+
+    const [hiddenState, favoritesResponse] = await Promise.all([
+      fetchHiddenContentState(user.id),
+      supabase
+        .from('property_favorites')
+        .select(`
+          id,
+          properties (*)
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+    ])
+    const { data, error } = favoritesResponse
 
     if (!error) {
       setFavorites(

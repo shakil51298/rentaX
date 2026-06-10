@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import * as Clipboard from 'expo-clipboard'
 import QRCode from 'react-native-qrcode-svg'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import BottomNavBar from '../components/navigation/BottomNavBar'
 import SwipeTabView from '../components/navigation/SwipeTabView'
 import { fetchUserSocialCounts } from '../lib/social'
@@ -297,19 +298,21 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
     uri: null,
   })
   const [qrModalVisible, setQrModalVisible] = useState(false)
+  const hasLoadedProfileRef = useRef(false)
 
-  const loadProfile = useCallback(async () => {
-    setLoading(true)
+  const loadProfile = useCallback(async ({ showLoader = false } = {}) => {
+    if (showLoader) {
+      setLoading(true)
+    }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     if (!user?.id) {
       setCurrentUserId(null)
       setProfile(null)
       setEmail('')
       setLoginEmail('')
+      hasLoadedProfileRef.current = false
       setLoading(false)
       return
     }
@@ -328,31 +331,31 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       is_verified: false,
       owner_verification_status: 'unverified',
     }
+    setProfile((current) => current || fallbackProfile)
+    setEmail(user.email || '')
+    hasLoadedProfileRef.current = true
+    setLoading(false)
 
-    const { data: dbProfile } = await supabase
-      .from('user_profiles')
-      .select('display_name, rentalx_id, avatar_url, cover_url, is_verified, owner_verification_status')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    const [counts, nextProfile] = await Promise.all([
+    const [{ data: dbProfile }, counts] = await Promise.all([
+      supabase
+        .from('user_profiles')
+        .select('display_name, rentalx_id, avatar_url, cover_url, is_verified, owner_verification_status')
+        .eq('user_id', user.id)
+        .maybeSingle(),
       fetchUserSocialCounts(user.id),
-      Promise.resolve({
-        ...fallbackProfile,
-        ...(dbProfile || {}),
-      }),
     ])
+    const nextProfile = {
+      ...fallbackProfile,
+      ...(dbProfile || {}),
+    }
 
     setProfile(nextProfile)
     setSocialCounts(counts)
     setEmail(user.email || '')
-    setLoading(false)
   }, [])
 
   const loadAdminPanelCount = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     if (!isPrimaryAdmin(user)) {
       setAdminPanelCount(0)
@@ -390,7 +393,7 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
   }, [])
 
   const refreshProfile = useCallback(() => {
-    loadProfile()
+    loadProfile({ showLoader: !hasLoadedProfileRef.current })
     loadAdminPanelCount()
   }, [loadAdminPanelCount, loadProfile])
 
@@ -400,14 +403,6 @@ export default function ProfileScreen({ navigation, embeddedTabShell = false }) 
       return undefined
     }, [refreshProfile])
   )
-
-  useEffect(() => {
-    if (!embeddedTabShell) return undefined
-
-    return navigation.addListener('tabPress', () => {
-      refreshProfile()
-    })
-  }, [embeddedTabShell, navigation, refreshProfile])
 
   const showAdminPanel = isPrimaryAdmin(email)
 

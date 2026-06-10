@@ -1,6 +1,7 @@
 import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
+import * as Device from 'expo-device'
 import { supabase } from './supabase'
 import { isConversationMuted } from './chatPreferences'
 import {
@@ -18,6 +19,7 @@ import {
 } from './sounds'
 
 let warnedAboutExpoGo = false
+let warnedAboutPhysicalDevice = false
 
 export const CALL_NOTIFICATION_CATEGORY_ID = 'rentalx_call_actions'
 export const CALL_NOTIFICATION_MUTE_ACTION_ID = 'rentalx_call_mute'
@@ -326,9 +328,63 @@ function warnExpoGoPushLimitation() {
   )
 }
 
+function warnPhysicalDeviceRequirement() {
+  if (warnedAboutPhysicalDevice) return
+
+  warnedAboutPhysicalDevice = true
+  console.warn('Remote push notifications require a physical device.')
+}
+
+async function getFunctionErrorMessage(error) {
+  const fallback = error?.message || 'Push notification request failed.'
+  const response = error?.context
+
+  if (!response || typeof response.clone !== 'function') {
+    return fallback
+  }
+
+  try {
+    const payload = await response.clone().json()
+    return payload?.error || payload?.message || fallback
+  } catch (_error) {
+    return fallback
+  }
+}
+
+async function invokePushFunction(body, allowAuthRetry = true) {
+  const { data, error } = await supabase.functions.invoke('send-push-notification', {
+    body,
+  })
+
+  if (!error && data?.success !== false) {
+    return data || { success: true }
+  }
+
+  const status = error?.context?.status
+
+  if (allowAuthRetry && status === 401) {
+    const { error: refreshError } = await supabase.auth.refreshSession()
+
+    if (!refreshError) {
+      return invokePushFunction(body, false)
+    }
+  }
+
+  throw new Error(
+    error
+      ? await getFunctionErrorMessage(error)
+      : data?.error || 'Push notification request failed.'
+  )
+}
+
 async function getCurrentExpoPushToken() {
   if (!supportsRemotePushNotifications()) {
     warnExpoGoPushLimitation()
+    return null
+  }
+
+  if (!Device.isDevice) {
+    warnPhysicalDeviceRequirement()
     return null
   }
 
@@ -369,24 +425,11 @@ export async function registerDevicePushToken(userId) {
 
     if (!expoPushToken) return null
 
-    const timestamp = new Date().toISOString()
-
-    const { error } = await supabase.from('user_push_tokens').upsert(
-      {
-        user_id: userId,
-        expo_push_token: expoPushToken,
-        platform: Platform.OS,
-        is_active: true,
-        last_registered_at: timestamp,
-        updated_at: timestamp,
-      },
-      { onConflict: 'expo_push_token' }
-    )
-
-    if (error) {
-      console.warn('Push token registration failed:', error.message)
-      return null
-    }
+    await invokePushFunction({
+      action: 'register_device',
+      expoPushToken,
+      platform: Platform.OS,
+    })
 
     return expoPushToken
   } catch (error) {
@@ -414,13 +457,11 @@ export async function deactivateDevicePushToken() {
 
     if (!expoPushToken) return
 
-    await supabase
-      .from('user_push_tokens')
-      .update({
-        is_active: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('expo_push_token', expoPushToken)
+    await invokePushFunction({
+      action: 'deactivate_device',
+      expoPushToken,
+      platform: Platform.OS,
+    })
   } catch (error) {
     console.warn('Push token deactivation failed:', error?.message || error)
   }
@@ -431,24 +472,39 @@ export function canUseRemotePushNotifications() {
 }
 
 export async function sendPushToUser({ recipientId, title, body, data }) {
-  if (!recipientId) return
+  if (!recipientId) {
+    return { success: false, delivered: 0, error: 'A recipient is required.' }
+  }
 
   try {
     const type = data?.type
 
-    await supabase.functions.invoke('send-push-notification', {
-      body: {
-        recipientId,
-        title,
-        body,
-        data: {
-          ...(data || {}),
-          channelId: data?.channelId || getNotificationChannelId(type),
-        },
+    const result = await invokePushFunction({
+      action: 'send',
+      recipientId,
+      title,
+      body,
+      data: {
+        ...(data || {}),
+        channelId: data?.channelId || getNotificationChannelId(type),
       },
     })
+
+    if (!result?.delivered) {
+      console.warn(
+        'Push notification was not delivered:',
+        result?.warning || result?.error || 'The recipient has no active push-enabled device.'
+      )
+    }
+
+    return result
   } catch (error) {
     console.warn('Push notification send failed:', error?.message || error)
+    return {
+      success: false,
+      delivered: 0,
+      error: error?.message || 'Push notification send failed.',
+    }
   }
 }
 

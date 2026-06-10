@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { fetchPropertyViewCount, recordPropertyView } from '../lib/propertyViews'
 import { getOwnerVerificationStatus, getPropertyVerificationStatus } from '../lib/verification'
 import { blockUser } from '../lib/social'
@@ -643,7 +644,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
   const initialProperty = route.params?.property || {}
   const [post, setPost] = useState(initialProperty)
   const [currentUser, setCurrentUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialProperty?.id)
   const [visitRequest, setVisitRequest] = useState(null)
   const [visitModalVisible, setVisitModalVisible] = useState(false)
   const [visitDate, setVisitDate] = useState('')
@@ -682,9 +683,7 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
     let isMounted = true
 
     async function hydrateCompareState() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getCachedAuthUser()
       const storageUserId = user?.id || user?.email || 'guest'
       const nextItems = await loadComparedProperties(storageUserId)
 
@@ -763,11 +762,11 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
   }, [currentUser?.id, post?.id, post?.owner_id])
 
   async function loadPost() {
-    setLoading(true)
+    if (!initialProperty?.id) {
+      setLoading(true)
+    }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setCurrentUser(user)
 
@@ -789,60 +788,54 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
       .maybeSingle()
 
     const nextPost = data || initialProperty
-    let ownerProfile = null
-
-    if (nextPost.owner_id) {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
-        .eq('user_id', nextPost.owner_id)
-        .maybeSingle()
-
-      ownerProfile = profile || null
-    }
-
-    const { count: activeListingsCount } = nextPost.owner_id
-      ? await supabase
-          .from('properties')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', nextPost.owner_id)
-          .eq('status', 'open')
-          .or('admin_is_banned.is.null,admin_is_banned.eq.false')
-      : { count: 0 }
-
-    const nextOwnerResponseQuality = nextPost.owner_id
-      ? await fetchOwnerResponseQuality(nextPost.owner_id).catch(() =>
-          getEmptyOwnerResponseQuality()
-        )
-      : getEmptyOwnerResponseQuality()
-
-    let viewCount = nextPost.view_count || 0
-    let nextVisitRequest = null
-
-    if (nextPost.id) {
-      const viewResult = await recordPropertyView({
-        propertyId: nextPost.id,
-        userId: user?.id,
-        ownerId: nextPost.owner_id,
-      })
-
-      if (viewResult.viewCount) {
-        viewCount = viewResult.viewCount
-      } else {
-        viewCount = await fetchPropertyViewCount(nextPost.id)
-      }
-    }
-
-    if (user?.id && nextPost.id && String(nextPost.owner_id) !== String(user.id)) {
-      try {
-        nextVisitRequest = await fetchVisitRequestForProperty({
-          propertyId: nextPost.id,
-          requesterId: user.id,
-        })
-      } catch {
-        nextVisitRequest = null
-      }
-    }
+    const shouldRecordView =
+      nextPost.id
+      && user?.id
+      && String(nextPost.owner_id) !== String(user.id)
+    const [
+      ownerProfileResponse,
+      activeListingsResponse,
+      nextOwnerResponseQuality,
+      viewResult,
+      nextVisitRequest,
+    ] = await Promise.all([
+      nextPost.owner_id
+        ? supabase
+            .from('user_profiles')
+            .select('user_id, email, display_name, avatar_url, is_verified, owner_verification_status, user_type')
+            .eq('user_id', nextPost.owner_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      nextPost.owner_id
+        ? supabase
+            .from('properties')
+            .select('id', { count: 'exact', head: true })
+            .eq('owner_id', nextPost.owner_id)
+            .eq('status', 'open')
+            .or('admin_is_banned.is.null,admin_is_banned.eq.false')
+        : Promise.resolve({ count: 0 }),
+      nextPost.owner_id
+        ? fetchOwnerResponseQuality(nextPost.owner_id).catch(() =>
+            getEmptyOwnerResponseQuality()
+          )
+        : Promise.resolve(getEmptyOwnerResponseQuality()),
+      shouldRecordView
+        ? recordPropertyView({
+            propertyId: nextPost.id,
+            userId: user.id,
+            ownerId: nextPost.owner_id,
+          })
+        : Promise.resolve({ viewCount: nextPost.view_count || 0 }),
+      shouldRecordView
+        ? fetchVisitRequestForProperty({
+            propertyId: nextPost.id,
+            requesterId: user.id,
+          }).catch(() => null)
+        : Promise.resolve(null),
+    ])
+    const ownerProfile = ownerProfileResponse.data || null
+    const activeListingsCount = activeListingsResponse.count || 0
+    const viewCount = viewResult?.viewCount ?? nextPost.view_count ?? 0
 
     setPost({
       ...nextPost,
@@ -851,10 +844,10 @@ export default function PropertyScreen({ route, navigation, guestMode = false })
     })
     setOwnerResponseQuality(nextOwnerResponseQuality)
     setOwnerActiveListingsCount(activeListingsCount || 0)
-    await rememberRecentlyViewedProperty(user?.id || user?.email || 'guest', {
+    rememberRecentlyViewedProperty(user?.id || user?.email || 'guest', {
       ...nextPost,
       owner_profile: ownerProfile,
-    })
+    }).catch(() => null)
     setVisitRequest(nextVisitRequest)
     setLoading(false)
   }

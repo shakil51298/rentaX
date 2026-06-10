@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import Avatar from '../components/common/Avatar'
 import { createNotification } from '../lib/notifications'
 import {
@@ -53,18 +54,20 @@ export default function VisitRequestsScreen({ navigation }) {
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleTime, setRescheduleTime] = useState('')
   const [saving, setSaving] = useState(false)
+  const hasLoadedRequestsRef = useRef(false)
 
   const loadRequests = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedRequestsRef.current) {
+      setLoading(true)
+    }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setCurrentUser(user || null)
 
     if (!user?.id) {
       setRequests([])
+      hasLoadedRequestsRef.current = true
       setLoading(false)
       return
     }
@@ -77,6 +80,7 @@ export default function VisitRequestsScreen({ navigation }) {
         error?.message || 'Run supabase-visit-scheduling-features.sql in Supabase, then try again.'
       )
     } finally {
+      hasLoadedRequestsRef.current = true
       setLoading(false)
     }
   }, [])

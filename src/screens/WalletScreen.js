@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import { useAppSettings } from '../lib/appSettings'
 import {
   WALLET_CURRENCY,
@@ -71,6 +72,7 @@ export default function WalletScreen() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedWalletRef = useRef(false)
   const [submitting, setSubmitting] = useState(false)
 
   const pendingTotal = useMemo(
@@ -82,11 +84,9 @@ export default function WalletScreen() {
   )
 
   const loadWallet = useCallback(async (showLoader = true) => {
-    if (showLoader) setLoading(true)
+    if (showLoader && !hasLoadedWalletRef.current) setLoading(true)
 
-    const {
-      data: { user: currentUser },
-    } = await supabase.auth.getUser()
+    const currentUser = await getCachedAuthUser()
 
       setUser(currentUser || null)
 
@@ -94,6 +94,7 @@ export default function WalletScreen() {
       setEntries([])
       setRequests([])
       setWalletBalance(0)
+      hasLoadedWalletRef.current = true
       setLoading(false)
       return
     }
@@ -114,6 +115,7 @@ export default function WalletScreen() {
         error?.message || 'Run supabase-red-packet-features.sql to enable wallet requests.'
       )
     } finally {
+      hasLoadedWalletRef.current = true
       setLoading(false)
       setRefreshing(false)
     }

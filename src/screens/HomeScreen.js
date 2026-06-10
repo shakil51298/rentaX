@@ -22,6 +22,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import Slider from '@react-native-community/slider'
 import * as Location from 'expo-location'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import {
   createNotification,
   getUnreadNotificationCount,
@@ -74,7 +75,11 @@ import {
 } from '../lib/savedSearches'
 import { fetchVisibleHomeBanners } from '../lib/homeBanners'
 import { getProfileName, getUserAvatarUrl, getUserDisplayName } from '../lib/userDisplay'
-import { fetchPropertiesWithProfiles } from '../lib/properties'
+import {
+  fetchPropertiesWithProfiles,
+  loadCachedPropertyFeed,
+  saveCachedPropertyFeed,
+} from '../lib/properties'
 import { getOwnerVerificationStatus } from '../lib/verification'
 import { blockUser } from '../lib/social'
 import {
@@ -264,7 +269,7 @@ function getPropertyPrice(post) {
 }
 
 const FILTER_MAX_BUDGET = 500000
-const HOME_FEED_LIMIT = 80
+const HOME_FEED_LIMIT = 20
 
 function createDefaultFilters(maxPrice) {
   return {
@@ -849,10 +854,19 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
 
     async function bootstrapHome() {
       const user = await loadUser()
+      const cachedProperties = await loadCachedPropertyFeed(user?.id)
 
-      if (isMounted) {
-        loadProperties({ currentUserId: user?.id })
+      if (!isMounted) return
+
+      if (cachedProperties.length) {
+        setProperties(cachedProperties)
+        setLoading(false)
       }
+
+      loadProperties({
+        currentUserId: user?.id,
+        silent: cachedProperties.length > 0,
+      })
     }
 
     bootstrapHome()
@@ -1359,16 +1373,12 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
   }, [commentModal, selectedPost?.id])
 
   async function loadUser() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     if (user?.id) {
-      try {
-        await ensureUserProfileRecord(user)
-      } catch (_error) {
+      ensureUserProfileRecord(user).catch(() => {
         // Feed can continue even if profile sync retries later.
-      }
+      })
     }
 
     setCurrentUser(user)
@@ -1422,16 +1432,22 @@ export default function HomeScreen({ navigation, route, embeddedTabShell = false
     }
 
     try {
-      setProperties(await fetchPropertiesWithProfiles({
-        currentUserId: options.currentUserId ?? currentUser?.id,
+      const currentUserId = options.currentUserId ?? currentUser?.id
+      const nextProperties = await fetchPropertiesWithProfiles({
+        currentUserId,
         limit: options.limit || feedLimit,
-      }))
-    } catch (error) {
-      Alert.alert('Error', error.message)
-    }
+      })
 
-    if (!options.silent) {
-      setLoading(false)
+      setProperties(nextProperties)
+      saveCachedPropertyFeed(currentUserId, nextProperties)
+    } catch (error) {
+      if (!options.silent) {
+        Alert.alert('Error', error.message)
+      }
+    } finally {
+      if (!options.silent) {
+        setLoading(false)
+      }
     }
   }, [currentUser?.id, feedLimit])
 

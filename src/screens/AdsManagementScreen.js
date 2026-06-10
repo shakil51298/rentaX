@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import ActionSheetModal from '../components/common/ActionSheetModal'
 import MediaViewer from '../components/common/MediaViewer'
 import PostCard from '../components/home/PostCard'
@@ -167,13 +168,14 @@ export default function AdsManagementScreen({ navigation }) {
     index: 0,
   })
   const [actionPost, setActionPost] = useState(null)
+  const hasLoadedAdsRef = useRef(false)
 
   const loadAds = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedAdsRef.current) {
+      setLoading(true)
+    }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setCurrentUser(user || null)
 
@@ -182,6 +184,7 @@ export default function AdsManagementScreen({ navigation }) {
       setPosts([])
       setPendingVisitCount(0)
       setLeadDashboard({ byPropertyId: {}, totals: buildLeadTotals({}) })
+      hasLoadedAdsRef.current = true
       setLoading(false)
       return
     }
@@ -202,6 +205,7 @@ export default function AdsManagementScreen({ navigation }) {
       setPosts([])
       setPendingVisitCount(0)
       setLeadDashboard({ byPropertyId: {}, totals: buildLeadTotals({}) })
+      hasLoadedAdsRef.current = true
       setLoading(false)
       return
     }
@@ -249,6 +253,7 @@ export default function AdsManagementScreen({ navigation }) {
       Alert.alert('Error', error.message)
     }
 
+    hasLoadedAdsRef.current = true
     setLoading(false)
   }, [])
 

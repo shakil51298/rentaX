@@ -40,6 +40,7 @@ import {
   useAudioRecorderState,
 } from 'expo-audio'
 import { supabase } from '../lib/supabase'
+import { getCachedAuthUser } from '../lib/authSession'
 import Avatar from '../components/common/Avatar'
 import GroupAvatar from '../components/common/GroupAvatar'
 import ActionSheetModal from '../components/common/ActionSheetModal'
@@ -568,6 +569,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [conversationProperty, setConversationProperty] = useState(directProperty)
   const [messages, setMessages] = useState([])
   const [conversationRows, setConversationRows] = useState([])
+  const conversationRowsRef = useRef([])
   const [groupMembers, setGroupMembers] = useState([])
   const [conversationSearchQuery, setConversationSearchQuery] = useState('')
   const [addingContactFromSearch, setAddingContactFromSearch] = useState(false)
@@ -619,6 +621,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [linkPreviewsEnabled, setLinkPreviewsEnabled] = useState(true)
   const [linkPreviewsByUrl, setLinkPreviewsByUrl] = useState({})
   const typingTimeoutRef = useRef(null)
+  const conversationListLoadingRef = useRef(false)
   const linkPreviewRequestsRef = useRef(new Set())
   const voicePreviewPlayer = useAudioPlayer(pendingVoiceNote?.uri || null, {
     updateInterval: 250,
@@ -813,33 +816,40 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }, [])
 
   const loadConversationList = useCallback(async (user) => {
+    if (conversationListLoadingRef.current) return
+
     if (!user?.id) {
+      conversationRowsRef.current = []
       setConversationRows([])
       setLoading(false)
       return
     }
 
-    setLoading(true)
+    conversationListLoadingRef.current = true
 
-    const { data, error } = await supabase
-      .from('chat_conversations')
-      .select('*')
-      .or(`participant_one_id.eq.${user.id},participant_two_id.eq.${user.id}`)
-      .order('last_message_at', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      Alert.alert('Database update needed', error.message)
-      setLoading(false)
-      return
+    if (!conversationRowsRef.current.length) {
+      setLoading(true)
     }
 
-    const directRows = (data || []).filter((item) => !isGroupConversation(item))
-    let groupRows = []
-    let groupMembershipByConversationId = {}
-    let groupMemberCountsByConversationId = {}
-    let groupMemberIdsByConversationId = {}
-    let groupUnreadCountsByConversationId = {}
+    try {
+      const { data, error } = await supabase
+        .from('chat_conversations')
+        .select('*')
+        .or(`participant_one_id.eq.${user.id},participant_two_id.eq.${user.id}`)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        Alert.alert('Database update needed', error.message)
+        return
+      }
+
+      const directRows = (data || []).filter((item) => !isGroupConversation(item))
+      let groupRows = []
+      let groupMembershipByConversationId = {}
+      let groupMemberCountsByConversationId = {}
+      let groupMemberIdsByConversationId = {}
+      let groupUnreadCountsByConversationId = {}
 
     try {
       const { data: memberships, error: membershipError } = await supabase
@@ -857,24 +867,33 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         const groupIds = [...new Set(memberships.map((membership) => membership.conversation_id).filter(Boolean))]
 
         if (groupIds.length) {
-          const { data: fetchedGroups, error: groupError } = await supabase
-            .from('chat_conversations')
-            .select('*')
-            .in('id', groupIds)
-            .eq('conversation_type', 'group')
-            .order('last_message_at', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false })
+          const [groupsResponse, membersResponse, messagesResponse] = await Promise.all([
+            supabase
+              .from('chat_conversations')
+              .select('*')
+              .in('id', groupIds)
+              .eq('conversation_type', 'group')
+              .order('last_message_at', { ascending: false, nullsFirst: false })
+              .order('created_at', { ascending: false }),
+            supabase
+              .from('chat_group_members')
+              .select('conversation_id, user_id')
+              .in('conversation_id', groupIds)
+              .eq('status', 'active'),
+            supabase
+              .from('chat_messages')
+              .select('conversation_id, sender_id, created_at')
+              .in('conversation_id', groupIds)
+              .order('created_at', { ascending: false })
+              .limit(1000),
+          ])
+          const { data: fetchedGroups, error: groupError } = groupsResponse
 
           if (!groupError) {
             groupRows = fetchedGroups || []
           }
 
-          const { data: memberCountRows } = await supabase
-            .from('chat_group_members')
-            .select('conversation_id, user_id')
-            .in('conversation_id', groupIds)
-            .eq('status', 'active')
-
+          const memberCountRows = membersResponse.data || []
           groupMemberCountsByConversationId = (memberCountRows || []).reduce((itemsById, member) => {
             itemsById[member.conversation_id] = (itemsById[member.conversation_id] || 0) + 1
             return itemsById
@@ -890,13 +909,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             return itemsById
           }, {})
 
-          const { data: groupMessageRows } = await supabase
-            .from('chat_messages')
-            .select('conversation_id, sender_id, created_at')
-            .in('conversation_id', groupIds)
-            .order('created_at', { ascending: false })
-            .limit(1000)
-
+          const groupMessageRows = messagesResponse.data || []
           groupUnreadCountsByConversationId = (groupMessageRows || []).reduce((itemsById, message) => {
             if (message.sender_id === user.id) return itemsById
 
@@ -919,8 +932,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       groupRows = []
     }
 
-    const directVisibleRows = directRows.filter((item) => isConversationVisibleForUser(item, user.id))
-    const groupVisibleRows = groupRows
+      const directVisibleRows = directRows.filter((item) => isConversationVisibleForUser(item, user.id))
+      const groupVisibleRows = groupRows
       .map((item) => ({
         ...item,
         group_cleared_at: groupMembershipByConversationId[item.id]?.cleared_at || null,
@@ -936,43 +949,44 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     const groupPreviewProfileIds = Object.values(groupMemberIdsByConversationId)
       .flat()
       .filter(Boolean)
-    const profilesById = await fetchProfiles([...otherIds, ...groupPreviewProfileIds])
-    let presenceById = {}
-
-    if (otherIds.length > 0) {
-      const { data: presenceRows, error: presenceError } = await supabase
-        .from('user_presence')
-        .select('user_id, is_online, last_seen_at')
-        .in('user_id', otherIds)
-
-      if (!presenceError) {
-        presenceById = (presenceRows || []).reduce((acc, row) => {
+    const [
+      profilesById,
+      presenceResponse,
+      unreadResponse,
+      pinnedIds,
+      mutedIds,
+    ] = await Promise.all([
+      fetchProfiles([...otherIds, ...groupPreviewProfileIds]),
+      otherIds.length > 0
+        ? supabase
+            .from('user_presence')
+            .select('user_id, is_online, last_seen_at')
+            .in('user_id', otherIds)
+        : Promise.resolve({ data: [], error: null }),
+      (data || []).length > 0
+        ? supabase
+            .from('chat_messages')
+            .select('conversation_id')
+            .eq('receiver_id', user.id)
+            .is('seen_at', null)
+        : Promise.resolve({ data: [] }),
+      getPinnedConversationIds(),
+      getMutedConversationIds(),
+    ])
+    const presenceById = presenceResponse.error
+      ? {}
+      : (presenceResponse.data || []).reduce((acc, row) => {
           acc[row.user_id] = row
           return acc
         }, {})
 
-        setPresenceByUserId(presenceById)
-      }
-    }
+    setPresenceByUserId(presenceById)
     const unreadCountsByConversation = {}
 
-    if ((data || []).length > 0) {
-      const { data: unreadMessages } = await supabase
-        .from('chat_messages')
-        .select('conversation_id')
-        .eq('receiver_id', user.id)
-        .is('seen_at', null)
-
-        ; (unreadMessages || []).forEach((message) => {
-          unreadCountsByConversation[message.conversation_id] =
-            (unreadCountsByConversation[message.conversation_id] || 0) + 1
-        })
-    }
-
-    const [pinnedIds, mutedIds] = await Promise.all([
-      getPinnedConversationIds(),
-      getMutedConversationIds(),
-    ])
+    ; (unreadResponse.data || []).forEach((message) => {
+      unreadCountsByConversation[message.conversation_id] =
+        (unreadCountsByConversation[message.conversation_id] || 0) + 1
+    })
 
     const directHydratedRows = directVisibleRows.map((item) => {
       const otherId =
@@ -1017,11 +1031,18 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       is_muted: mutedIds.has(String(item.id)),
     }))
 
-    setConversationRows(sortConversationRowsWithPinned(collapsedRows, pinnedIds))
-    setSelectedConversationIds((current) =>
-      current.filter((id) => hydratedRows.some((item) => item.id === id))
-    )
-    setLoading(false)
+      const nextConversationRows = sortConversationRowsWithPinned(collapsedRows, pinnedIds)
+      conversationRowsRef.current = nextConversationRows
+      setConversationRows(nextConversationRows)
+      setSelectedConversationIds((current) =>
+        current.filter((id) => hydratedRows.some((item) => item.id === id))
+      )
+    } catch (error) {
+      console.warn('Conversation list refresh failed:', error?.message || error)
+    } finally {
+      conversationListLoadingRef.current = false
+      setLoading(false)
+    }
   }, [])
 
   const getOrCreateConversation = useCallback(async (user, targetUser, property) => {
@@ -1305,11 +1326,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   }, [currentUser, getOrCreateConversation, loadConversationList, loadMessages])
 
   const initializeChat = useCallback(async () => {
-    setLoading(true)
+    if (!conversationRowsRef.current.length) {
+      setLoading(true)
+    }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCachedAuthUser()
 
     setCurrentUser(user)
 
