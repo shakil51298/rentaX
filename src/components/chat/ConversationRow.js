@@ -49,7 +49,11 @@ export default function ConversationRow({
     >
       <View>
         {isGroup ? (
-          <GroupAvatar members={item.group_preview_profiles || []} size={52} />
+          <GroupAvatar
+            uri={profile?.avatar_url || item.group_avatar_url}
+            members={item.group_preview_profiles || []}
+            size={52}
+          />
         ) : (
           <Avatar profile={profile} name={name} size={52} />
         )}

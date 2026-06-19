@@ -5998,6 +5998,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           >
             {isActiveGroupChat ? (
               <GroupAvatar
+                uri={conversation?.group_avatar_url || otherUser?.avatar_url}
                 members={groupMembers.length ? groupMembers : conversation?.group_preview_profiles || []}
                 size={36}
               />

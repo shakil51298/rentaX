@@ -1,4 +1,4 @@
-import { View } from 'react-native'
+import { Image, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Avatar from './Avatar'
 import { useAppSettings } from '../../lib/appSettings'
@@ -49,6 +49,7 @@ function getAvatarLayout(count, size) {
 
 export default function GroupAvatar({
   members = [],
+  uri,
   size = 52,
   borderWidth = 0,
   borderColor,
@@ -70,7 +71,13 @@ export default function GroupAvatar({
         overflow: 'hidden',
       }}
     >
-      {profiles.length ? (
+      {uri ? (
+        <Image
+          source={{ uri }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
+      ) : profiles.length ? (
         profiles.map((profile, index) => {
           const item = layout[index]
 

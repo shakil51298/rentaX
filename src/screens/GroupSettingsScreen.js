@@ -13,9 +13,12 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import * as ImagePicker from 'expo-image-picker'
 import Avatar from '../components/common/Avatar'
+import GroupAvatar from '../components/common/GroupAvatar'
 import { supabase } from '../lib/supabase'
 import { useAppSettings } from '../lib/appSettings'
+import { CHAT_MEDIA_BUCKET, uploadMediaAsset } from '../lib/media'
 import {
   fetchGroupMembers,
   GROUP_INVITE_POLICIES,
@@ -183,6 +186,7 @@ export default function GroupSettingsScreen({ route, navigation }) {
   const [title, setTitle] = useState(initialConversation?.group_title || '')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingGroupPhoto, setSavingGroupPhoto] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
   const [memberActionMode, setMemberActionMode] = useState('actions')
   const [nicknameDraft, setNicknameDraft] = useState('')
@@ -259,6 +263,41 @@ export default function GroupSettingsScreen({ route, navigation }) {
     }
 
     await saveSettings({ group_title: nextTitle })
+  }
+
+  async function pickGroupPhoto() {
+    if (!canEdit || !conversationId || !currentUserId || savingGroupPhoto) return
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      })
+
+      if (result.canceled || !result.assets?.length) return
+
+      setSavingGroupPhoto(true)
+
+      const asset = result.assets[0]
+      const uploadResult = await uploadMediaAsset({
+        uri: asset.uri,
+        type: 'image',
+        mimeType: asset.mimeType,
+        userId: currentUserId,
+        bucket: CHAT_MEDIA_BUCKET,
+      })
+      const nextConversation = await updateGroupSettings(conversationId, {
+        group_avatar_url: uploadResult.mediaUrl,
+      })
+
+      setConversation(nextConversation)
+    } catch (error) {
+      Alert.alert('Photo failed', error?.message || 'Could not update the group photo.')
+    } finally {
+      setSavingGroupPhoto(false)
+    }
   }
 
   async function leaveGroup() {
@@ -443,6 +482,61 @@ export default function GroupSettingsScreen({ route, navigation }) {
       <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 30, gap: 12 }}>
         <Section title="Group">
           <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingBottom: 12,
+              }}
+            >
+              <TouchableOpacity
+                onPress={pickGroupPhoto}
+                disabled={!canEdit || savingGroupPhoto}
+                activeOpacity={0.84}
+                style={{ opacity: canEdit && !savingGroupPhoto ? 1 : 0.72 }}
+              >
+                <GroupAvatar
+                  uri={conversation?.group_avatar_url}
+                  members={members}
+                  size={68}
+                  borderWidth={1}
+                  borderColor={theme.border}
+                />
+                {canEdit ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      right: -3,
+                      bottom: -3,
+                      width: 25,
+                      height: 25,
+                      borderRadius: 13,
+                      backgroundColor: theme.accent,
+                      borderWidth: 2,
+                      borderColor: theme.surface,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {savingGroupPhoto ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Ionicons name="camera" size={13} color="#fff" />
+                    )}
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+
+              <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900' }}>
+                  Group photo
+                </Text>
+                <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 3 }}>
+                  {canEdit ? 'Tap the photo to choose a new image.' : 'Only admins can change the group photo.'}
+                </Text>
+              </View>
+            </View>
+
             <TextInput
               value={title}
               onChangeText={setTitle}
