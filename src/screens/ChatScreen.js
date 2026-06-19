@@ -830,6 +830,32 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       ),
     [currentUser?.id, groupMembers]
   )
+  const groupMemberProfilesById = useMemo(
+    () =>
+      groupMembers.reduce((profilesById, member) => {
+        if (member.user_id) {
+          profilesById[member.user_id] = {
+            id: member.user_id,
+            user_id: member.user_id,
+            ...(member.profile || {}),
+          }
+        }
+
+        return profilesById
+      }, {}),
+    [groupMembers]
+  )
+  const currentUserGroupProfile = useMemo(() => {
+    if (!currentUser?.id) return null
+
+    return {
+      id: currentUser.id,
+      user_id: currentUser.id,
+      display_name: currentUserName,
+      avatar_url: getUserAvatarUrl(currentUser),
+      email: currentUser.email,
+    }
+  }, [currentUser, currentUserName])
   const canSend = Boolean(
     currentUser?.id &&
     conversation?.id &&
@@ -6113,6 +6139,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             keyExtractor={(item) => item.id}
             renderItem={({ item, index }) => {
               const redPacket = redPacketsByMessageId[item.id]
+              const senderProfile =
+                item.sender_id === currentUser?.id
+                  ? currentUserGroupProfile
+                  : groupMemberProfilesById[item.sender_id] || {
+                    id: item.sender_id,
+                    user_id: item.sender_id,
+                    display_name: 'Group member',
+                  }
 
               return (
                 <View>
@@ -6137,12 +6171,15 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     onShowRedPacketDetails={showRedPacketDetails}
                     openingRedPacketId={openingRedPacketId}
                     onOpenContactCard={openContactCard}
+                    senderProfile={senderProfile}
+                    showSenderIdentity={isActiveGroupChat}
                     linkPreview={
                       linkPreviewsEnabled
                         ? linkPreviewsByUrl[extractFirstLink(item.body)]
                         : null
                     }
                     outgoingBubbleColor={activeColorPreset.bubble}
+                    outgoingAccentColor={activeColorPreset.accent}
                     highlighted={highlightedMessageId === item.id}
                   />
                   {renderRedPacketOpenedActivity(item, redPacket)}

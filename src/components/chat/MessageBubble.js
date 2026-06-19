@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
+import Avatar from '../common/Avatar'
 import {
   formatCurrencyAmount,
   formatClock,
@@ -27,8 +28,94 @@ import {
   isSameDay,
   parseContactCardPayload,
 } from '../../lib/chatUtils'
+import { getProfileName } from '../../lib/userDisplay'
 
 const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '👍', '🙏']
+const WHATSAPP_OUTGOING_BUBBLE = '#d9fdd3'
+const WHATSAPP_INCOMING_BUBBLE = '#ffffff'
+const WHATSAPP_INCOMING_BORDER = '#e9edef'
+const WHATSAPP_TEXT = '#111b21'
+const WHATSAPP_META = '#667781'
+const WHATSAPP_CHECK = '#0b8fff'
+const WHATSAPP_ACCENT = '#128c7e'
+const WHATSAPP_SOFT_ACCENT = 'rgba(18,140,126,0.12)'
+const DEFAULT_MESSAGE_STYLE = {
+  textColor: WHATSAPP_TEXT,
+  metaColor: WHATSAPP_META,
+  accentColor: WHATSAPP_ACCENT,
+  softAccentColor: WHATSAPP_SOFT_ACCENT,
+}
+
+function normalizeHexColor(value, fallback) {
+  if (typeof value !== 'string') return fallback
+
+  const trimmedValue = value.trim()
+  const shortMatch = trimmedValue.match(/^#([a-f0-9]{3})$/i)
+
+  if (shortMatch) {
+    return `#${shortMatch[1]
+      .split('')
+      .map((part) => `${part}${part}`)
+      .join('')}`
+  }
+
+  if (/^#[a-f0-9]{6}$/i.test(trimmedValue)) {
+    return trimmedValue
+  }
+
+  return fallback
+}
+
+function hexToRgb(value) {
+  const color = normalizeHexColor(value, '#000000').slice(1)
+  const numericValue = Number.parseInt(color, 16)
+
+  return {
+    r: (numericValue >> 16) & 255,
+    g: (numericValue >> 8) & 255,
+    b: numericValue & 255,
+  }
+}
+
+function hexToRgba(value, opacity) {
+  const { r, g, b } = hexToRgb(value)
+  return `rgba(${r},${g},${b},${opacity})`
+}
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b]
+    .map((value) => Math.round(value).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function mixHex(baseColor, targetColor, amount) {
+  const base = hexToRgb(baseColor)
+  const target = hexToRgb(targetColor)
+
+  return rgbToHex({
+    r: base.r + (target.r - base.r) * amount,
+    g: base.g + (target.g - base.g) * amount,
+    b: base.b + (target.b - base.b) * amount,
+  })
+}
+
+function getRelativeLuminance(value) {
+  const { r, g, b } = hexToRgb(value)
+  const [red, green, blue] = [r, g, b].map((channel) => {
+    const normalized = channel / 255
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4
+  })
+
+  return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+}
+
+function getBubbleBorderColor(value) {
+  return getRelativeLuminance(value) < 0.5
+    ? mixHex(value, '#ffffff', 0.28)
+    : mixHex(value, '#000000', 0.08)
+}
 
 function displayReaction(reaction) {
   if (!reaction) return null
@@ -77,7 +164,7 @@ function isDocumentMessage(message) {
   return true
 }
 
-function VoiceMessage({ message, isMine }) {
+function VoiceMessage({ message, isMine, messageStyle = DEFAULT_MESSAGE_STYLE }) {
   const player = useAudioPlayer(message.media_url, { updateInterval: 500 })
   const status = useAudioPlayerStatus(player)
   const isPlaying = Boolean(status?.playing)
@@ -157,7 +244,7 @@ function VoiceMessage({ message, isMine }) {
           width: 36,
           height: 36,
           borderRadius: 18,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.28)' : '#dbeafe',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -165,7 +252,7 @@ function VoiceMessage({ message, isMine }) {
         <Ionicons
           name={isPlaying ? 'pause' : hasFinishedPlayback ? 'refresh' : 'play'}
           size={18}
-          color={isMine ? '#fff' : '#1877F2'}
+          color={isMine ? messageStyle.accentColor : '#1877F2'}
         />
       </TouchableOpacity>
 
@@ -193,10 +280,10 @@ function VoiceMessage({ message, isMine }) {
                   marginRight: index === waveformHeights.length - 1 ? 0 : 3,
                   backgroundColor: active
                     ? isMine
-                      ? '#fff'
+                      ? messageStyle.accentColor
                       : '#1877F2'
                     : isMine
-                      ? 'rgba(255,255,255,0.28)'
+                      ? hexToRgba(messageStyle.accentColor, 0.25)
                       : '#cbd5e1',
                   opacity: isPlaying && !active ? 0.82 : 1,
                 }}
@@ -208,7 +295,7 @@ function VoiceMessage({ message, isMine }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
           <Text
             style={{
-              color: isMine ? 'rgba(255,255,255,0.86)' : '#64748b',
+              color: messageStyle.metaColor,
               fontSize: 11,
               fontWeight: '700',
             }}
@@ -224,13 +311,13 @@ function VoiceMessage({ message, isMine }) {
               paddingHorizontal: 8,
               paddingVertical: 3,
               borderRadius: 999,
-              backgroundColor: isMine ? 'rgba(255,255,255,0.16)' : '#e0ecff',
+              backgroundColor: isMine ? messageStyle.softAccentColor : '#e0ecff',
               alignItems: 'center',
             }}
           >
             <Text
               style={{
-                color: isMine ? '#fff' : '#1d4ed8',
+                color: isMine ? messageStyle.accentColor : '#1d4ed8',
                 fontSize: 10,
                 fontWeight: '900',
               }}
@@ -263,7 +350,7 @@ function getReplySnippet(message) {
   return message.body || 'Message'
 }
 
-function ReplyPreviewMedia({ message, isMine }) {
+function ReplyPreviewMedia({ message, isMine, messageStyle = DEFAULT_MESSAGE_STYLE }) {
   if (!message || message.deleted_for_everyone_at) return null
 
   if (message.message_type === 'image' && message.media_url) {
@@ -276,7 +363,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
         }}
         resizeMode="cover"
       />
@@ -292,7 +379,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -300,7 +387,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name="videocam"
           size={18}
-          color={isMine ? '#fff' : '#1877F2'}
+          color={isMine ? messageStyle.accentColor : '#1877F2'}
         />
       </View>
     )
@@ -315,7 +402,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -323,7 +410,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name="mic"
           size={18}
-          color={isMine ? '#fff' : '#1877F2'}
+          color={isMine ? messageStyle.accentColor : '#1877F2'}
         />
       </View>
     )
@@ -340,7 +427,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -348,7 +435,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name={previewIconName}
           size={17}
-          color={isMine ? '#fff' : '#1877F2'}
+          color={isMine ? messageStyle.accentColor : '#1877F2'}
         />
       </View>
     )
@@ -363,7 +450,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dcfce7',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dcfce7',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -371,7 +458,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name="location"
           size={18}
-          color={isMine ? '#fff' : '#16a34a'}
+          color={isMine ? messageStyle.accentColor : '#16a34a'}
         />
       </View>
     )
@@ -386,7 +473,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#fee2e2',
+          backgroundColor: isMine ? 'rgba(220,38,38,0.1)' : '#fee2e2',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -394,7 +481,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name="gift"
           size={18}
-          color={isMine ? '#fff' : '#dc2626'}
+          color="#dc2626"
         />
       </View>
     )
@@ -409,7 +496,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#f0fdf4',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#f0fdf4',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -417,7 +504,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name="id-card"
           size={18}
-          color={isMine ? '#fff' : '#16a34a'}
+          color={isMine ? messageStyle.accentColor : '#16a34a'}
         />
       </View>
     )
@@ -432,7 +519,7 @@ function ReplyPreviewMedia({ message, isMine }) {
           borderRadius: 10,
           marginRight: 10,
           flexShrink: 0,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -440,7 +527,7 @@ function ReplyPreviewMedia({ message, isMine }) {
         <Ionicons
           name="document-text-outline"
           size={18}
-          color={isMine ? '#fff' : '#1877F2'}
+          color={isMine ? messageStyle.accentColor : '#1877F2'}
         />
       </View>
     )
@@ -449,7 +536,7 @@ function ReplyPreviewMedia({ message, isMine }) {
   return null
 }
 
-function CallMessage({ message, isMine }) {
+function CallMessage({ message, isMine, messageStyle = DEFAULT_MESSAGE_STYLE }) {
   const { isCompleted, iconName, iconColor, title } = getCallPresentation(message)
   const detail = isCompleted
     ? `Duration ${formatDurationSeconds(message.call_duration_seconds || 0)}`
@@ -472,19 +559,19 @@ function CallMessage({ message, isMine }) {
           width: 38,
           height: 38,
           borderRadius: 19,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#eff6ff',
           alignItems: 'center',
           justifyContent: 'center',
           marginRight: 10,
         }}
       >
-        <Ionicons name={iconName} size={18} color={isMine && isCompleted ? '#fff' : iconColor} />
+        <Ionicons name={iconName} size={18} color={iconColor} />
       </View>
 
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            color: isMine ? '#fff' : '#0f172a',
+            color: messageStyle.textColor,
             fontSize: 14,
             fontWeight: '800',
           }}
@@ -493,7 +580,7 @@ function CallMessage({ message, isMine }) {
         </Text>
         <Text
           style={{
-            color: isMine ? 'rgba(255,255,255,0.8)' : '#64748b',
+            color: messageStyle.metaColor,
             fontSize: 12,
             marginTop: 2,
           }}
@@ -505,7 +592,7 @@ function CallMessage({ message, isMine }) {
   )
 }
 
-function LocationMessage({ message, isMine }) {
+function LocationMessage({ message, isMine, messageStyle = DEFAULT_MESSAGE_STYLE }) {
   const label = message.media_name || 'Shared location'
   const url = message.media_url
 
@@ -533,7 +620,7 @@ function LocationMessage({ message, isMine }) {
         style={{
           height: 92,
           borderRadius: 14,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#dcfce7',
+          backgroundColor: isMine ? hexToRgba(messageStyle.accentColor, 0.1) : '#dcfce7',
           overflow: 'hidden',
           marginBottom: 8,
         }}
@@ -545,7 +632,7 @@ function LocationMessage({ message, isMine }) {
             top: 18,
             width: 280,
             height: 1,
-            backgroundColor: isMine ? 'rgba(255,255,255,0.2)' : 'rgba(22, 163, 74, 0.2)',
+            backgroundColor: isMine ? hexToRgba(messageStyle.accentColor, 0.22) : 'rgba(22, 163, 74, 0.2)',
             transform: [{ rotate: '-12deg' }],
           }}
         />
@@ -556,7 +643,7 @@ function LocationMessage({ message, isMine }) {
             bottom: 22,
             width: 280,
             height: 1,
-            backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : 'rgba(22, 163, 74, 0.18)',
+            backgroundColor: isMine ? hexToRgba(messageStyle.accentColor, 0.18) : 'rgba(22, 163, 74, 0.18)',
             transform: [{ rotate: '14deg' }],
           }}
         />
@@ -572,12 +659,12 @@ function LocationMessage({ message, isMine }) {
               width: 46,
               height: 46,
               borderRadius: 23,
-              backgroundColor: isMine ? 'rgba(255,255,255,0.26)' : '#fff',
+              backgroundColor: '#fff',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="location" size={24} color={isMine ? '#fff' : '#16a34a'} />
+            <Ionicons name="location" size={24} color={isMine ? messageStyle.accentColor : '#16a34a'} />
           </View>
         </View>
       </View>
@@ -586,7 +673,7 @@ function LocationMessage({ message, isMine }) {
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
             style={{
-              color: isMine ? '#fff' : '#0f172a',
+              color: messageStyle.textColor,
               fontSize: 14,
               fontWeight: '900',
             }}
@@ -596,7 +683,7 @@ function LocationMessage({ message, isMine }) {
           </Text>
           <Text
             style={{
-              color: isMine ? 'rgba(255,255,255,0.82)' : '#64748b',
+              color: messageStyle.metaColor,
               fontSize: 12,
               marginTop: 2,
             }}
@@ -608,7 +695,7 @@ function LocationMessage({ message, isMine }) {
         <Ionicons
           name="open-outline"
           size={18}
-          color={isMine ? 'rgba(255,255,255,0.85)' : '#16a34a'}
+          color={isMine ? messageStyle.accentColor : '#16a34a'}
         />
       </View>
     </TouchableOpacity>
@@ -771,7 +858,12 @@ function RedPacketMessage({
   )
 }
 
-function ContactCardMessage({ message, isMine, onOpenContactCard }) {
+function ContactCardMessage({
+  message,
+  isMine,
+  onOpenContactCard,
+  messageStyle = DEFAULT_MESSAGE_STYLE,
+}) {
   const contact = parseContactCardPayload(message)
   const initial = String(contact.displayName || 'R').charAt(0).toUpperCase()
 
@@ -791,7 +883,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
               width: 46,
               height: 46,
               borderRadius: 23,
-              backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#e2e8f0',
+              backgroundColor: isMine ? messageStyle.softAccentColor : '#e2e8f0',
             }}
           />
         ) : (
@@ -800,12 +892,12 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
               width: 46,
               height: 46,
               borderRadius: 23,
-              backgroundColor: isMine ? 'rgba(255,255,255,0.2)' : '#dcfce7',
+              backgroundColor: isMine ? messageStyle.softAccentColor : '#dcfce7',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: isMine ? '#fff' : '#15803d', fontSize: 17, fontWeight: '900' }}>
+            <Text style={{ color: isMine ? messageStyle.accentColor : '#15803d', fontSize: 17, fontWeight: '900' }}>
               {initial}
             </Text>
           </View>
@@ -816,7 +908,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
             <Text
               numberOfLines={1}
               style={{
-                color: isMine ? '#fff' : '#0f172a',
+                color: messageStyle.textColor,
                 fontSize: 14,
                 fontWeight: '900',
                 flexShrink: 1,
@@ -828,7 +920,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
               <Ionicons
                 name="checkmark-circle"
                 size={14}
-                color={isMine ? '#bfdbfe' : '#1877F2'}
+                color={isMine ? messageStyle.accentColor : '#1877F2'}
                 style={{ marginLeft: 4 }}
               />
             ) : null}
@@ -836,7 +928,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
           <Text
             numberOfLines={1}
             style={{
-              color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
+              color: messageStyle.metaColor,
               fontSize: 11,
               marginTop: 3,
               fontWeight: '800',
@@ -855,7 +947,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
           marginTop: 10,
           minHeight: 36,
           borderRadius: 13,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#eff6ff',
           alignItems: 'center',
           justifyContent: 'center',
           opacity: contact.userId ? 1 : 0.6,
@@ -863,7 +955,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
       >
         <Text
           style={{
-            color: isMine ? '#fff' : '#1877F2',
+            color: isMine ? messageStyle.accentColor : '#1877F2',
             fontSize: 12,
             fontWeight: '900',
           }}
@@ -875,7 +967,7 @@ function ContactCardMessage({ message, isMine, onOpenContactCard }) {
   )
 }
 
-function DocumentMessage({ message, isMine }) {
+function DocumentMessage({ message, isMine, messageStyle = DEFAULT_MESSAGE_STYLE }) {
   async function openDocument() {
     if (!message?.media_url) return
 
@@ -903,7 +995,7 @@ function DocumentMessage({ message, isMine }) {
           width: 38,
           height: 38,
           borderRadius: 19,
-          backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+          backgroundColor: isMine ? messageStyle.softAccentColor : '#eff6ff',
           alignItems: 'center',
           justifyContent: 'center',
           marginRight: 10,
@@ -912,14 +1004,14 @@ function DocumentMessage({ message, isMine }) {
         <Ionicons
           name="document-text-outline"
           size={18}
-          color={isMine ? '#fff' : '#4f46e5'}
+          color={isMine ? messageStyle.accentColor : '#4f46e5'}
         />
       </View>
 
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            color: isMine ? '#fff' : '#0f172a',
+            color: messageStyle.textColor,
             fontSize: 14,
             fontWeight: '800',
           }}
@@ -929,7 +1021,7 @@ function DocumentMessage({ message, isMine }) {
         </Text>
         <Text
           style={{
-            color: isMine ? 'rgba(255,255,255,0.8)' : '#64748b',
+            color: messageStyle.metaColor,
             fontSize: 12,
             marginTop: 2,
           }}
@@ -942,13 +1034,13 @@ function DocumentMessage({ message, isMine }) {
       <Ionicons
         name="download-outline"
         size={18}
-        color={isMine ? 'rgba(255,255,255,0.82)' : '#64748b'}
+        color={messageStyle.metaColor}
       />
     </TouchableOpacity>
   )
 }
 
-function LinkPreviewCard({ preview, isMine }) {
+function LinkPreviewCard({ preview, isMine, messageStyle = DEFAULT_MESSAGE_STYLE }) {
   if (!preview?.url) return null
 
   async function openLink() {
@@ -969,9 +1061,9 @@ function LinkPreviewCard({ preview, isMine }) {
         maxWidth: '100%',
         borderRadius: 14,
         overflow: 'hidden',
-        backgroundColor: isMine ? 'rgba(255,255,255,0.16)' : '#f1f5f9',
+        backgroundColor: isMine ? 'rgba(255,255,255,0.52)' : '#f1f5f9',
         borderWidth: 1,
-        borderColor: isMine ? 'rgba(255,255,255,0.18)' : '#e2e8f0',
+        borderColor: isMine ? hexToRgba(messageStyle.accentColor, 0.14) : '#e2e8f0',
       }}
     >
       {preview.image ? (
@@ -980,7 +1072,7 @@ function LinkPreviewCard({ preview, isMine }) {
           style={{
             width: '100%',
             height: 108,
-            backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
+            backgroundColor: isMine ? hexToRgba(messageStyle.accentColor, 0.08) : '#e2e8f0',
           }}
           resizeMode="cover"
         />
@@ -990,10 +1082,10 @@ function LinkPreviewCard({ preview, isMine }) {
             height: 58,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : '#dbeafe',
+            backgroundColor: isMine ? messageStyle.softAccentColor : '#dbeafe',
           }}
         >
-          <Ionicons name="link" size={24} color={isMine ? '#fff' : '#1877F2'} />
+          <Ionicons name="link" size={24} color={isMine ? messageStyle.accentColor : '#1877F2'} />
         </View>
       )}
 
@@ -1001,7 +1093,7 @@ function LinkPreviewCard({ preview, isMine }) {
         <Text
           numberOfLines={2}
           style={{
-            color: isMine ? '#fff' : '#0f172a',
+            color: messageStyle.textColor,
             fontSize: 13,
             lineHeight: 18,
             fontWeight: '900',
@@ -1013,7 +1105,7 @@ function LinkPreviewCard({ preview, isMine }) {
           <Text
             numberOfLines={2}
             style={{
-              color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
+              color: messageStyle.metaColor,
               fontSize: 11,
               lineHeight: 15,
               marginTop: 4,
@@ -1027,12 +1119,12 @@ function LinkPreviewCard({ preview, isMine }) {
           <Ionicons
             name="open-outline"
             size={13}
-            color={isMine ? 'rgba(255,255,255,0.78)' : '#1877F2'}
+            color={isMine ? messageStyle.accentColor : '#1877F2'}
           />
           <Text
             numberOfLines={1}
             style={{
-              color: isMine ? 'rgba(255,255,255,0.78)' : '#1877F2',
+              color: isMine ? messageStyle.accentColor : '#1877F2',
               fontSize: 10,
               fontWeight: '900',
               marginLeft: 4,
@@ -1056,15 +1148,17 @@ function renderMessageContent(
   onShowRedPacketDetails,
   openingRedPacketId,
   onOpenContactCard,
-  linkPreview
+  linkPreview,
+  messageStyle = DEFAULT_MESSAGE_STYLE
 ) {
   if (item.deleted_for_everyone_at) {
     return (
       <Text
         style={{
-          color: isMine ? 'rgba(255,255,255,0.9)' : '#64748b',
+          color: messageStyle.metaColor,
           fontSize: 14,
           fontStyle: 'italic',
+          lineHeight: 20,
         }}
       >
         This message was deleted
@@ -1092,15 +1186,15 @@ function renderMessageContent(
   }
 
   if (item.message_type === 'voice' && item.media_url) {
-    return <VoiceMessage message={item} isMine={isMine} />
+    return <VoiceMessage message={item} isMine={isMine} messageStyle={messageStyle} />
   }
 
   if (item.message_type === 'call') {
-    return <CallMessage message={item} isMine={isMine} />
+    return <CallMessage message={item} isMine={isMine} messageStyle={messageStyle} />
   }
 
   if (isLocationMessage(item)) {
-    return <LocationMessage message={item} isMine={isMine} />
+    return <LocationMessage message={item} isMine={isMine} messageStyle={messageStyle} />
   }
 
   if (isRedPacketMessage(item)) {
@@ -1122,21 +1216,22 @@ function renderMessageContent(
         message={item}
         isMine={isMine}
         onOpenContactCard={onOpenContactCard}
+        messageStyle={messageStyle}
       />
     )
   }
 
   if (isDocumentMessage(item)) {
-    return <DocumentMessage message={item} isMine={isMine} />
+    return <DocumentMessage message={item} isMine={isMine} messageStyle={messageStyle} />
   }
 
   return (
     <View>
       <Text
         selectable
-        selectionColor={isMine ? 'rgba(255,255,255,0.45)' : '#93c5fd'}
+        selectionColor={isMine ? hexToRgba(messageStyle.accentColor, 0.25) : '#93c5fd'}
         style={{
-          color: isMine ? '#fff' : '#111827',
+          color: messageStyle.textColor,
           fontSize: 15,
           lineHeight: 21,
         }}
@@ -1144,7 +1239,7 @@ function renderMessageContent(
         {item.body}
       </Text>
       {linkPreview ? (
-        <LinkPreviewCard preview={linkPreview} isMine={isMine} />
+        <LinkPreviewCard preview={linkPreview} isMine={isMine} messageStyle={messageStyle} />
       ) : null}
     </View>
   )
@@ -1172,7 +1267,10 @@ export default function MessageBubble({
   openingRedPacketId,
   onOpenContactCard,
   linkPreview,
-  outgoingBubbleColor = '#1877F2',
+  senderProfile,
+  showSenderIdentity = false,
+  outgoingBubbleColor = WHATSAPP_OUTGOING_BUBBLE,
+  outgoingAccentColor = WHATSAPP_ACCENT,
   highlighted = false,
 }) {
   const shouldShowDay = !isSameDay(item.created_at, previousMessage?.created_at)
@@ -1191,12 +1289,40 @@ export default function MessageBubble({
   const pendingLocal = Boolean(item.pending_local)
   const canReact = !isCallMessage && !item.deleted_for_everyone_at && !pendingLocal
   const [reactionPickerMounted, setReactionPickerMounted] = useState(false)
+  const senderName = isMine ? 'You' : getProfileName(senderProfile, 'Member')
+  const resolvedSenderProfile = senderProfile || {
+    id: item.sender_id,
+    user_id: item.sender_id,
+    display_name: senderName,
+  }
   const hasReplyBlock = Boolean(repliedMessage)
   const bubbleMaxWidth = hasReplyBlock
     ? '94%'
     : item.message_type === 'text'
       ? '89%'
       : '82%'
+  const resolvedOutgoingBubbleColor = normalizeHexColor(outgoingBubbleColor, WHATSAPP_OUTGOING_BUBBLE)
+  const resolvedOutgoingAccentColor = normalizeHexColor(outgoingAccentColor, WHATSAPP_ACCENT)
+  const outgoingBubbleIsDark = getRelativeLuminance(resolvedOutgoingBubbleColor) < 0.45
+  const outgoingMessageStyle = {
+    textColor: outgoingBubbleIsDark ? '#ffffff' : WHATSAPP_TEXT,
+    metaColor: outgoingBubbleIsDark ? 'rgba(255,255,255,0.78)' : WHATSAPP_META,
+    accentColor: outgoingBubbleIsDark ? '#ffffff' : resolvedOutgoingAccentColor,
+    softAccentColor: outgoingBubbleIsDark
+      ? 'rgba(255,255,255,0.18)'
+      : hexToRgba(resolvedOutgoingAccentColor, 0.12),
+  }
+  const messageStyle = isMine ? outgoingMessageStyle : DEFAULT_MESSAGE_STYLE
+  const sentCheckColor = outgoingBubbleIsDark ? '#bfdbfe' : WHATSAPP_CHECK
+  const bubbleSurfaceColor = isMine ? resolvedOutgoingBubbleColor : WHATSAPP_INCOMING_BUBBLE
+  const bubbleTailColor = bubbleSurfaceColor
+  const bubbleBorderColor = highlighted
+    ? '#f59e0b'
+    : isMine
+      ? getBubbleBorderColor(resolvedOutgoingBubbleColor)
+      : WHATSAPP_INCOMING_BORDER
+  const bubbleRadius = 10
+  const bubbleTailRadius = 3
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -1365,6 +1491,39 @@ export default function MessageBubble({
           marginBottom: 8,
         }}
       >
+        {showSenderIdentity ? (
+          <View
+            style={{
+              maxWidth: '82%',
+              alignSelf: isMine ? 'flex-end' : 'flex-start',
+              flexDirection: isMine ? 'row-reverse' : 'row',
+              alignItems: 'center',
+              gap: 6,
+              marginBottom: 4,
+              paddingHorizontal: 2,
+            }}
+          >
+            <Avatar
+              profile={resolvedSenderProfile}
+              name={senderName}
+              size={22}
+              borderWidth={1}
+              borderColor="#fff"
+            />
+            <Text
+              numberOfLines={1}
+              style={{
+                color: '#64748b',
+                fontSize: 11,
+                fontWeight: '900',
+                maxWidth: 180,
+              }}
+            >
+              {senderName}
+            </Text>
+          </View>
+        ) : null}
+
         <Animated.View
           {...panResponder.panHandlers}
           style={{
@@ -1463,6 +1622,30 @@ export default function MessageBubble({
             <Ionicons name="return-down-forward-outline" size={18} color="#64748b" />
           </View>
 
+          {!item.deleted_for_everyone_at ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                [isMine ? 'right' : 'left']: -7,
+                width: 0,
+                height: 0,
+                borderTopWidth: 12,
+                borderTopColor: bubbleTailColor,
+                ...(isMine
+                  ? {
+                    borderRightWidth: 10,
+                    borderRightColor: 'transparent',
+                  }
+                  : {
+                    borderLeftWidth: 10,
+                    borderLeftColor: 'transparent',
+                  }),
+              }}
+            />
+          ) : null}
+
           <Pressable
             onPressIn={onReactionInteraction}
             onPress={handleTap}
@@ -1472,17 +1655,19 @@ export default function MessageBubble({
             }}
             delayLongPress={220}
             style={{
-              backgroundColor: isMine ? outgoingBubbleColor : '#fff',
-              borderRadius: 18,
-              borderBottomRightRadius: isMine ? 5 : 18,
-              borderBottomLeftRadius: isMine ? 18 : 5,
-              padding: item.message_type === 'text' ? 11 : 5,
+              backgroundColor: bubbleSurfaceColor,
+              borderRadius: bubbleRadius,
+              borderTopRightRadius: isMine ? bubbleTailRadius : bubbleRadius,
+              borderTopLeftRadius: isMine ? bubbleRadius : bubbleTailRadius,
+              paddingHorizontal: item.message_type === 'text' ? 12 : 5,
+              paddingVertical: item.message_type === 'text' ? 7 : 5,
               borderWidth: highlighted ? 2 : (isMine ? 0 : 1),
-              borderColor: highlighted ? '#f59e0b' : '#e5e7eb',
+              borderColor: bubbleBorderColor,
+              overflow: 'hidden',
               shadowColor: '#0f172a',
               shadowOpacity: 0.05,
-              shadowRadius: 4,
-              shadowOffset: { width: 0, height: 2 },
+              shadowRadius: 2,
+              shadowOffset: { width: 0, height: 1 },
               elevation: 1,
             }}
           >
@@ -1491,21 +1676,21 @@ export default function MessageBubble({
                 onPress={() => onJumpToMessage?.(repliedMessage.id)}
                 style={{
                   marginBottom: 8,
-                  borderRadius: 12,
+                  borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: 8,
-                  backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : '#eff6ff',
+                  backgroundColor: isMine ? 'rgba(255,255,255,0.38)' : '#f5f6f6',
                   flexDirection: 'row',
                   alignItems: 'flex-start',
                   overflow: 'hidden',
                 }}
               >
-                <ReplyPreviewMedia message={repliedMessage} isMine={isMine} />
+                <ReplyPreviewMedia message={repliedMessage} isMine={isMine} messageStyle={messageStyle} />
 
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
-                      color: isMine ? '#fff' : '#1877F2',
+                      color: isMine ? messageStyle.accentColor : '#1877F2',
                       fontWeight: '900',
                       fontSize: 12,
                     }}
@@ -1515,7 +1700,7 @@ export default function MessageBubble({
                   </Text>
                   <Text
                     style={{
-                      color: isMine ? 'rgba(255,255,255,0.9)' : '#334155',
+                      color: isMine ? messageStyle.textColor : '#334155',
                       marginTop: 3,
                       fontSize: 12,
                       lineHeight: 17,
@@ -1537,7 +1722,8 @@ export default function MessageBubble({
               onShowRedPacketDetails,
               openingRedPacketId,
               onOpenContactCard,
-              linkPreview
+              linkPreview,
+              messageStyle
             )}
 
             <View
@@ -1551,7 +1737,7 @@ export default function MessageBubble({
             >
               <Text
                 style={{
-                  color: isMine ? 'rgba(255,255,255,0.78)' : '#64748b',
+                  color: messageStyle.metaColor,
                   fontSize: 10,
                   fontWeight: '700',
                 }}
@@ -1564,13 +1750,13 @@ export default function MessageBubble({
                   <Ionicons
                     name="time-outline"
                     size={12}
-                    color="rgba(255,255,255,0.78)"
+                    color={messageStyle.metaColor}
                     style={{ marginLeft: 4 }}
                   />
                 ) : (
                   <Text
                     style={{
-                      color: item.seen_at ? '#9be7ff' : 'rgba(255,255,255,0.78)',
+                      color: item.seen_at ? sentCheckColor : messageStyle.metaColor,
                       marginLeft: 4,
                       fontSize: 12,
                       fontWeight: '900',

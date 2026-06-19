@@ -3,11 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 const STORAGE_PREFIX = 'chat-appearance:'
 
 export const CHAT_COLOR_PRESETS = [
-  { id: 'classic', label: 'Classic', bubble: '#1877F2', accent: '#1877F2' },
-  { id: 'violet', label: 'Violet', bubble: '#7c3aed', accent: '#7c3aed' },
-  { id: 'mint', label: 'Mint', bubble: '#0f766e', accent: '#0f766e' },
-  { id: 'rose', label: 'Rose', bubble: '#e11d48', accent: '#e11d48' },
-  { id: 'amber', label: 'Amber', bubble: '#d97706', accent: '#d97706' },
+  { id: 'classic', label: 'Classic', bubble: '#d9fdd3', accent: '#128c7e' },
+  { id: 'violet', label: 'Violet', bubble: '#ede9fe', accent: '#7c3aed' },
+  { id: 'mint', label: 'Mint', bubble: '#ccfbf1', accent: '#0f766e' },
+  { id: 'rose', label: 'Rose', bubble: '#ffe4e6', accent: '#e11d48' },
+  { id: 'amber', label: 'Amber', bubble: '#fef3c7', accent: '#d97706' },
 ]
 
 export const CHAT_WALLPAPER_PRESETS = [
