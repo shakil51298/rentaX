@@ -773,6 +773,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [sendingRedPacket, setSendingRedPacket] = useState(false)
   const [redPacketsByMessageId, setRedPacketsByMessageId] = useState({})
   const [openingRedPacketId, setOpeningRedPacketId] = useState(null)
+  const [redPacketDetailsId, setRedPacketDetailsId] = useState(null)
   const [contactPickerVisible, setContactPickerVisible] = useState(false)
   const [contactPickerPurpose, setContactPickerPurpose] = useState('share')
   const [contactPickerSearchQuery, setContactPickerSearchQuery] = useState('')
@@ -2073,6 +2074,15 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           schema: 'public',
           table: 'chat_messages',
           filter: `conversation_id=eq.${conversation.id}`,
+        },
+        refreshMessages
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chat_red_packet_recipients',
         },
         refreshMessages
       )
@@ -4451,6 +4461,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       getContactSearchText(contact).includes(query)
     )
   }, [contactPickerContacts, contactPickerSearchQuery])
+  const activeRedPacketDetails = useMemo(() => {
+    if (!redPacketDetailsId) return null
+
+    return Object.values(redPacketsByMessageId).find((packet) => packet?.id === redPacketDetailsId) || null
+  }, [redPacketDetailsId, redPacketsByMessageId])
   const isScanContactPreview = contactPickerPurpose === 'scan-preview'
   const contactPickerModalTitle = isScanContactPreview
     ? 'Contact preview'
@@ -4476,6 +4491,61 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         : [],
     [messageSettings, presenceByUserId, visibleConversationRows]
   )
+
+  function showRedPacketDetails(redPacket) {
+    if (!redPacket?.id || !redPacket.openedRecipients?.length) {
+      Alert.alert('Red packet', 'No one has opened this red packet yet.')
+      return
+    }
+
+    setRedPacketDetailsId(redPacket.id)
+  }
+
+  function renderRedPacketOpenedActivity(message, redPacket) {
+    if (!isRedPacketMessage(message) || message.sender_id !== currentUser?.id) return null
+    if (!redPacket?.openedRecipients?.length) return null
+
+    return (
+      <View style={{ alignItems: 'center', marginTop: -2, marginBottom: 8, paddingHorizontal: 18 }}>
+        {redPacket.openedRecipients.map((recipient) => {
+          const name = getProfileName(recipient.profile, 'Member')
+
+          return (
+            <TouchableOpacity
+              key={`red-packet-activity-${redPacket.id}-${recipient.user_id}`}
+              onPress={() => showRedPacketDetails(redPacket)}
+              activeOpacity={0.84}
+              style={{
+                maxWidth: '92%',
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.surface,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                marginTop: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Ionicons name="gift-outline" size={13} color="#dc2626" />
+              <Text
+                numberOfLines={1}
+                style={{ color: theme.text, fontSize: 11, fontWeight: '800', flexShrink: 1 }}
+              >
+                {name} opened red packet
+              </Text>
+              <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '900' }}>
+                See details
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    )
+  }
+
   const attachmentActions = [
     {
       key: 'photo',
@@ -6040,36 +6110,44 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             ref={flatListRef}
             data={messages}
             keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => (
-              <MessageBubble
-                item={item}
-                previousMessage={messages[index - 1]}
-                currentUserId={currentUser?.id}
-                repliedMessage={item.reply_to_message_id ? messageLookup[item.reply_to_message_id] : null}
-                onOpenMedia={openMediaViewer}
-                onReply={handleReplyToMessage}
-                onJumpToMessage={jumpToMessage}
-                onPressCallHistory={handlePressCallHistory}
-                onToggleReaction={toggleMessageReaction}
-                onSetReaction={toggleMessageReaction}
-                reactionPickerOpen={activeReactionMessageId === item.id}
-                onRequestReactionPicker={requestReactionPicker}
-                onDismissReactionPicker={dismissReactionPicker}
-                onReactionInteraction={markReactionInteraction}
-                onLongPressMessage={openMessageActions}
-                redPacket={redPacketsByMessageId[item.id]}
-                onOpenRedPacket={openRedPacket}
-                openingRedPacketId={openingRedPacketId}
-                onOpenContactCard={openContactCard}
-                linkPreview={
-                  linkPreviewsEnabled
-                    ? linkPreviewsByUrl[extractFirstLink(item.body)]
-                    : null
-                }
-                outgoingBubbleColor={activeColorPreset.bubble}
-                highlighted={highlightedMessageId === item.id}
-              />
-            )}
+            renderItem={({ item, index }) => {
+              const redPacket = redPacketsByMessageId[item.id]
+
+              return (
+                <View>
+                  <MessageBubble
+                    item={item}
+                    previousMessage={messages[index - 1]}
+                    currentUserId={currentUser?.id}
+                    repliedMessage={item.reply_to_message_id ? messageLookup[item.reply_to_message_id] : null}
+                    onOpenMedia={openMediaViewer}
+                    onReply={handleReplyToMessage}
+                    onJumpToMessage={jumpToMessage}
+                    onPressCallHistory={handlePressCallHistory}
+                    onToggleReaction={toggleMessageReaction}
+                    onSetReaction={toggleMessageReaction}
+                    reactionPickerOpen={activeReactionMessageId === item.id}
+                    onRequestReactionPicker={requestReactionPicker}
+                    onDismissReactionPicker={dismissReactionPicker}
+                    onReactionInteraction={markReactionInteraction}
+                    onLongPressMessage={openMessageActions}
+                    redPacket={redPacket}
+                    onOpenRedPacket={openRedPacket}
+                    onShowRedPacketDetails={showRedPacketDetails}
+                    openingRedPacketId={openingRedPacketId}
+                    onOpenContactCard={openContactCard}
+                    linkPreview={
+                      linkPreviewsEnabled
+                        ? linkPreviewsByUrl[extractFirstLink(item.body)]
+                        : null
+                    }
+                    outgoingBubbleColor={activeColorPreset.bubble}
+                    highlighted={highlightedMessageId === item.id}
+                  />
+                  {renderRedPacketOpenedActivity(item, redPacket)}
+                </View>
+              )
+            }}
             contentContainerStyle={{ paddingTop: 10, paddingBottom: 16 }}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
@@ -7525,6 +7603,150 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
               </TouchableOpacity>
             </Pressable>
           </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={Boolean(activeRedPacketDetails)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRedPacketDetailsId(null)}
+      >
+        <Pressable
+          onPress={() => setRedPacketDetailsId(null)}
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            padding: 18,
+            backgroundColor: 'rgba(15, 23, 42, 0.38)',
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              maxHeight: Math.min(windowHeight * 0.72, 560),
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: theme.border,
+              backgroundColor: theme.surface,
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: '#dc2626',
+                paddingHorizontal: 16,
+                paddingTop: 16,
+                paddingBottom: 14,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: '#facc15',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 10,
+                  }}
+                >
+                  <Ionicons name="gift" size={21} color="#7f1d1d" />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: '#fff7ed', fontSize: 17, fontWeight: '900' }}>
+                    Red packet details
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{ color: 'rgba(255,255,255,0.82)', fontSize: 12, marginTop: 2, fontWeight: '800' }}
+                  >
+                    {activeRedPacketDetails?.openedCount || 0}/{activeRedPacketDetails?.recipientCount || 1} opened
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setRedPacketDetailsId(null)}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    backgroundColor: 'rgba(255,255,255,0.18)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="close" size={20} color="#fff7ed" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: '#fde68a', fontSize: 22, fontWeight: '900', marginTop: 14 }}>
+                {activeRedPacketDetails
+                  ? formatCurrencyAmount(activeRedPacketDetails.amount, activeRedPacketDetails.currency || 'BDT')
+                  : ''}
+              </Text>
+              {activeRedPacketDetails?.wish ? (
+                <Text
+                  numberOfLines={2}
+                  style={{ color: 'rgba(255,255,255,0.78)', fontSize: 12, marginTop: 3 }}
+                >
+                  {activeRedPacketDetails.wish}
+                </Text>
+              ) : null}
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ padding: 14, gap: 9 }}
+            >
+              {activeRedPacketDetails?.openedRecipients?.length ? (
+                activeRedPacketDetails.openedRecipients.map((recipient) => {
+                  const name = getProfileName(recipient.profile, 'Member')
+
+                  return (
+                    <View
+                      key={`red-packet-details-${activeRedPacketDetails.id}-${recipient.user_id}`}
+                      style={{
+                        minHeight: 54,
+                        borderRadius: 17,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        paddingHorizontal: 11,
+                        paddingVertical: 9,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                      }}
+                    >
+                      <Avatar profile={recipient.profile} name={name} size={34} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          numberOfLines={1}
+                          style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}
+                        >
+                          {name}
+                        </Text>
+                        <Text style={{ color: theme.mutedText, fontSize: 10, fontWeight: '800', marginTop: 2 }}>
+                          Opened red packet
+                        </Text>
+                      </View>
+                      <Text style={{ color: '#dc2626', fontSize: 13, fontWeight: '900' }}>
+                        {formatCurrencyAmount(recipient.amount, recipient.currency || activeRedPacketDetails.currency || 'BDT')}
+                      </Text>
+                    </View>
+                  )
+                })
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                  <Ionicons name="gift-outline" size={34} color={theme.mutedText} />
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '900', marginTop: 8 }}>
+                    No one opened yet
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 

@@ -27,7 +27,6 @@ import {
   isSameDay,
   parseContactCardPayload,
 } from '../../lib/chatUtils'
-import { getProfileName } from '../../lib/userDisplay'
 
 const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '👍', '🙏']
 
@@ -621,6 +620,7 @@ function RedPacketMessage({
   isMine,
   redPacket,
   onOpenRedPacket,
+  onShowRedPacketDetails,
   opening,
 }) {
   const hasPacket = Boolean(redPacket?.id)
@@ -632,7 +632,7 @@ function RedPacketMessage({
   const claimAmount = redPacket?.claimAmount || redPacket?.amount
   const recipientCount = redPacket?.recipientCount || (hasRecipientRows ? redPacket.recipients.length : 1)
   const openedCount = redPacket?.openedCount || 0
-  const openedRecipients = redPacket?.openedRecipients || []
+  const canShowDetails = Boolean(redPacket?.openedRecipients?.length)
   const statusText = opened
     ? 'Opened and added to account'
     : isMine
@@ -643,8 +643,13 @@ function RedPacketMessage({
           ? 'This packet was not sent to you'
           : 'Waiting to be opened'
 
+  const detailsPressEnabled = canShowDetails && !canOpen
+  const Container = detailsPressEnabled ? TouchableOpacity : View
+
   return (
-    <View
+    <Container
+      onPress={detailsPressEnabled ? () => onShowRedPacketDetails?.(redPacket) : undefined}
+      activeOpacity={0.86}
       style={{
         width: 238,
         borderRadius: 18,
@@ -756,49 +761,13 @@ function RedPacketMessage({
           </Text>
         ) : null}
 
-        {openedRecipients.length ? (
-          <View
-            style={{
-              width: '100%',
-              marginTop: 10,
-              borderTopWidth: 1,
-              borderTopColor: 'rgba(255,255,255,0.18)',
-              paddingTop: 8,
-            }}
-          >
-            <Text style={{ color: 'rgba(255,255,255,0.78)', fontSize: 11, fontWeight: '900', marginBottom: 5 }}>
-              Opened details
-            </Text>
-            {openedRecipients.map((recipient) => {
-              const name = getProfileName(recipient.profile, 'Member')
-
-              return (
-                <View
-                  key={`red-packet-opened-${recipient.user_id}`}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    marginTop: 3,
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={{ color: '#fff7ed', fontSize: 11, fontWeight: '800', flex: 1 }}
-                  >
-                    {name}
-                  </Text>
-                  <Text style={{ color: '#fde68a', fontSize: 11, fontWeight: '900' }}>
-                    {formatCurrencyAmount(recipient.amount, recipient.currency || redPacket.currency)}
-                  </Text>
-                </View>
-              )
-            })}
-          </View>
+        {detailsPressEnabled ? (
+          <Text style={{ color: 'rgba(255,255,255,0.66)', fontSize: 10, marginTop: 8, textAlign: 'center' }}>
+            Tap packet to see details
+          </Text>
         ) : null}
       </View>
-    </View>
+    </Container>
   )
 }
 
@@ -1084,6 +1053,7 @@ function renderMessageContent(
   onOpenMedia,
   redPacket,
   onOpenRedPacket,
+  onShowRedPacketDetails,
   openingRedPacketId,
   onOpenContactCard,
   linkPreview
@@ -1140,6 +1110,7 @@ function renderMessageContent(
         isMine={isMine}
         redPacket={redPacket}
         onOpenRedPacket={onOpenRedPacket}
+        onShowRedPacketDetails={onShowRedPacketDetails}
         opening={Boolean(redPacket?.id && openingRedPacketId === redPacket.id)}
       />
     )
@@ -1197,6 +1168,7 @@ export default function MessageBubble({
   onLongPressMessage,
   redPacket,
   onOpenRedPacket,
+  onShowRedPacketDetails,
   openingRedPacketId,
   onOpenContactCard,
   linkPreview,
@@ -1562,6 +1534,7 @@ export default function MessageBubble({
               onOpenMedia,
               redPacket,
               onOpenRedPacket,
+              onShowRedPacketDetails,
               openingRedPacketId,
               onOpenContactCard,
               linkPreview
