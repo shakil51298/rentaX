@@ -101,7 +101,7 @@ function getChannelId(type?: string, requestedChannelId?: string) {
     return requestedChannelId
   }
 
-  if (type === 'chat_message') return 'messages'
+  if (type === 'chat_message' || type === 'red_packet_reminder') return 'messages'
   if (type === 'incoming_audio_call' || type === 'incoming_video_call') return 'calls'
 
   if (
@@ -134,7 +134,7 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
     || (
       type === 'incoming_audio_call' || type === 'incoming_video_call'
         ? BEST_LOVE_SOUND_ID
-        : type === 'chat_message'
+        : type === 'chat_message' || type === 'red_packet_reminder'
           ? IPHONE_NOTIFICATION_SOUND_ID
           : PHONE_DEFAULT_SOUND_ID
     )
@@ -159,7 +159,7 @@ function getPreferredSoundConfig(type?: string, soundId?: string | null) {
     return { channelId: 'calls', sound: 'default' }
   }
 
-  if (type === 'chat_message') {
+  if (type === 'chat_message' || type === 'red_packet_reminder') {
     if (safeSoundId === SILENT_SOUND_ID) {
       return { channelId: 'messages_silent', sound: null }
     }
@@ -186,7 +186,16 @@ async function resolveRecipientSoundConfig(adminClient: any, payload: PushReques
   const type = typeof payload.data?.type === 'string' ? payload.data.type : undefined
   const conversationId = typeof payload.data?.conversationId === 'string' ? payload.data.conversationId : null
 
-  if (!payload.recipientId || !conversationId || (type !== 'chat_message' && type !== 'incoming_audio_call' && type !== 'incoming_video_call')) {
+  if (
+    !payload.recipientId
+    || !conversationId
+    || (
+      type !== 'chat_message'
+      && type !== 'red_packet_reminder'
+      && type !== 'incoming_audio_call'
+      && type !== 'incoming_video_call'
+    )
+  ) {
     return null
   }
 

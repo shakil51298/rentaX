@@ -104,10 +104,13 @@ import {
 
 const EMPTY_ROUTE_PARAMS = {}
 const RED_PACKET_MAX_AMOUNT = 200
+const RED_PACKET_REMINDER_INTERVAL_MS = 5 * 60 * 60 * 1000
 const FORWARD_MAX_RECIPIENTS = 30
 const COMPOSER_INPUT_MIN_HEIGHT = 42
 const COMPOSER_INPUT_MAX_HEIGHT = 116
 const MESSAGE_SETTINGS_STORAGE_KEY = 'rentalx.message_settings.v1'
+const CHAT_FOLDERS_STORAGE_KEY = 'rentalx.chat_folders.v1'
+const CHAT_FOLDER_ASSIGNMENTS_STORAGE_KEY = 'rentalx.chat_folder_assignments.v1'
 const DEFAULT_MESSAGE_SETTINGS = {
   showActiveNow: true,
   showMessagePreviews: true,
@@ -118,6 +121,41 @@ const DEFAULT_MESSAGE_SETTINGS = {
   smartSafetyReminders: true,
   followUpNudges: true,
 }
+const DEFAULT_CHAT_FOLDERS = [
+  {
+    id: 'all',
+    title: 'All',
+    icon: 'albums-outline',
+    color: '#1877F2',
+    assignable: false,
+  },
+  {
+    id: 'personal',
+    title: 'Personal',
+    icon: 'person-outline',
+    color: '#16a34a',
+    assignable: false,
+  },
+  {
+    id: 'me',
+    title: 'Me',
+    icon: 'bookmark-outline',
+    color: '#f97316',
+    assignable: true,
+  },
+]
+const CHAT_FOLDER_COLORS = [
+  '#7c3aed',
+  '#db2777',
+  '#0891b2',
+  '#ca8a04',
+  '#dc2626',
+  '#0d9488',
+  '#4f46e5',
+  '#65a30d',
+  '#c2410c',
+  '#9333ea',
+]
 const DEFAULT_CHAT_LOCATION_REGION = {
   latitude: 23.8103,
   longitude: 90.4125,
@@ -148,6 +186,32 @@ function hexToRgba(hex, alpha = 1) {
   const blue = parseInt(safeHex.slice(4, 6), 16)
 
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
+
+function hslToHex(hue, saturation = 72, lightness = 44) {
+  const normalizedHue = ((hue % 360) + 360) % 360
+  const normalizedSaturation = saturation / 100
+  const normalizedLightness = lightness / 100
+  const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation
+  const x = chroma * (1 - Math.abs(((normalizedHue / 60) % 2) - 1))
+  const match = normalizedLightness - chroma / 2
+  const [red, green, blue] =
+    normalizedHue < 60
+      ? [chroma, x, 0]
+      : normalizedHue < 120
+        ? [x, chroma, 0]
+        : normalizedHue < 180
+          ? [0, chroma, x]
+          : normalizedHue < 240
+            ? [0, x, chroma]
+            : normalizedHue < 300
+              ? [x, 0, chroma]
+              : [chroma, 0, x]
+
+  return [red, green, blue]
+    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, '0'))
+    .join('')
+    .replace(/^/, '#')
 }
 
 function getConversationDeletionField(conversation, userId) {
@@ -237,6 +301,115 @@ function sortMessageRowsWithSettings(rows = [], settings = DEFAULT_MESSAGE_SETTI
 
 function normalizeConversationSearch(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+function normalizeChatFolderName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 22)
+}
+
+function normalizeChatFolderAssignments(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+
+  return Object.entries(value).reduce((acc, [conversationId, folderIds]) => {
+    const safeFolderIds = Array.isArray(folderIds)
+      ? [...new Set(folderIds.map(String).filter(Boolean))]
+      : []
+
+    if (conversationId && safeFolderIds.length) {
+      acc[String(conversationId)] = safeFolderIds
+    }
+
+    return acc
+  }, {})
+}
+
+function normalizeCustomChatFolders(value) {
+  if (!Array.isArray(value)) return []
+
+  const usedIds = new Set(DEFAULT_CHAT_FOLDERS.map((folder) => folder.id))
+  const usedTitles = new Set(DEFAULT_CHAT_FOLDERS.map((folder) => folder.title.toLowerCase()))
+
+  return value.reduce((folders, folder, index) => {
+    const title = normalizeChatFolderName(folder?.title || folder?.name)
+    const id = String(folder?.id || `custom-${Date.now()}-${index}`)
+    const color = String(folder?.color || CHAT_FOLDER_COLORS[index % CHAT_FOLDER_COLORS.length])
+
+    if (!title || usedIds.has(id) || usedTitles.has(title.toLowerCase())) {
+      return folders
+    }
+
+    usedIds.add(id)
+    usedTitles.add(title.toLowerCase())
+    folders.push({
+      id,
+      title,
+      color,
+      icon: 'folder-outline',
+      assignable: true,
+      custom: true,
+    })
+
+    return folders
+  }, [])
+}
+
+function getNextChatFolderColor(customFolders = []) {
+  const usedColors = new Set([
+    ...DEFAULT_CHAT_FOLDERS.map((folder) => folder.color),
+    ...customFolders.map((folder) => folder.color),
+  ])
+
+  const paletteColor = CHAT_FOLDER_COLORS.find((color) => !usedColors.has(color))
+  if (paletteColor) return paletteColor
+
+  let colorIndex = customFolders.length
+  let generatedColor = hslToHex(colorIndex * 47 + 21)
+
+  while (usedColors.has(generatedColor)) {
+    colorIndex += 1
+    generatedColor = hslToHex(colorIndex * 47 + 21)
+  }
+
+  return generatedColor
+}
+
+function getConversationFolderIds(assignments, conversationId) {
+  return assignments[String(conversationId)] || []
+}
+
+function buildRandomRedPacketShares(amount, recipientCount) {
+  const safeCount = Math.max(1, Number(recipientCount || 0))
+  const totalCents = Math.round(Number(amount || 0) * 100)
+
+  if (totalCents < safeCount) {
+    throw new Error('Amount is too small for the selected members.')
+  }
+
+  if (safeCount === 1) {
+    return [Number((totalCents / 100).toFixed(2))]
+  }
+
+  let remainingCents = totalCents
+  const shares = []
+
+  for (let index = 0; index < safeCount - 1; index += 1) {
+    const remainingMembers = safeCount - index
+    const maxShare = remainingCents - (remainingMembers - 1)
+    const share = 1 + Math.floor(Math.random() * maxShare)
+    shares.push(share)
+    remainingCents -= share
+  }
+
+  shares.push(remainingCents)
+
+  for (let index = shares.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const currentValue = shares[index]
+    shares[index] = shares[swapIndex]
+    shares[swapIndex] = currentValue
+  }
+
+  return shares.map((cents) => Number((cents / 100).toFixed(2)))
 }
 
 function normalizeRentalXIdSearch(value) {
@@ -576,6 +749,12 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [quickChatMenuVisible, setQuickChatMenuVisible] = useState(false)
   const [messagingSettingsVisible, setMessagingSettingsVisible] = useState(false)
   const [messageSettings, setMessageSettings] = useState(DEFAULT_MESSAGE_SETTINGS)
+  const [customChatFolders, setCustomChatFolders] = useState([])
+  const [chatFolderAssignments, setChatFolderAssignments] = useState({})
+  const [activeChatFolderId, setActiveChatFolderId] = useState('all')
+  const [chatFolderCreatorVisible, setChatFolderCreatorVisible] = useState(false)
+  const [chatFolderAssignmentVisible, setChatFolderAssignmentVisible] = useState(false)
+  const [newChatFolderName, setNewChatFolderName] = useState('')
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -589,6 +768,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const [redPacketAmount, setRedPacketAmount] = useState('')
   const [redPacketWish, setRedPacketWish] = useState('Best wishes')
   const [redPacketPhotoAsset, setRedPacketPhotoAsset] = useState(null)
+  const [redPacketTargetMode, setRedPacketTargetMode] = useState('all')
+  const [selectedRedPacketMemberIds, setSelectedRedPacketMemberIds] = useState([])
   const [sendingRedPacket, setSendingRedPacket] = useState(false)
   const [redPacketsByMessageId, setRedPacketsByMessageId] = useState({})
   const [openingRedPacketId, setOpeningRedPacketId] = useState(null)
@@ -637,6 +818,17 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     !isActiveGroupChat ||
     conversation?.group_message_policy !== 'admins' ||
     activeGroupMember?.role === 'admin'
+  const eligibleRedPacketMembers = useMemo(
+    () =>
+      groupMembers.filter(
+        (member) =>
+          member.user_id &&
+          member.user_id !== currentUser?.id &&
+          member.status !== 'left' &&
+          member.status !== 'removed'
+      ),
+    [currentUser?.id, groupMembers]
+  )
   const canSend = Boolean(
     currentUser?.id &&
     conversation?.id &&
@@ -698,6 +890,56 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }, delayMs)
   }
 
+  async function sendRedPacketReminderNotifications(packets = []) {
+    if (!currentUser?.id) return
+
+    const now = Date.now()
+    const reminderRows = []
+
+    packets.forEach((packet) => {
+      if (packet.sender_id !== currentUser.id || !packet.recipients?.length) return
+
+      packet.recipients.forEach((recipient) => {
+        if (!recipient?.id || !recipient.user_id || recipient.opened_at) return
+
+        const lastReminderAt = recipient.last_reminded_at || packet.created_at
+        const lastReminderTime = lastReminderAt ? new Date(lastReminderAt).getTime() : now
+
+        if (now - lastReminderTime < RED_PACKET_REMINDER_INTERVAL_MS) return
+
+        reminderRows.push({ packet, recipient })
+      })
+    })
+
+    if (!reminderRows.length) return
+
+    await Promise.all(
+      reminderRows.slice(0, 25).map(async ({ packet, recipient }) => {
+        const remindedAt = new Date().toISOString()
+
+        await sendPushToUser({
+          recipientId: recipient.user_id,
+          title: 'Unopened red packet',
+          body: `${currentUserName} sent you ${formatCurrencyAmount(recipient.amount, recipient.currency || packet.currency || 'BDT')}. Tap to open it.`,
+          data: {
+            type: 'red_packet_reminder',
+            conversationId: packet.conversation_id,
+            messageId: packet.message_id,
+            redPacketId: packet.id,
+            actorId: currentUser.id,
+            actorName: currentUserName,
+          },
+        }).catch(() => null)
+
+        await supabase
+          .from('chat_red_packet_recipients')
+          .update({ last_reminded_at: remindedAt })
+          .eq('id', recipient.id)
+          .catch(() => null)
+      })
+    )
+  }
+
   async function loadRedPacketsForMessages(messageRows = [], currentUserId = null) {
     const redPacketMessageIds = messageRows
       .filter((message) => isRedPacketMessage(message))
@@ -721,6 +963,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
     const packetIds = (packets || []).map((packet) => packet.id)
     let entriesByPacketId = {}
+    let recipientsByPacketId = {}
 
     if (packetIds.length > 0) {
       const { data: entries } = await supabase
@@ -730,25 +973,91 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
       entriesByPacketId = (entries || []).reduce((itemsByPacketId, entry) => {
         if (entry.source === 'red_packet_received' || entry.source === 'red_packet') {
-          itemsByPacketId[entry.red_packet_id] = entry
+          if (!itemsByPacketId[entry.red_packet_id]) {
+            itemsByPacketId[entry.red_packet_id] = []
+          }
+          itemsByPacketId[entry.red_packet_id].push(entry)
         }
         return itemsByPacketId
       }, {})
+
+      const { data: recipients, error: recipientsError } = await supabase
+        .from('chat_red_packet_recipients')
+        .select('id, red_packet_id, user_id, amount, currency, opened_at, wallet_entry_id, last_reminded_at, created_at')
+        .in('red_packet_id', packetIds)
+
+      if (!recipientsError) {
+        const recipientUserIds = [...new Set((recipients || []).map((recipient) => recipient.user_id).filter(Boolean))]
+        let profilesById = {}
+
+        if (recipientUserIds.length) {
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('user_id, email, display_name, rentalx_id, avatar_url, is_verified')
+            .in('user_id', recipientUserIds)
+
+          profilesById = (profiles || []).reduce((itemsById, profile) => {
+            itemsById[profile.user_id] = profile
+            return itemsById
+          }, {})
+        }
+
+        recipientsByPacketId = (recipients || []).reduce((itemsByPacketId, recipient) => {
+          if (!itemsByPacketId[recipient.red_packet_id]) {
+            itemsByPacketId[recipient.red_packet_id] = []
+          }
+
+          itemsByPacketId[recipient.red_packet_id].push({
+            ...recipient,
+            profile: profilesById[recipient.user_id] || null,
+          })
+          return itemsByPacketId
+        }, {})
+      }
     }
 
     const nextPackets = (packets || []).reduce((itemsByMessageId, packet) => {
-      const openedEntry = entriesByPacketId[packet.id] || null
+      const packetEntries = entriesByPacketId[packet.id] || []
+      const packetRecipients = recipientsByPacketId[packet.id] || []
+      const myRecipient = packetRecipients.find((recipient) => recipient.user_id === currentUserId) || null
+      const openedEntry =
+        packetEntries.find((entry) => entry.user_id === currentUserId) ||
+        packetEntries[0] ||
+        null
+      const openedRecipients = packetRecipients
+        .filter((recipient) => recipient.opened_at || recipient.wallet_entry_id)
+        .map((recipient) => ({
+          ...recipient,
+          openedEntry: packetEntries.find((entry) => entry.user_id === recipient.user_id) || null,
+        }))
+      const recipientCount = packetRecipients.length || packet.recipient_count || 1
+      const openedCount = packetRecipients.length
+        ? openedRecipients.length
+        : openedEntry
+          ? 1
+          : 0
+      const openedByMe = myRecipient
+        ? Boolean(myRecipient.opened_at || packetEntries.find((entry) => entry.user_id === currentUserId))
+        : Boolean(openedEntry && openedEntry.user_id === currentUserId)
 
       itemsByMessageId[packet.message_id] = {
         ...packet,
-        opened: Boolean(openedEntry),
+        recipients: packetRecipients,
+        myRecipient,
+        openedRecipients,
+        recipientCount,
+        openedCount,
+        allOpened: openedCount >= recipientCount,
+        claimAmount: myRecipient?.amount || packet.amount,
+        opened: openedByMe,
         openedEntry,
-        creditedToMe: Boolean(openedEntry && openedEntry.user_id === currentUserId),
+        creditedToMe: openedByMe,
       }
       return itemsByMessageId
     }, {})
 
     setRedPacketsByMessageId(nextPackets)
+    sendRedPacketReminderNotifications(Object.values(nextPackets)).catch(() => {})
   }
 
   const loadMessages = useCallback(async (
@@ -1480,6 +1789,37 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
   }, [])
 
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadChatFolders() {
+      try {
+        const [foldersValue, assignmentsValue] = await Promise.all([
+          AsyncStorage.getItem(CHAT_FOLDERS_STORAGE_KEY),
+          AsyncStorage.getItem(CHAT_FOLDER_ASSIGNMENTS_STORAGE_KEY),
+        ])
+        const savedFolders = foldersValue ? JSON.parse(foldersValue) : []
+        const savedAssignments = assignmentsValue ? JSON.parse(assignmentsValue) : {}
+
+        if (isMounted) {
+          setCustomChatFolders(normalizeCustomChatFolders(savedFolders))
+          setChatFolderAssignments(normalizeChatFolderAssignments(savedAssignments))
+        }
+      } catch (_error) {
+        if (isMounted) {
+          setCustomChatFolders([])
+          setChatFolderAssignments({})
+        }
+      }
+    }
+
+    loadChatFolders()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   useFocusEffect(
     useCallback(() => {
       if (mode !== 'chat' || !conversation?.id) return undefined
@@ -1829,6 +2169,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     mediaMimeType = null,
     mediaName = null,
     audioDurationMs = null,
+    pushRecipientIds = null,
   } = {}) {
     if (isActiveGroupChat && !groupCanSend) {
       Alert.alert('Admins only', 'Only group admins can send messages in this group.')
@@ -1996,9 +2337,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     }
 
     if (isGroupChat) {
-      const recipients = groupMembers
-        .map((member) => member.user_id)
-        .filter((memberId) => memberId && memberId !== currentUser.id)
+      const recipients = Array.isArray(pushRecipientIds)
+        ? [...new Set(pushRecipientIds.filter((memberId) => memberId && memberId !== currentUser.id))]
+        : groupMembers
+          .map((member) => member.user_id)
+          .filter((memberId) => memberId && memberId !== currentUser.id)
 
       await Promise.all(
         recipients.map((recipientId) =>
@@ -2645,6 +2988,8 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     setRedPacketAmount('')
     setRedPacketWish('Best wishes')
     setRedPacketPhotoAsset(null)
+    setRedPacketTargetMode('all')
+    setSelectedRedPacketMemberIds([])
   }
 
   function parseRedPacketAmountInput(value) {
@@ -2663,11 +3008,48 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     setRedPacketPhotoAsset(result.assets[0])
   }
 
+  function toggleRedPacketMemberSelection(memberId) {
+    setSelectedRedPacketMemberIds((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId]
+    )
+  }
+
+  function getRedPacketRecipientMembers() {
+    if (!isActiveGroupChat) {
+      return otherUser?.id
+        ? [{
+          userId: otherUser.id,
+          profile: otherUser,
+        }]
+        : []
+    }
+
+    const selectedIds = new Set(selectedRedPacketMemberIds)
+    const targetMembers =
+      redPacketTargetMode === 'group_selected'
+        ? eligibleRedPacketMembers.filter((member) => selectedIds.has(member.user_id))
+        : eligibleRedPacketMembers
+
+    return targetMembers.map((member) => ({
+      userId: member.user_id,
+      profile: member.profile,
+    }))
+  }
+
   async function sendRedPacket() {
-    if (!currentUser?.id || !conversation?.id || !otherUser?.id || sending || sendingRedPacket) return
+    if (!currentUser?.id || !conversation?.id || sending || sendingRedPacket) return
 
     const amount = parseRedPacketAmountInput(redPacketAmount)
     const wish = redPacketWish.trim() || 'Best wishes'
+    const recipientMembers = getRedPacketRecipientMembers()
+    const recipientIds = recipientMembers.map((member) => member.userId).filter(Boolean)
+    const packetMode = isActiveGroupChat
+      ? redPacketTargetMode === 'group_selected'
+        ? 'group_selected'
+        : 'group_all'
+      : 'direct'
 
     if (!Number.isFinite(amount) || amount <= 0) {
       Alert.alert('Amount needed', 'Add a valid gift amount before sending.')
@@ -2676,6 +3058,16 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
 
     if (amount > RED_PACKET_MAX_AMOUNT) {
       Alert.alert('Amount too high', 'Red packet amount can be up to 200 BDT.')
+      return
+    }
+
+    if (!recipientIds.length) {
+      Alert.alert(
+        'Choose members',
+        isActiveGroupChat
+          ? 'Select at least one group member for this red packet.'
+          : 'This chat needs a receiver before sending a red packet.'
+      )
       return
     }
 
@@ -2718,17 +3110,29 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         photoUrl = uploadResult.mediaUrl
       }
 
+      const shares = packetMode === 'direct'
+        ? [amount]
+        : buildRandomRedPacketShares(amount, recipientIds.length)
+      const recipientRows = recipientIds.map((recipientId, index) => ({
+        user_id: recipientId,
+        amount: shares[index],
+        currency: 'BDT',
+      }))
+
       const insertedMessage = await sendMessage({
         body: wish,
         messageType: 'file',
         mediaUrl: photoUrl,
         mediaMimeType: CHAT_RED_PACKET_MIME_TYPE,
         mediaName: 'Red packet',
+        pushRecipientIds: isActiveGroupChat ? recipientIds : null,
       })
 
       if (!insertedMessage?.id) {
         throw new Error('Could not create the red packet message.')
       }
+
+      const packetReceiverId = recipientIds[0] || insertedMessage.receiver_id
 
       const { data: packet, error } = await supabase
         .from('chat_red_packets')
@@ -2736,17 +3140,34 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
           message_id: insertedMessage.id,
           conversation_id: conversation.id,
           sender_id: currentUser.id,
-          receiver_id: otherUser.id,
+          receiver_id: packetReceiverId,
           amount,
           currency: 'BDT',
           wish,
           photo_url: photoUrl,
+          packet_mode: packetMode,
+          recipient_count: recipientIds.length,
+          random_split: packetMode !== 'direct',
         })
         .select('*')
         .single()
 
       if (error) {
         throw error
+      }
+
+      const { data: insertedRecipients, error: recipientError } = await supabase
+        .from('chat_red_packet_recipients')
+        .insert(
+          recipientRows.map((recipient) => ({
+            red_packet_id: packet.id,
+            ...recipient,
+          }))
+        )
+        .select('id, red_packet_id, user_id, amount, currency, opened_at, wallet_entry_id, last_reminded_at, created_at')
+
+      if (recipientError) {
+        throw recipientError
       }
 
       const { error: debitError } = await supabase
@@ -2767,6 +3188,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
         ...current,
         [insertedMessage.id]: {
           ...packet,
+          recipients: insertedRecipients || [],
+          myRecipient: null,
+          openedRecipients: [],
+          recipientCount: recipientIds.length,
+          openedCount: 0,
+          allOpened: false,
+          claimAmount: amount,
           opened: false,
           openedEntry: null,
         },
@@ -2786,13 +3214,46 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   async function openRedPacket(redPacket) {
     if (!redPacket?.id || !currentUser?.id || openingRedPacketId) return
 
-    if (redPacket.receiver_id !== currentUser.id) {
-      Alert.alert('Red packet', 'Only the receiver can open this red packet.')
+    const myRecipient = redPacket.myRecipient || null
+    const canClaimRecipientRow = Boolean(myRecipient?.id && !myRecipient.opened_at)
+    const canClaimLegacyDirectPacket =
+      !redPacket.recipients?.length &&
+      redPacket.receiver_id === currentUser.id
+
+    if (!canClaimRecipientRow && !canClaimLegacyDirectPacket) {
+      Alert.alert(
+        'Red packet',
+        redPacket.opened
+          ? 'You already opened this red packet.'
+          : 'This red packet was not sent to your account.'
+      )
       return
     }
 
     try {
       setOpeningRedPacketId(redPacket.id)
+
+      if (canClaimRecipientRow) {
+        const { data: claimRows, error: claimError } = await supabase
+          .rpc('claim_chat_red_packet', {
+            target_red_packet_id: redPacket.id,
+          })
+
+        if (claimError) {
+          throw claimError
+        }
+
+        const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows
+        const claimedAmount = Number(claim?.amount || myRecipient.amount || 0)
+
+        await loadRedPacketsForMessages(messages, currentUser.id)
+
+        Alert.alert(
+          'Gift opened',
+          `${formatCurrencyAmount(claimedAmount, claim?.currency || myRecipient.currency || 'BDT')} added to your account.`
+        )
+        return
+      }
 
       const { data: entry, error } = await supabase
         .from('wallet_entries')
@@ -3304,6 +3765,7 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
       }
 
       if (actionKey === 'red-packet') {
+        resetRedPacketComposer()
         setRedPacketComposerVisible(true)
         return
       }
@@ -3625,6 +4087,14 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             }
 
             clearConversationSelection()
+            const nextAssignments = {
+              ...chatFolderAssignments,
+            }
+
+            selectedConversationIds.forEach((conversationId) => {
+              delete nextAssignments[String(conversationId)]
+            })
+            persistChatFolderAssignments(nextAssignments)
             await loadConversationList(currentUser)
           },
         },
@@ -3632,9 +4102,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     )
   }, [
     clearConversationSelection,
+    chatFolderAssignments,
     conversationRows,
     currentUser,
     loadConversationList,
+    persistChatFolderAssignments,
     selectedConversationIds,
   ])
 
@@ -3828,6 +4300,126 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     })
   }
 
+  const chatFolders = useMemo(
+    () => [...DEFAULT_CHAT_FOLDERS, ...customChatFolders],
+    [customChatFolders]
+  )
+  const assignableChatFolders = useMemo(
+    () => chatFolders.filter((folder) => folder.assignable),
+    [chatFolders]
+  )
+  const activeChatFolder = useMemo(
+    () => chatFolders.find((folder) => folder.id === activeChatFolderId) || chatFolders[0],
+    [activeChatFolderId, chatFolders]
+  )
+
+  function persistCustomChatFolders(nextFolders) {
+    const normalizedFolders = normalizeCustomChatFolders(nextFolders)
+    setCustomChatFolders(normalizedFolders)
+    AsyncStorage.setItem(CHAT_FOLDERS_STORAGE_KEY, JSON.stringify(normalizedFolders)).catch(() => {})
+  }
+
+  function persistChatFolderAssignments(nextAssignments) {
+    const normalizedAssignments = normalizeChatFolderAssignments(nextAssignments)
+    setChatFolderAssignments(normalizedAssignments)
+    AsyncStorage.setItem(
+      CHAT_FOLDER_ASSIGNMENTS_STORAGE_KEY,
+      JSON.stringify(normalizedAssignments)
+    ).catch(() => {})
+  }
+
+  function openChatFolderCreator() {
+    setNewChatFolderName('')
+    setChatFolderCreatorVisible(true)
+  }
+
+  function createCustomChatFolder() {
+    const title = normalizeChatFolderName(newChatFolderName)
+    const titleExists = chatFolders.some(
+      (folder) => folder.title.toLowerCase() === title.toLowerCase()
+    )
+
+    if (!title) {
+      Alert.alert('Folder name needed', 'Add a short name for this chat folder.')
+      return
+    }
+
+    if (titleExists) {
+      Alert.alert('Folder already exists', 'Every chat folder needs a unique name.')
+      return
+    }
+
+    const nextFolder = {
+      id: `custom-${Date.now()}`,
+      title,
+      icon: 'folder-outline',
+      color: getNextChatFolderColor(customChatFolders),
+      assignable: true,
+      custom: true,
+    }
+    const nextFolders = [...customChatFolders, nextFolder]
+
+    persistCustomChatFolders(nextFolders)
+    setActiveChatFolderId(nextFolder.id)
+    setNewChatFolderName('')
+    setChatFolderCreatorVisible(false)
+  }
+
+  function openSelectedChatFolderAssignment() {
+    if (!selectedConversationIds.length) return
+
+    setChatFolderAssignmentVisible(true)
+  }
+
+  function toggleSelectedChatsInFolder(folderId) {
+    if (!selectedConversationIds.length || !folderId) return
+
+    const selectedIds = selectedConversationIds.map(String)
+    const allSelectedAlreadyInFolder = selectedIds.every((conversationId) =>
+      getConversationFolderIds(chatFolderAssignments, conversationId).includes(folderId)
+    )
+    const nextAssignments = {
+      ...chatFolderAssignments,
+    }
+
+    selectedIds.forEach((conversationId) => {
+      const currentFolderIds = getConversationFolderIds(nextAssignments, conversationId)
+      const nextFolderIds = allSelectedAlreadyInFolder
+        ? currentFolderIds.filter((item) => item !== folderId)
+        : [...new Set([...currentFolderIds, folderId])]
+
+      if (nextFolderIds.length) {
+        nextAssignments[conversationId] = nextFolderIds
+      } else {
+        delete nextAssignments[conversationId]
+      }
+    })
+
+    persistChatFolderAssignments(nextAssignments)
+    setActiveChatFolderId(folderId)
+    setChatFolderAssignmentVisible(false)
+    clearConversationSelection()
+  }
+
+  function getChatFolderSelectionState(folderId) {
+    if (!selectedConversationIds.length) return false
+
+    return selectedConversationIds.every((conversationId) =>
+      getConversationFolderIds(chatFolderAssignments, conversationId).includes(folderId)
+    )
+  }
+
+  function isConversationInChatFolder(conversationItem, folderId) {
+    if (folderId === 'all') return true
+    if (folderId === 'personal') return !isGroupConversation(conversationItem)
+
+    return getConversationFolderIds(chatFolderAssignments, conversationItem.id).includes(folderId)
+  }
+
+  function getChatFolderCount(folderId) {
+    return visibleConversationRows.filter((item) => isConversationInChatFolder(item, folderId)).length
+  }
+
   const visibleConversationRows = useMemo(() => {
     const query = normalizeConversationSearch(conversationSearchQuery)
 
@@ -3838,9 +4430,16 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
     )
   }, [conversationRows, conversationSearchQuery])
 
+  const folderFilteredConversationRows = useMemo(
+    () => visibleConversationRows.filter((item) =>
+      isConversationInChatFolder(item, activeChatFolder?.id || 'all')
+    ),
+    [activeChatFolder, chatFolderAssignments, visibleConversationRows]
+  )
+
   const messageListRows = useMemo(
-    () => sortMessageRowsWithSettings(visibleConversationRows, messageSettings, presenceByUserId),
-    [messageSettings, presenceByUserId, visibleConversationRows]
+    () => sortMessageRowsWithSettings(folderFilteredConversationRows, messageSettings, presenceByUserId),
+    [folderFilteredConversationRows, messageSettings, presenceByUserId]
   )
 
   const visibleContactPickerContacts = useMemo(() => {
@@ -3871,11 +4470,11 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
   const activeConversationRows = useMemo(
     () =>
       messageSettings.showActiveNow
-        ? messageListRows.filter((item) =>
+        ? sortMessageRowsWithSettings(visibleConversationRows, messageSettings, presenceByUserId).filter((item) =>
         Boolean(item.presence?.is_online || presenceByUserId[item.other_user_id]?.is_online)
       )
         : [],
-    [messageListRows, messageSettings.showActiveNow, presenceByUserId]
+    [messageSettings, presenceByUserId, visibleConversationRows]
   )
   const attachmentActions = [
     {
@@ -4027,18 +4626,33 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   <Ionicons name="close" size={24} color={theme.text} />
                 </TouchableOpacity>
 
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontSize: 24, fontWeight: '900' }}>
-                    {selectedConversationIds.length} selected
-                  </Text>
-                  <Text style={{ color: theme.mutedText, marginTop: 3 }}>
-                    Choose chats to remove from your list
-                  </Text>
-                </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontSize: 24, fontWeight: '900' }}>
+                      {selectedConversationIds.length} selected
+                    </Text>
+                    <Text style={{ color: theme.mutedText, marginTop: 3 }}>
+                      Add to folder or remove from your list
+                    </Text>
+                  </View>
 
-                <TouchableOpacity
-                  onPress={deleteSelectedConversations}
-                  style={{
+                  <TouchableOpacity
+                    onPress={openSelectedChatFolderAssignment}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: theme.accentSoft,
+                      marginRight: 8,
+                    }}
+                  >
+                    <Ionicons name="folder-open-outline" size={21} color={theme.accent} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={deleteSelectedConversations}
+                    style={{
                     width: 40,
                     height: 40,
                     borderRadius: 20,
@@ -4223,10 +4837,274 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                 ))}
               </Pressable>
             </Pressable>
-          </Modal>
+            </Modal>
 
-          <Modal
-            visible={messagingSettingsVisible}
+            <Modal
+              visible={chatFolderCreatorVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setChatFolderCreatorVisible(false)}
+            >
+              <Pressable
+                onPress={() => setChatFolderCreatorVisible(false)}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 20,
+                  backgroundColor: 'rgba(15, 23, 42, 0.28)',
+                }}
+              >
+                <Pressable
+                  onPress={() => {}}
+                  style={{
+                    width: '100%',
+                    maxWidth: 360,
+                    borderRadius: 22,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surface,
+                    padding: 16,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 19,
+                        backgroundColor: theme.accentSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                      }}
+                    >
+                      <Ionicons name="folder-outline" size={19} color={theme.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                        New chat folder
+                      </Text>
+                      <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 2 }}>
+                        Give it a short unique name.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={{
+                      height: 44,
+                      borderRadius: 15,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.surfaceMuted,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 12,
+                      marginTop: 14,
+                    }}
+                  >
+                    <Ionicons
+                      name="pricetag-outline"
+                      size={17}
+                      color={getNextChatFolderColor(customChatFolders)}
+                    />
+                    <TextInput
+                      value={newChatFolderName}
+                      onChangeText={setNewChatFolderName}
+                      placeholder="Folder name"
+                      placeholderTextColor={theme.mutedText}
+                      maxLength={22}
+                      autoFocus
+                      returnKeyType="done"
+                      onSubmitEditing={createCustomChatFolder}
+                      style={{
+                        flex: 1,
+                        color: theme.text,
+                        fontSize: 14,
+                        fontWeight: '800',
+                        marginLeft: 8,
+                      }}
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                    <TouchableOpacity
+                      onPress={() => setChatFolderCreatorVisible(false)}
+                      style={{
+                        flex: 1,
+                        height: 42,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.surfaceMuted,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '900' }}>
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={createCustomChatFolder}
+                      style={{
+                        flex: 1,
+                        height: 42,
+                        borderRadius: 14,
+                        backgroundColor: getNextChatFolderColor(customChatFolders),
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>
+                        Create
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Modal>
+
+            <Modal
+              visible={chatFolderAssignmentVisible}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setChatFolderAssignmentVisible(false)}
+            >
+              <Pressable
+                onPress={() => setChatFolderAssignmentVisible(false)}
+                style={{
+                  flex: 1,
+                  justifyContent: 'flex-end',
+                  backgroundColor: 'rgba(15, 23, 42, 0.30)',
+                }}
+              >
+                <Pressable
+                  onPress={() => {}}
+                  style={{
+                    backgroundColor: theme.surface,
+                    borderTopLeftRadius: 24,
+                    borderTopRightRadius: 24,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    paddingHorizontal: 16,
+                    paddingTop: 10,
+                    paddingBottom: Math.max(insets.bottom, 10) + 14,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 4,
+                      borderRadius: 2,
+                      backgroundColor: theme.border,
+                      alignSelf: 'center',
+                      marginBottom: 12,
+                    }}
+                  />
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.accentSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                      }}
+                    >
+                      <Ionicons name="folder-open-outline" size={20} color={theme.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900' }}>
+                        Add to folder
+                      </Text>
+                      <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 2 }}>
+                        {selectedConversationIds.length} selected chat{selectedConversationIds.length === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setChatFolderAssignmentVisible(false)
+                        openChatFolderCreator()
+                      }}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        backgroundColor: theme.accentSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="add" size={20} color={theme.accent} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 9, paddingBottom: 2 }}
+                  >
+                    {assignableChatFolders.map((folder) => {
+                      const selectedInFolder = getChatFolderSelectionState(folder.id)
+
+                      return (
+                        <TouchableOpacity
+                          key={`assign-folder-${folder.id}`}
+                          onPress={() => toggleSelectedChatsInFolder(folder.id)}
+                          activeOpacity={0.84}
+                          style={{
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: selectedInFolder ? folder.color : theme.border,
+                            backgroundColor: selectedInFolder
+                              ? hexToRgba(folder.color, 0.13)
+                              : theme.surfaceMuted,
+                            padding: 11,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: hexToRgba(folder.color, selectedInFolder ? 0.22 : 0.13),
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginRight: 10,
+                            }}
+                          >
+                            <Ionicons name={folder.icon} size={18} color={folder.color} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: folder.color, fontSize: 14, fontWeight: '900' }}>
+                              {folder.title}
+                            </Text>
+                            <Text style={{ color: theme.mutedText, fontSize: 11, marginTop: 2 }}>
+                              {selectedInFolder ? 'Tap to remove selected chats' : 'Tap to add selected chats'}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name={selectedInFolder ? 'checkmark-circle' : 'add-circle-outline'}
+                            size={22}
+                            color={selectedInFolder ? folder.color : theme.mutedText}
+                          />
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </ScrollView>
+                </Pressable>
+              </Pressable>
+            </Modal>
+
+            <Modal
+              visible={messagingSettingsVisible}
             transparent
             animationType="slide"
             onRequestClose={() => setMessagingSettingsVisible(false)}
@@ -4728,10 +5606,10 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             </Pressable>
           </Modal>
 
-          {activeConversationRows.length ? (
-            <View
-              style={{
-                backgroundColor: theme.surface,
+            {activeConversationRows.length ? (
+              <View
+                style={{
+                  backgroundColor: theme.surface,
                 paddingTop: 7,
                 paddingBottom: 8,
                 borderBottomWidth: 1,
@@ -4831,12 +5709,116 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     </TouchableOpacity>
                   )
                 }}
-              />
-            </View>
-          ) : null}
+                />
+              </View>
+            ) : null}
 
-          <FlatList
-            data={messageListRows}
+            <View
+              style={{
+                backgroundColor: theme.surface,
+                paddingVertical: 9,
+                borderBottomWidth: 1,
+                borderBottomColor: theme.border,
+              }}
+            >
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingHorizontal: 14,
+                  gap: 8,
+                  alignItems: 'center',
+                }}
+              >
+                {chatFolders.map((folder) => {
+                  const selectedFolder = activeChatFolder?.id === folder.id
+                  const folderCount = getChatFolderCount(folder.id)
+
+                  return (
+                    <TouchableOpacity
+                      key={`chat-folder-${folder.id}`}
+                      onPress={() => setActiveChatFolderId(folder.id)}
+                      activeOpacity={0.84}
+                      style={{
+                        minHeight: 34,
+                        borderRadius: 17,
+                        paddingHorizontal: 11,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: selectedFolder
+                          ? folder.color
+                          : hexToRgba(folder.color, 0.12),
+                        borderWidth: 1,
+                        borderColor: selectedFolder
+                          ? folder.color
+                          : hexToRgba(folder.color, 0.34),
+                      }}
+                    >
+                      <Ionicons
+                        name={folder.icon}
+                        size={14}
+                        color={selectedFolder ? '#fff' : folder.color}
+                        style={{ marginRight: 5 }}
+                      />
+                      <Text
+                        style={{
+                          color: selectedFolder ? '#fff' : folder.color,
+                          fontSize: 12,
+                          fontWeight: '900',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {folder.title}
+                      </Text>
+                      <View
+                        style={{
+                          minWidth: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          paddingHorizontal: 5,
+                          backgroundColor: selectedFolder
+                            ? 'rgba(255,255,255,0.22)'
+                            : hexToRgba(folder.color, 0.16),
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginLeft: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: selectedFolder ? '#fff' : folder.color,
+                            fontSize: 10,
+                            fontWeight: '900',
+                          }}
+                        >
+                          {folderCount}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )
+                })}
+
+                <TouchableOpacity
+                  onPress={openChatFolderCreator}
+                  activeOpacity={0.84}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: theme.accentSoft,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                  }}
+                >
+                  <Ionicons name="add" size={20} color={theme.accent} />
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+
+            <FlatList
+              data={messageListRows}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <ConversationRow
@@ -4865,17 +5847,23 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
             refreshing={loading}
             onRefresh={() => loadConversationList(currentUser)}
             ListEmptyComponent={
-              <View style={{ alignItems: 'center', padding: 34 }}>
-                <Ionicons name="chatbubbles-outline" size={48} color={theme.mutedText} />
-                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 12 }}>
-                  {conversationSearchQuery ? 'No chats found' : 'No messages yet'}
-                </Text>
-                <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 6 }}>
-                  {conversationSearchQuery
-                    ? 'Tap the add icon to find a user by Rental X ID.'
-                    : 'Open a property or owner profile and tap Message to start.'}
-                </Text>
-              </View>
+                <View style={{ alignItems: 'center', padding: 34 }}>
+                  <Ionicons name="chatbubbles-outline" size={48} color={theme.mutedText} />
+                  <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 12 }}>
+                    {conversationSearchQuery
+                      ? 'No chats found'
+                      : activeChatFolder?.id !== 'all'
+                        ? `No chats in ${activeChatFolder?.title || 'this folder'}`
+                        : 'No messages yet'}
+                  </Text>
+                  <Text style={{ color: theme.mutedText, textAlign: 'center', marginTop: 6 }}>
+                    {conversationSearchQuery
+                      ? 'Tap the add icon to find a user by Rental X ID.'
+                      : activeChatFolder?.id !== 'all'
+                        ? 'Long press chats, tap the folder icon, then add them here.'
+                        : 'Open a property or owner profile and tap Message to start.'}
+                  </Text>
+                </View>
             }
           />
         </View>
@@ -6212,7 +7200,9 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                     Send red packet
                   </Text>
                   <Text style={{ color: theme.mutedText, fontSize: 12, marginTop: 2 }}>
-                    A gift the receiver can open once.
+                    {isActiveGroupChat
+                      ? 'Choose all group members or selected members.'
+                      : 'A gift the receiver can open once.'}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -6230,6 +7220,146 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                   <Ionicons name="close" size={20} color={theme.mutedText} />
                 </TouchableOpacity>
               </View>
+
+              {isActiveGroupChat ? (
+                <View
+                  style={{
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surfaceMuted,
+                    padding: 10,
+                    marginBottom: 12,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {[
+                      {
+                        key: 'group_all',
+                        label: `All ${eligibleRedPacketMembers.length}`,
+                        icon: 'people-outline',
+                      },
+                      {
+                        key: 'group_selected',
+                        label: `Selected ${selectedRedPacketMemberIds.length}`,
+                        icon: 'checkmark-circle-outline',
+                      },
+                    ].map((option) => {
+                      const active = option.key === 'group_selected'
+                        ? redPacketTargetMode === 'group_selected'
+                        : redPacketTargetMode !== 'group_selected'
+
+                      return (
+                        <TouchableOpacity
+                          key={`red-packet-target-${option.key}`}
+                          onPress={() => {
+                            setRedPacketTargetMode(option.key)
+                            if (option.key === 'group_all') {
+                              setSelectedRedPacketMemberIds([])
+                            }
+                          }}
+                          disabled={sendingRedPacket}
+                          activeOpacity={0.84}
+                          style={{
+                            flex: 1,
+                            minHeight: 38,
+                            borderRadius: 14,
+                            backgroundColor: active ? '#dc2626' : theme.surface,
+                            borderWidth: 1,
+                            borderColor: active ? '#dc2626' : theme.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <Ionicons
+                            name={option.icon}
+                            size={16}
+                            color={active ? '#fff' : theme.mutedText}
+                          />
+                          <Text
+                            style={{
+                              color: active ? '#fff' : theme.text,
+                              fontSize: 12,
+                              fontWeight: '900',
+                            }}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+
+                  {redPacketTargetMode === 'group_selected' ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 8, paddingTop: 10 }}
+                    >
+                      {eligibleRedPacketMembers.map((member) => {
+                        const selected = selectedRedPacketMemberIds.includes(member.user_id)
+                        const memberName = getProfileName(member.profile, 'User').split(' ')[0] || 'User'
+
+                        return (
+                          <TouchableOpacity
+                            key={`red-packet-member-${member.user_id}`}
+                            onPress={() => toggleRedPacketMemberSelection(member.user_id)}
+                            disabled={sendingRedPacket}
+                            activeOpacity={0.84}
+                            style={{
+                              width: 68,
+                              borderRadius: 16,
+                              borderWidth: 1,
+                              borderColor: selected ? '#dc2626' : theme.border,
+                              backgroundColor: selected ? '#fee2e2' : theme.surface,
+                              paddingVertical: 7,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <View>
+                              <Avatar profile={member.profile} name={memberName} size={34} />
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  right: -3,
+                                  bottom: -3,
+                                  width: 17,
+                                  height: 17,
+                                  borderRadius: 9,
+                                  backgroundColor: selected ? '#dc2626' : theme.surfaceMuted,
+                                  borderWidth: 1,
+                                  borderColor: theme.surface,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Ionicons
+                                  name={selected ? 'checkmark' : 'add'}
+                                  size={11}
+                                  color={selected ? '#fff' : theme.mutedText}
+                                />
+                              </View>
+                            </View>
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: selected ? '#991b1b' : theme.text,
+                                fontSize: 10,
+                                fontWeight: '900',
+                                marginTop: 5,
+                              }}
+                            >
+                              {memberName}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </ScrollView>
+                  ) : null}
+                </View>
+              ) : null}
 
               <View
                 style={{
@@ -6311,6 +7441,13 @@ export default function ChatScreen({ route, navigation, embeddedTabShell = false
                       ? formatCurrencyAmount(parseRedPacketAmountInput(redPacketAmount), 'BDT')
                       : '৳ 0'}
                   </Text>
+                  {isActiveGroupChat ? (
+                    <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 11, marginTop: 3 }}>
+                      {redPacketTargetMode === 'group_selected'
+                        ? `${selectedRedPacketMemberIds.length || 0} selected members`
+                        : `${eligibleRedPacketMembers.length} members, random split`}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 

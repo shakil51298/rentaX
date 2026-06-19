@@ -27,6 +27,7 @@ import {
   isSameDay,
   parseContactCardPayload,
 } from '../../lib/chatUtils'
+import { getProfileName } from '../../lib/userDisplay'
 
 const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '👍', '🙏']
 
@@ -624,9 +625,23 @@ function RedPacketMessage({
 }) {
   const hasPacket = Boolean(redPacket?.id)
   const opened = Boolean(redPacket?.opened)
-  const canOpen = hasPacket && !isMine && !opened
+  const hasRecipientRows = Boolean(redPacket?.recipients?.length)
+  const canOpen = hasPacket && !opened && Boolean(redPacket?.myRecipient || (!hasRecipientRows && !isMine))
   const wish = redPacket?.wish || message.body || 'Best wishes'
   const photoUrl = redPacket?.photo_url || message.media_url
+  const claimAmount = redPacket?.claimAmount || redPacket?.amount
+  const recipientCount = redPacket?.recipientCount || (hasRecipientRows ? redPacket.recipients.length : 1)
+  const openedCount = redPacket?.openedCount || 0
+  const openedRecipients = redPacket?.openedRecipients || []
+  const statusText = opened
+    ? 'Opened and added to account'
+    : isMine
+      ? `${openedCount}/${recipientCount} opened`
+      : canOpen
+        ? 'Tap open to receive your amount'
+        : hasPacket && hasRecipientRows
+          ? 'This packet was not sent to you'
+          : 'Waiting to be opened'
 
   return (
     <View
@@ -698,10 +713,10 @@ function RedPacketMessage({
         {opened || isMine ? (
           <>
             <Text style={{ color: '#fde68a', fontSize: 19, fontWeight: '900' }}>
-              {hasPacket ? formatCurrencyAmount(redPacket.amount, redPacket.currency) : 'Gift'}
+              {hasPacket ? formatCurrencyAmount(isMine ? redPacket.amount : claimAmount, redPacket.currency) : 'Gift'}
             </Text>
             <Text style={{ color: 'rgba(255,255,255,0.76)', fontSize: 11, marginTop: 3 }}>
-              {opened ? 'Opened and added to account' : 'Waiting to be opened'}
+              {statusText}
             </Text>
           </>
         ) : (
@@ -733,6 +748,54 @@ function RedPacketMessage({
           <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
             Run the red packet SQL to enable opening.
           </Text>
+        ) : null}
+
+        {hasPacket && !opened && !isMine && !canOpen ? (
+          <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+            {statusText}
+          </Text>
+        ) : null}
+
+        {openedRecipients.length ? (
+          <View
+            style={{
+              width: '100%',
+              marginTop: 10,
+              borderTopWidth: 1,
+              borderTopColor: 'rgba(255,255,255,0.18)',
+              paddingTop: 8,
+            }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.78)', fontSize: 11, fontWeight: '900', marginBottom: 5 }}>
+              Opened details
+            </Text>
+            {openedRecipients.map((recipient) => {
+              const name = getProfileName(recipient.profile, 'Member')
+
+              return (
+                <View
+                  key={`red-packet-opened-${recipient.user_id}`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    marginTop: 3,
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{ color: '#fff7ed', fontSize: 11, fontWeight: '800', flex: 1 }}
+                  >
+                    {name}
+                  </Text>
+                  <Text style={{ color: '#fde68a', fontSize: 11, fontWeight: '900' }}>
+                    {formatCurrencyAmount(recipient.amount, recipient.currency || redPacket.currency)}
+                  </Text>
+                </View>
+              )
+            })}
+          </View>
         ) : null}
       </View>
     </View>

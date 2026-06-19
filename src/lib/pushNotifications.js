@@ -26,7 +26,7 @@ export const CALL_NOTIFICATION_MUTE_ACTION_ID = 'rentalx_call_mute'
 export const CALL_NOTIFICATION_DECLINE_ACTION_ID = 'rentalx_call_decline'
 export const CALL_NOTIFICATION_ANSWER_ACTION_ID = 'rentalx_call_answer'
 
-const CHAT_NOTIFICATION_TYPES = new Set(['chat_message'])
+const CHAT_NOTIFICATION_TYPES = new Set(['chat_message', 'red_packet_reminder'])
 const CALL_NOTIFICATION_TYPES = new Set([
   'incoming_audio_call',
   'incoming_video_call',
@@ -74,7 +74,9 @@ Notifications.setNotificationHandler({
     const conversationId = notification?.request?.content?.data?.conversationId
     const channelId = getNotificationChannelId(type)
 
-    if (type === 'chat_message' && conversationId && (await isConversationMuted(conversationId))) {
+    const isChatNotification = CHAT_NOTIFICATION_TYPES.has(type)
+
+    if (isChatNotification && conversationId && (await isConversationMuted(conversationId))) {
       return {
         shouldPlaySound: false,
         shouldSetBadge: false,
@@ -86,7 +88,7 @@ Notifications.setNotificationHandler({
 
     const isCallNotification = CALL_NOTIFICATION_TYPES.has(type)
     const messageSoundId =
-      type === 'chat_message'
+      isChatNotification
         ? await getConversationNotificationSoundId(conversationId)
         : null
     const ringtoneSoundId =
@@ -97,7 +99,7 @@ Notifications.setNotificationHandler({
 
     return {
       shouldPlaySound:
-        (type === 'chat_message' && messageSoundId === PHONE_DEFAULT_SOUND_ID)
+        (isChatNotification && messageSoundId === PHONE_DEFAULT_SOUND_ID)
         || (isCallNotification && !isSilentCall && ringtoneSoundId === PHONE_DEFAULT_SOUND_ID)
         || type === 'sound_preview'
         || type === 'ringtone_preview',
